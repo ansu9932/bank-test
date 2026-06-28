@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.env
+.env.local
+*.log
+logs/
+backend/uploads/documents/*
+backend/uploads/selfies/*
+backend/uploads/kyc-videos/*
+backend/uploads/signatures/*
+!backend/uploads/.gitkeep
+.DS_Store
+Thumbs.db

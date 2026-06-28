@@ -1,0 +1,83 @@
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: ['./index.html', './src/**/*.{js,jsx,ts,tsx}'],
+  darkMode: 'class',
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['Inter', 'sans-serif'],
+        display: ['Space Grotesk', 'sans-serif'],
+        serif: ['"Playfair Display"', 'serif'],
+      },
+      colors: {
+        // Alister Bank public site palette (strict red / black / white)
+        alister: {
+          red: '#CC0000',
+          'red-dark': '#990000',
+          'red-light': '#FF3333',
+          black: '#0A0A0A',
+          'black-soft': '#1A1A1A',
+          'black-medium': '#2D2D2D',
+          'black-light': '#3D3D3D',
+          white: '#FFFFFF',
+          'white-soft': '#F5F5F5',
+          'white-muted': '#E8E8E8',
+        },
+        brand: {
+          50:  '#fff0f2',
+          100: '#ffd9de',
+          200: '#ffb3bc',
+          300: '#ff8090',
+          400: '#ff3d52',
+          500: '#c8102e',
+          600: '#a50d26',
+          700: '#850a1e',
+          800: '#650818',
+          900: '#450510',
+        },
+        dark: {
+          50:  '#f0f0f5',
+          100: '#d0d0e0',
+          200: '#a0a0c0',
+          300: '#7070a0',
+          400: '#404060',
+          500: '#1e1e2e',
+          600: '#17172a',
+          700: '#111118',
+          800: '#0d0d14',
+          900: '#080810',
+        },
+        glass: 'rgba(255,255,255,0.04)',
+      },
+      backgroundImage: {
+        'card-gradient': 'linear-gradient(135deg, #c8102e 0%, #8b0000 50%, #3d0010 100%)',
+        'dark-gradient': 'linear-gradient(135deg, #1e1e2e 0%, #111118 100%)',
+        'red-glow': 'radial-gradient(ellipse at top left, rgba(200,16,46,0.15) 0%, transparent 60%)',
+      },
+      boxShadow: {
+        'glass': '0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05)',
+        'card':  '0 20px 60px rgba(200,16,46,0.3)',
+        'glow':  '0 0 30px rgba(200,16,46,0.4)',
+        'inner-glow': 'inset 0 1px 0 rgba(255,255,255,0.07)',
+      },
+      animation: {
+        'fade-in':    'fadeIn 0.5s ease forwards',
+        'slide-up':   'slideUp 0.4s ease forwards',
+        'slide-left': 'slideLeft 0.4s ease forwards',
+        'pulse-red':  'pulseRed 2s ease-in-out infinite',
+        'shimmer':    'shimmer 2s linear infinite',
+        'count-up':   'countUp 1s ease forwards',
+      },
+      keyframes: {
+        fadeIn:    { from: { opacity: 0 }, to: { opacity: 1 } },
+        slideUp:   { from: { transform: 'translateY(20px)', opacity: 0 }, to: { transform: 'translateY(0)', opacity: 1 } },
+        slideLeft: { from: { transform: 'translateX(20px)', opacity: 0 }, to: { transform: 'translateX(0)', opacity: 1 } },
+        pulseRed:  { '0%,100%': { boxShadow: '0 0 0 0 rgba(200,16,46,0.4)' }, '50%': { boxShadow: '0 0 0 10px rgba(200,16,46,0)' } },
+        shimmer:   { from: { backgroundPosition: '-200% 0' }, to: { backgroundPosition: '200% 0' } },
+      },
+      borderRadius: { '2xl': '1rem', '3xl': '1.5rem', '4xl': '2rem' },
+      backdropBlur: { xs: '2px' },
+    },
+  },
+  plugins: [],
+};

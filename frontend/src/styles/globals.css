@@ -1,0 +1,312 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-dark-900 text-white font-sans;
+    background-image: radial-gradient(ellipse at 20% 10%, rgba(200,16,46,0.08) 0%, transparent 50%),
+                      radial-gradient(ellipse at 80% 90%, rgba(200,16,46,0.05) 0%, transparent 50%);
+    min-height: 100vh;
+  }
+
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { @apply bg-dark-800; }
+  ::-webkit-scrollbar-thumb { @apply bg-dark-400 rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-brand-500; }
+
+  ::selection { @apply bg-brand-500 text-white; }
+}
+
+@layer components {
+  /* Glass card */
+  .glass-card {
+    @apply bg-dark-700 border border-white/[0.06] rounded-2xl backdrop-blur-sm shadow-glass;
+    background: linear-gradient(135deg, rgba(30,30,46,0.9) 0%, rgba(17,17,24,0.95) 100%);
+  }
+
+  /* Glass card hover */
+  .glass-card-hover {
+    @apply glass-card transition-all duration-300 hover:border-white/[0.10] hover:-translate-y-0.5;
+  }
+
+  /* Input field */
+  .input-field {
+    @apply w-full bg-dark-800 border border-white/[0.08] rounded-xl px-4 py-3 text-white
+           placeholder-dark-300 text-sm transition-all duration-200 outline-none
+           focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30;
+  }
+
+  /* Primary button */
+  .btn-primary {
+    @apply flex items-center justify-center gap-2 px-6 py-3 bg-brand-500 hover:bg-brand-600
+           text-white font-semibold rounded-xl transition-all duration-200 text-sm
+           active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed
+           shadow-lg hover:shadow-glow;
+  }
+
+  /* Secondary button */
+  .btn-secondary {
+    @apply flex items-center justify-center gap-2 px-6 py-3 bg-dark-600 hover:bg-dark-500
+           text-white font-medium rounded-xl transition-all duration-200 text-sm
+           border border-white/[0.08] hover:border-white/[0.12] active:scale-95;
+  }
+
+  /* Ghost button */
+  .btn-ghost {
+    @apply flex items-center justify-center gap-2 px-4 py-2 text-dark-200 hover:text-white
+           hover:bg-dark-700 rounded-xl transition-all duration-200 text-sm;
+  }
+
+  /* Badge */
+  .badge {
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-success { @apply badge bg-green-500/15 text-green-400; }
+  .badge-danger  { @apply badge bg-red-500/15 text-red-400; }
+  .badge-warning { @apply badge bg-yellow-500/15 text-yellow-400; }
+  .badge-info    { @apply badge bg-blue-500/15 text-blue-400; }
+  .badge-brand   { @apply badge bg-brand-500/15 text-brand-400; }
+
+  /* Stat card */
+  .stat-card {
+    @apply glass-card p-5 relative overflow-hidden;
+  }
+
+  /* Sidebar nav item */
+  .nav-item {
+    @apply flex items-center gap-3 px-4 py-3 rounded-xl text-dark-200 hover:text-white
+           hover:bg-white/[0.05] transition-all duration-200 text-sm font-medium cursor-pointer;
+  }
+  .nav-item.active {
+    @apply bg-brand-500/15 text-brand-400 border border-brand-500/20;
+  }
+
+  /* Page header */
+  .page-title {
+    @apply font-display text-2xl font-bold text-white;
+  }
+
+  /* Divider */
+  .divider {
+    @apply border-t border-white/[0.05];
+  }
+
+  /* Skeleton loader */
+  .skeleton {
+    @apply bg-dark-700 rounded-lg animate-pulse;
+    background: linear-gradient(90deg, #1e1e2e 25%, #252535 50%, #1e1e2e 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  /* Table */
+  .table-row {
+    @apply flex items-center gap-4 px-5 py-4 border-b border-white/[0.04]
+           hover:bg-white/[0.02] transition-colors duration-150 last:border-0;
+  }
+
+  /* Modal overlay */
+  .modal-overlay {
+    @apply fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4;
+  }
+
+  /* Form label */
+  .form-label {
+    @apply block text-xs font-medium text-dark-200 mb-1.5 uppercase tracking-wide;
+  }
+
+  /* OTP box */
+  .otp-input {
+    @apply w-12 h-14 text-center text-xl font-bold bg-dark-800 border-2 border-white/[0.08]
+           rounded-xl text-white outline-none transition-all focus:border-brand-500
+           focus:shadow-[0_0_0_3px_rgba(200,16,46,0.15)];
+  }
+}
+
+/* Account card gradient animation */
+.card-shimmer::after {
+  content: '';
+  position: absolute;
+  top: -50%; left: -50%;
+  width: 200%; height: 200%;
+  background: linear-gradient(
+    45deg,
+    transparent 30%,
+    rgba(255,255,255,0.05) 50%,
+    transparent 70%
+  );
+  animation: shimmer 4s linear infinite;
+}
+
+/* Custom number font for balance */
+.balance-display {
+  font-family: 'Space Grotesk', sans-serif;
+  font-feature-settings: 'tnum';
+  font-variant-numeric: tabular-nums;
+}
+
+/* Smooth page transitions */
+.page-enter { animation: fadeIn 0.3s ease forwards; }
+
+/* Red text gradient */
+.text-gradient-red {
+  background: linear-gradient(135deg, #ff4060, #c8102e);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Loading spinner */
+.spinner {
+  width: 20px; height: 20px;
+  border: 2px solid rgba(200,16,46,0.2);
+  border-top-color: #c8102e;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ALISTER BANK · PUBLIC MARKETING SITE UTILITIES
+   Strict palette: red (#CC0000 / #990000 / #FF3333) · black (#0A0A0A) · white
+   ══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --al-red: #CC0000;
+  --al-red-dark: #990000;
+  --al-red-light: #FF3333;
+  --al-red-glow: rgba(204, 0, 0, 0.15);
+  --al-black: #0A0A0A;
+  --al-black-soft: #1A1A1A;
+  --al-black-medium: #2D2D2D;
+}
+
+/* Heading font for the public site */
+.font-serif-display {
+  font-family: 'Playfair Display', serif;
+}
+
+/* Red gradient text */
+.text-al-gradient {
+  background: linear-gradient(135deg, #FF3333, #CC0000);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Glass card used across the public site */
+.al-glass {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Hero gradient background */
+.al-hero-bg {
+  background: linear-gradient(135deg, #0A0A0A 0%, #1A1A1A 50%, #2D0000 100%);
+}
+
+/* Red accent gradient */
+.al-red-gradient {
+  background: linear-gradient(135deg, #CC0000, #FF3333);
+}
+
+/* Dark card gradient */
+.al-card-dark {
+  background: linear-gradient(145deg, #1A1A1A, #0A0A0A);
+}
+
+/* Floating animation */
+@keyframes al-float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-15px); }
+}
+.al-float { animation: al-float 4s ease-in-out infinite; }
+
+/* Shimmer sweep for premium cards */
+@keyframes al-shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+.al-shimmer {
+  background: linear-gradient(90deg, transparent 0%, rgba(204,0,0,0.18) 50%, transparent 100%);
+  background-size: 200% auto;
+  animation: al-shimmer 3s linear infinite;
+}
+
+/* Pulsing red ring (used on step icons) */
+@keyframes al-pulse-ring {
+  0% { box-shadow: 0 0 0 0 rgba(204,0,0,0.5); }
+  70% { box-shadow: 0 0 0 14px rgba(204,0,0,0); }
+  100% { box-shadow: 0 0 0 0 rgba(204,0,0,0); }
+}
+.al-pulse-ring { animation: al-pulse-ring 2.2s ease-out infinite; }
+
+/* Slow radial pulse for hero background */
+@keyframes al-glow-pulse {
+  0%, 100% { opacity: 0.12; transform: scale(1); }
+  50% { opacity: 0.22; transform: scale(1.08); }
+}
+.al-glow-pulse { animation: al-glow-pulse 7s ease-in-out infinite; }
+
+/* Animated dashed connector for the "How it works" steps */
+@keyframes al-dash {
+  to { stroke-dashoffset: -40; }
+}
+.al-dash-line { stroke-dasharray: 8 8; animation: al-dash 1.2s linear infinite; }
+
+/* 3D tilt smoothing - applied to card wrappers */
+.al-tilt {
+  transform-style: preserve-3d;
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+/* Range slider styling (EMI / SIP calculators) */
+.al-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 9999px;
+  background: #2D2D2D;
+  outline: none;
+}
+.al-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #CC0000;
+  border: 3px solid #FF3333;
+  cursor: pointer;
+  box-shadow: 0 0 12px rgba(204,0,0,0.6);
+}
+.al-range::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #CC0000;
+  border: 3px solid #FF3333;
+  cursor: pointer;
+  box-shadow: 0 0 12px rgba(204,0,0,0.6);
+}
+
+/* Public site hides the global red body radial glow override (kept dark) */
+.al-public-root {
+  background: #0A0A0A;
+  min-height: 100vh;
+}
