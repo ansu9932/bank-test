@@ -89,7 +89,16 @@ const securityHeaders = helmet({
       // checkout.razorpay.com serves the Razorpay Checkout widget script.
       scriptSrc: ["'self'", 'https://checkout.razorpay.com'],
       // Razorpay Checkout makes XHR/fetch calls to its API + analytics hosts.
-      connectSrc: ["'self'", 'https://api.razorpay.com', 'https://checkout.razorpay.com', 'https://rzp.io'],
+      // The split frontend (alisterbank.online) calls the API on its own
+      // subdomain (api.alisterbank.online), so that origin must be allowed
+      // here or the browser blocks every API request with (blocked:csp).
+      connectSrc: [
+        "'self'",
+        ...(process.env.API_PUBLIC_URL ? [process.env.API_PUBLIC_URL] : ['https://api.alisterbank.online']),
+        'https://api.razorpay.com',
+        'https://checkout.razorpay.com',
+        'https://rzp.io',
+      ],
       // Razorpay Checkout renders its payment UI inside an iframe.
       frameSrc: ["'self'", 'https://api.razorpay.com', 'https://checkout.razorpay.com', 'https://rzp.io'],
       mediaSrc: ["'self'", 'blob:'],
