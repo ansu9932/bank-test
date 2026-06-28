@@ -10,24 +10,27 @@ async function makeAdmin() {
     // 1. Choose your credentials here:
     const adminEmail = 'admin@alisterbank.com';
     const adminUsername = 'admin_cyber';
+    const adminFullName = 'Cyber Admin';
     const adminPassword = 'SuperSecurePassword2026'; // Put your desired password here
 
     // 2. Hash the password so the login system accepts it
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(adminPassword, saltRounds);
 
-    // 3. Create the record
-    // Note: If your model uses different column names (like 'admin_name'), match them here!
+    // 3. Create the record (column names must match models/AdminUser.js exactly)
     await AdminUser.create({
       email: adminEmail,
       username: adminUsername,
-      password: hashedPassword,
+      full_name: adminFullName,
+      password_hash: hashedPassword,
+      role: 'super_admin',
       is_active: true
     });
 
     console.log(`\n🎉 Admin account created successfully!`);
+    console.log(`👤 Username: ${adminUsername}`);
     console.log(`📧 Email: ${adminEmail}`);
-    console.log(`🔒 Password: ${adminPassword} (Saved securely as hashed string)`);
+    console.log(`🔒 Password: ${adminPassword} (stored as a bcrypt hash)`);
 
   } catch (error) {
     console.error('\n❌ Error creating admin:', error.message);
