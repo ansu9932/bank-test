@@ -1,12 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { RiBankLine, RiLockLine, RiEyeLine, RiEyeOffLine } from 'react-icons/ri';
+import { RiBankLine, RiLockLine, RiEyeLine, RiEyeOffLine, RiRefreshLine } from 'react-icons/ri';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import Turnstile from '../../components/common/Turnstile';
 
-const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY;
 const MAX_FAILED_ATTEMPTS = 3;
 
 // ─── Live password-strength scoring ──────────────────────────────────────────
@@ -39,17 +37,34 @@ export default function ResetPasswordPage() {
   const [form, setForm] = useState({ newPassword: '', confirm: '' });
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [captchaToken, setCaptchaToken] = useState('');
   const [failedAttempts, setFailedAttempts] = useState(0);
+
+  // Self-hosted captcha (replaces Cloudflare Turnstile).
+  const [captcha, setCaptcha] = useState({ svg: '', token: '' });
+  const [captchaAnswer, setCaptchaAnswer] = useState('');
+  const [captchaLoading, setCaptchaLoading] = useState(false);
 
   const locked = failedAttempts >= MAX_FAILED_ATTEMPTS;
   const strength = useMemo(() => scorePassword(form.newPassword), [form.newPassword]);
   const meta = STRENGTH_META[strength];
 
-  // When a site key is configured, a CAPTCHA token is mandatory to submit.
-  const captchaRequired = Boolean(TURNSTILE_SITE_KEY);
-  const captchaSatisfied = !captchaRequired || Boolean(captchaToken);
-  const submitDisabled = loading || locked || !captchaSatisfied;
+  // Fetch a fresh captcha image + token from the backend.
+  const loadCaptcha = useCallback(async () => {
+    setCaptchaLoading(true);
+    setCaptchaAnswer('');
+    try {
+      const { data } = await api.get('/auth/captcha');
+      setCaptcha({ svg: data.data.svg, token: data.data.token });
+    } catch {
+      setCaptcha({ svg: '', token: '' });
+    } finally {
+      setCaptchaLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { if (token) loadCaptcha(); }, [token, loadCaptcha]);
+
+  const submitDisabled = loading || locked || !captcha.token || !captchaAnswer;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -60,14 +75,15 @@ export default function ResetPasswordPage() {
       toast.error('Password must include uppercase, lowercase, and a number');
       return;
     }
-    if (captchaRequired && !captchaToken) { toast.error('Please complete the CAPTCHA'); return; }
+    if (!captchaAnswer.trim()) { toast.error('Please enter the captcha'); return; }
 
     setLoading(true);
     try {
       await api.post('/auth/reset-password', {
         token,
         newPassword: form.newPassword,
-        captchaToken,
+        captchaToken: captcha.token,
+        captchaAnswer,
       });
       toast.success('Password reset successful!');
       navigate('/login');
@@ -76,8 +92,8 @@ export default function ResetPasswordPage() {
       if (status === 400) {
         setFailedAttempts((n) => n + 1);
       }
-      // A used CAPTCHA token can only be redeemed once — force a fresh challenge.
-      setCaptchaToken('');
+      // The captcha is single-use — always load a fresh one after a failure.
+      loadCaptcha();
       toast.error(err.response?.data?.message || 'Reset failed. Link may be expired.');
     } finally {
       setLoading(false);
@@ -139,17 +155,35 @@ export default function ResetPasswordPage() {
                 </div>
               ))}
 
-              {/* Bot protection — rendered only when a site key is configured. */}
-              {captchaRequired && (
-                <div>
-                  <Turnstile
-                    siteKey={TURNSTILE_SITE_KEY}
-                    onVerify={setCaptchaToken}
-                    onExpire={() => setCaptchaToken('')}
-                    theme="dark"
+              {/* Self-hosted CAPTCHA — image challenge + answer input */}
+              <div>
+                <label className="form-label">Enter the characters shown</label>
+                <div className="flex items-center gap-3">
+                  <div
+                    className="rounded-lg overflow-hidden border border-white/10 bg-dark-800 flex items-center justify-center"
+                    style={{ width: 170, height: 56, flexShrink: 0 }}
+                    dangerouslySetInnerHTML={{ __html: captcha.svg }}
                   />
+                  <button
+                    type="button"
+                    onClick={loadCaptcha}
+                    disabled={captchaLoading}
+                    title="Get a new captcha"
+                    className="p-2.5 rounded-lg bg-white/[0.05] text-dark-200 hover:text-white hover:bg-white/[0.1] transition-colors disabled:opacity-50"
+                  >
+                    <RiRefreshLine className={captchaLoading ? 'animate-spin' : ''} />
+                  </button>
                 </div>
-              )}
+                <input
+                  type="text"
+                  value={captchaAnswer}
+                  onChange={(e) => setCaptchaAnswer(e.target.value)}
+                  placeholder="Type the characters above"
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  className="input-field mt-2 tracking-widest uppercase"
+                />
+              </div>
 
               <button type="submit" disabled={submitDisabled} className="btn-primary w-full py-3.5 disabled:opacity-60 disabled:cursor-not-allowed">
                 {loading ? <><div className="spinner w-4 h-4" /> Resetting...</> : 'Reset Password'}

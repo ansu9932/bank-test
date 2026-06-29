@@ -13,7 +13,7 @@ const { success, error, badRequest, unauthorized, notFound, linkError } = requir
 const logger = require('../utils/logger');
 const { SecureLink } = require('../models');
 const { issueHandshake, consumeHandshake } = require('../utils/loginHandshake');
-const { verifyTurnstile } = require('../utils/captcha');
+const { issueCaptcha, verifyCaptcha } = require('../utils/simpleCaptcha');
 
 // generateSecureToken() = crypto.randomBytes(64).toString('hex') → 128 hex chars.
 // Used to reject obviously-malformed tokens before any DB lookup.
@@ -482,18 +482,28 @@ exports.sendResetLink = async (req, res) => {
   }
 };
 
+// ─── Issue a self-hosted CAPTCHA (image + opaque token) ──────────────────────
+// GET /api/auth/captcha → { svg, token }. The frontend renders the SVG and
+// sends back the token + the user's typed answer with the reset request.
+exports.getCaptcha = async (req, res) => {
+  try {
+    const { svg, token } = issueCaptcha();
+    return success(res, { svg, token }, 'Captcha generated.');
+  } catch (err) {
+    logger.error(`Captcha generation error: ${err.message}`);
+    return error(res, 'Failed to generate captcha.');
+  }
+};
+
 // ─── Reset Password ────────────────────────────────────────────────────────────
 exports.resetPassword = async (req, res) => {
   try {
-    const { token, newPassword, captchaToken } = req.body;
+    const { token, newPassword, captchaToken, captchaAnswer } = req.body;
     if (!token || !newPassword) return badRequest(res, 'Token and new password are required.');
 
-    // ── Bot protection: verify CAPTCHA BEFORE any token/DB lookup ────────────
-    // Skips gracefully (with a logged warning) when TURNSTILE_SECRET_KEY is
-    // unset, so local development isn't blocked.
-    const captcha = await verifyTurnstile(captchaToken, req.ip);
-    if (!captcha.success) {
-      return badRequest(res, 'CAPTCHA verification failed. Please try again.');
+    // ── Bot protection: verify the self-hosted CAPTCHA BEFORE any DB lookup ──
+    if (!verifyCaptcha(captchaToken, captchaAnswer)) {
+      return badRequest(res, 'Captcha verification failed. Please try again.');
     }
 
     // ── Cheap token-shape gate ───────────────────────────────────────────────

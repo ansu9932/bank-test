@@ -50,6 +50,8 @@ router.post('/forgot-password', authLimiter, [
 // ─── Identity-verification password reset (3-step wizard) ────────────────────
 // Public, pre-login. All three steps are rate-limited with authLimiter to
 // throttle brute-forcing of account number / DOB combinations.
+// Self-hosted CAPTCHA challenge for the reset-password step (no external service).
+router.get('/captcha', authController.getCaptcha);
 router.post('/verify-userid', authLimiter, [
   body('userId').notEmpty().withMessage('User ID is required'),
 ], validate, authController.verifyUserId);
