@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useDispatch, useSelector } from 'react-redux';
-import { RiEyeLine, RiEyeOffLine, RiBankLine, RiLockLine, RiUserLine, RiShieldCheckLine } from 'react-icons/ri';
+import { RiEyeLine, RiEyeOffLine, RiBankLine, RiLockLine, RiUserLine, RiShieldCheckLine, RiRefreshLine } from 'react-icons/ri';
 import { login, clearError } from '../../store/slices/authSlice';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
@@ -32,6 +32,10 @@ export default function LoginPage() {
   const { loading, error } = useSelector(s => s.auth);
   const [form, setForm] = useState({ username: '', password: '' });
   const [showPwd, setShowPwd] = useState(false);
+  // Self-hosted captcha (image + opaque token from the backend).
+  const [captcha, setCaptcha] = useState({ svg: '', token: '' });
+  const [captchaAnswer, setCaptchaAnswer] = useState('');
+  const [captchaLoading, setCaptchaLoading] = useState(false);
   // HDFC-style ephemeral handshake token. Fetched on mount, mirrored into the
   // URL as ?h=, and echoed back on submit so the backend can block replays.
   const [handshakeToken, setHandshakeToken] = useState('');
@@ -71,8 +75,23 @@ export default function LoginPage() {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
     initHandshake();
+    loadCaptcha();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Fetch a fresh captcha image + token from the backend.
+  const loadCaptcha = async () => {
+    setCaptchaLoading(true);
+    setCaptchaAnswer('');
+    try {
+      const { data } = await api.get('/auth/captcha');
+      setCaptcha({ svg: data.data.svg, token: data.data.token });
+    } catch {
+      setCaptcha({ svg: '', token: '' });
+    } finally {
+      setCaptchaLoading(false);
+    }
+  };
 
   // ── Idle / expiry watchdog ─────────────────────────────────────────────────
   // Poll elapsed time since the handshake initialized. Once the 10-minute login
@@ -105,6 +124,7 @@ export default function LoginPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.username || !form.password) { toast.error('Please fill all fields'); return; }
+    if (!captchaAnswer.trim()) { toast.error('Please enter the captcha'); return; }
     // Prefer in-state token; fall back to the URL param if state was reset.
     const tokenFromUrl = new URLSearchParams(window.location.search).get('h');
     let hToken = handshakeToken || tokenFromUrl || '';
@@ -112,14 +132,20 @@ export default function LoginPage() {
     // block login on it. The backend treats the handshake as a soft anti-replay
     // signal, so a transient handshake hiccup must not stop a valid login.
     if (!hToken) hToken = await initHandshake();
-    const result = await dispatch(login({ ...form, handshakeToken: hToken }));
+    const result = await dispatch(login({
+      ...form,
+      handshakeToken: hToken,
+      captchaToken: captcha.token,
+      captchaAnswer,
+    }));
     if (login.fulfilled.match(result)) {
       allowNavigation(); // sanctioned success exit → no redirect-home
       toast.success('Welcome back!');
       navigate('/dashboard');
     } else {
-      // Handshake is single-use; on any failure mint a fresh one for the retry.
+      // Handshake + captcha are single-use; on any failure refresh both for the retry.
       initHandshake();
+      loadCaptcha();
     }
   };
 
@@ -270,7 +296,35 @@ export default function LoginPage() {
                 </Link>
               </div>
 
-              {/* Cloudflare Turnstile removed — direct submission to core endpoints. */}
+              {/* Self-hosted captcha — image challenge + answer input */}
+              <div>
+                <label className={LABEL_CLASS}>Enter the characters shown</label>
+                <div className="flex items-center gap-3">
+                  <div
+                    className="rounded-[10px] overflow-hidden border border-white/10 bg-[rgba(255,255,255,0.06)] flex items-center justify-center"
+                    style={{ width: 170, height: 56, flexShrink: 0 }}
+                    dangerouslySetInnerHTML={{ __html: captcha.svg }}
+                  />
+                  <button
+                    type="button"
+                    onClick={loadCaptcha}
+                    disabled={captchaLoading}
+                    title="Get a new captcha"
+                    className="p-3 rounded-[10px] bg-[rgba(255,255,255,0.06)] text-white/50 hover:text-white hover:bg-[rgba(255,255,255,0.12)] transition-colors disabled:opacity-50"
+                  >
+                    <RiRefreshLine className={captchaLoading ? 'animate-spin' : ''} />
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  value={captchaAnswer}
+                  onChange={e => setCaptchaAnswer(e.target.value)}
+                  placeholder="Type the characters above"
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  className={`${INPUT_CLASS} px-4 mt-2 tracking-widest uppercase`}
+                />
+              </div>
 
               <motion.button
                 type="submit"

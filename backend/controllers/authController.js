@@ -36,7 +36,7 @@ exports.loginHandshake = async (req, res) => {
 // ─── Login ─────────────────────────────────────────────────────────────────────
 exports.login = async (req, res) => {
   try {
-    const { username, password, handshakeToken } = req.body;
+    const { username, password, handshakeToken, captchaToken, captchaAnswer } = req.body;
 
     // ── Ephemeral handshake validation (anti-replay) — SOFT / non-blocking ───
     // The handshake is an anti-replay nicety, NOT an authentication factor.
@@ -52,6 +52,11 @@ exports.login = async (req, res) => {
     }
 
     if (!username || !password) return badRequest(res, 'Username and password are required.');
+
+    // ── Bot protection: self-hosted captcha (replaces Cloudflare Turnstile) ──
+    if (!verifyCaptcha(captchaToken, captchaAnswer)) {
+      return badRequest(res, 'Captcha verification failed. Please try again.');
+    }
 
     const user = await User.findOne({
       where: { [Op.or]: [{ username }, { email: username }] },
