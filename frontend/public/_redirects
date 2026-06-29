@@ -1,4 +1,0 @@
-# Cloudflare Pages SPA fallback — serve index.html for any client-side route
-# (React Router). Real static files (/assets/*) are served first; this only
-# applies to paths that don't match an existing file. 200 = rewrite, not redirect.
-/*    /index.html   200
