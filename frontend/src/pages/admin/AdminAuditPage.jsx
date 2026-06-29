@@ -48,7 +48,7 @@ export default function AdminAuditPage() {
                 <span className={`badge ${statusColor[log.status] || 'badge-info'} text-[10px]`}>{log.status}</span>
               </div>
               <p className="text-dark-400 text-xs truncate">{log.description}</p>
-              <p className="text-dark-500 text-[10px] mt-1">IP: {log.ip_address} · {safeFormat(log.created_at, 'dd MMM yyyy HH:mm:ss')}</p>
+              <p className="text-dark-500 text-[10px] mt-1">IP: {log.ip_address} · {safeFormat(log.created_at || log.createdAt, 'dd MMM yyyy HH:mm:ss')}</p>
             </div>
             <div className="text-right flex-shrink-0">
               {log.entity_type && <span className="badge badge-info text-[10px]">{log.entity_type}</span>}

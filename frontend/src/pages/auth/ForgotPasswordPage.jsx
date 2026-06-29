@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RiCheckLine } from 'react-icons/ri';
 import BackToHome from '../../components/common/BackToHome';
+import api from '../../services/api';
 
 const STEPS = [
   { id: 1, label: 'User ID' },
@@ -45,16 +46,10 @@ export default function ForgotPasswordPage() {
     setIsLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/auth/verify-userid', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'User ID not found. Please check and try again.');
+      await api.post('/auth/verify-userid', { userId });
       setCurrentStep(2);
     } catch (err) {
-      setError(err.message);
+      setError(err.response?.data?.message || 'User ID not found. Please check and try again.');
     } finally {
       setIsLoading(false);
     }
@@ -65,17 +60,11 @@ export default function ForgotPasswordPage() {
     setIsLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/auth/verify-account-details', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, accountNumber, dateOfBirth }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Details do not match our records. Please try again.');
-      setMaskedEmail(data.maskedEmail || '');
+      const { data } = await api.post('/auth/verify-account-details', { userId, accountNumber, dateOfBirth });
+      setMaskedEmail(data.data?.maskedEmail || '');
       setCurrentStep(3);
     } catch (err) {
-      setError(err.message);
+      setError(err.response?.data?.message || 'Details do not match our records. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -86,16 +75,10 @@ export default function ForgotPasswordPage() {
     setIsLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/auth/send-reset-link', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, accountNumber, dateOfBirth }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Failed to send reset link. Please try again.');
+      await api.post('/auth/send-reset-link', { userId, accountNumber, dateOfBirth });
       setCurrentStep('success');
     } catch (err) {
-      setError(err.message);
+      setError(err.response?.data?.message || 'Failed to send reset link. Please try again.');
     } finally {
       setIsLoading(false);
     }

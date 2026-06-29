@@ -68,7 +68,7 @@ export default function AdminTicketsPage() {
                 <div className="flex items-center gap-3 mt-1.5">
                   <p className="text-dark-500 text-[10px]">#{t.ticket_number}</p>
                   {t.user && <p className="text-dark-400 text-[10px]">{t.user.first_name} {t.user.last_name} · {t.user.email}</p>}
-                  <p className="text-dark-500 text-[10px]">{safeFormat(t.created_at, 'dd MMM yyyy')}</p>
+                  <p className="text-dark-500 text-[10px]">{safeFormat(t.created_at || t.createdAt, 'dd MMM yyyy')}</p>
                 </div>
               </div>
               <div className="flex items-center gap-1.5 flex-shrink-0">

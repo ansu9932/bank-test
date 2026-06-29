@@ -477,7 +477,7 @@ function StatCard({ label, value, icon: Icon, iconColor, iconBg, index }) {
 function UserRow({ user, index, onView }) {
   const fullName     = `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Unknown';
   const kycBadge     = KYC_BADGE[user.kyc_status] || 'badge-warning';
-  const joinedDate   = safeFormat(user.created_at, 'dd MMM yyyy', 'N/A');
+  const joinedDate   = safeFormat(user.created_at || user.createdAt, 'dd MMM yyyy', 'N/A');
   const initials     = (
     (user.first_name?.[0] || '') + (user.last_name?.[0] || '')
   ).toUpperCase() || 'U';
@@ -541,7 +541,7 @@ function AdminTxRow({ tx, index }) {
   const amount      = parseFloat(tx.amount) || 0;
   const typeBadge   = TX_TYPE_BADGE[tx.transaction_type] || 'badge-info';
   const modeBadge   = TX_MODE_BADGE[tx.transfer_mode]    || 'badge-info';
-  const txDate      = safeFormat(tx.created_at, 'dd MMM, HH:mm', 'N/A');
+  const txDate      = safeFormat(tx.created_at || tx.createdAt, 'dd MMM, HH:mm', 'N/A');
 
   return (
     <motion.div

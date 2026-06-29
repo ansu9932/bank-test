@@ -82,7 +82,7 @@ export default function AdminTransactionsPage() {
               </p>
             </div>
             <div className="hidden sm:block sm:col-span-2">
-              <p className="text-slate-400 text-xs">{safeFormat(tx.created_at, 'dd MMM yy HH:mm')}</p>
+              <p className="text-slate-400 text-xs">{safeFormat(tx.created_at || tx.createdAt, 'dd MMM yy HH:mm')}</p>
             </div>
             <div className="sm:col-span-1 flex justify-end items-center gap-1">
               {tx.is_flagged && <RiAlertLine className="text-red-400 text-sm" />}

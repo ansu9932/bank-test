@@ -89,7 +89,7 @@ export default function AdminUsersPage() {
               <span className={`badge ${kycBadge[u.kyc_status]} text-[10px]`}>{u.kyc_status?.replace(/_/g,' ')}</span>
             </div>
             <div className="hidden sm:block sm:col-span-2">
-              <p className="text-dark-300 text-xs">{safeFormat(u.created_at, 'dd MMM yyyy')}</p>
+              <p className="text-dark-300 text-xs">{safeFormat(u.created_at || u.createdAt, 'dd MMM yyyy')}</p>
             </div>
             <div className="sm:col-span-1 flex justify-end">
               <Link to={`/admin/users/${u.id}`}

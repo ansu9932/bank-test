@@ -998,7 +998,7 @@ exports.getOnboardingProgress = async (req, res) => {
         email_verified: u.email_verified,
         video_kyc_completed: u.video_kyc_completed,
         setup_completed: u.setup_completed,
-        created_at: u.created_at,
+        created_at: u.created_at || u.createdAt,
         account_number: u.account?.account_number || null,
         steps,
         currentStep: current ? current.key : 'completed',
