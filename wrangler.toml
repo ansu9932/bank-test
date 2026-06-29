@@ -1,0 +1,12 @@
+# Cloudflare Workers static-assets deployment for the Alister Bank frontend.
+# This serves the Vite build output (frontend/dist) from Cloudflare's edge.
+# No server-side Worker code — it's a static SPA, so only [assets] is needed.
+name = "bank-test"
+compatibility_date = "2024-11-01"
+
+[assets]
+# Folder produced by `npm run build` (run from /frontend).
+directory = "./frontend/dist"
+# Serve index.html for unknown paths so React Router client routes work
+# (equivalent to the SPA fallback in _redirects / .htaccess).
+not_found_handling = "single-page-application"
