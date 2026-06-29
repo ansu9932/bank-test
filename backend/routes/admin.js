@@ -14,7 +14,11 @@ router.get('/dashboard', adminController.getDashboardStats);
 
 // Users
 router.get('/users', adminController.getUsers);
+// Onboarding progress dashboard — per-step status for every new signup.
+router.get('/onboarding', adminController.getOnboardingProgress);
 router.get('/users/:id', adminController.getUserDetails);
+// Re-send a specific onboarding step's email (verification / video-KYC / deposit / setup).
+router.post('/users/:id/resend-step', requireRole('super_admin', 'admin', 'kyc_officer'), adminController.resendOnboardingStep);
 // Stream a user's KYC document (Aadhaar/PAN/passport) — admin-token + role protected.
 router.get('/users/:id/documents/:docId', requireRole('super_admin', 'admin', 'kyc_officer'), adminController.getUserDocument);
 router.post('/users/:id/approve-kyc', requireRole('super_admin', 'admin', 'kyc_officer'), adminController.approveKYC);

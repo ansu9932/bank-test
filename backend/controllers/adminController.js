@@ -2,13 +2,14 @@ const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const { Op } = require('sequelize');
-const { User, Account, Transaction, KYCDocument, AdminUser, AuditLog, Notification, SupportTicket, SecureLink, CardRequest, ApprovedCard } = require('../models');
+const { User, Account, Transaction, KYCDocument, AdminUser, AuditLog, Notification, SupportTicket, SecureLink, CardRequest, ApprovedCard, OTP } = require('../models');
 const { generateAdminToken } = require('../middleware/auth');
 const {
   generateAccountNumber, generateIFSC, generateSecureToken, getSecureLinkExpiry, getOnboardingLinkExpiry,
   isLuhnValid, detectCardNetwork, hashValue, minimumBalanceForType,
+  generateOTP, getOTPExpiry,
 } = require('../utils/helpers');
-const { sendAccountApprovedEmail, sendVideoKYCEmail, sendTransferAlertEmail, sendKYCRejectedEmail, sendActivationDepositEmail } = require('../services/emailService');
+const { sendAccountApprovedEmail, sendVideoKYCEmail, sendTransferAlertEmail, sendKYCRejectedEmail, sendActivationDepositEmail, sendKYCUnderReviewEmail, sendOTPEmail } = require('../services/emailService');
 const { issueDepositToken } = require('../utils/depositLink');
 const { createAuditLog } = require('../middleware/auditLogger');
 const { success, error, badRequest, notFound, created, unauthorized } = require('../utils/apiResponse');
@@ -888,6 +889,261 @@ exports.flagTransaction = async (req, res) => {
   }
 };
 
+
+// ─── Onboarding progress: ordered step definitions ───────────────────────────
+// The canonical onboarding pipeline, in order. Each user's progress is computed
+// from existing User/Account fields (no new columns) — see computeOnboardingSteps.
+const ONBOARDING_STEPS = [
+  { key: 'registration', label: 'Registration' },
+  { key: 'email_verification', label: 'Email Verification' },
+  { key: 'kyc_review', label: 'KYC Submitted / Under Review' },
+  { key: 'video_kyc', label: 'Video KYC' },
+  { key: 'approval', label: 'KYC Approval' },
+  { key: 'activation_deposit', label: 'Activation Deposit' },
+  { key: 'account_setup', label: 'Account Setup' },
+];
+
+// Steps whose email an admin can re-send from the panel.
+const RESENDABLE_STEPS = ['email_verification', 'kyc_review', 'video_kyc', 'activation_deposit', 'account_setup'];
+
+// Derive a per-step status + resend-eligibility for a user (and optional account).
+// status ∈ 'complete' | 'current' | 'pending' | 'rejected'.
+function computeOnboardingSteps(user, account) {
+  const kyc = user.kyc_status;
+  const rejected = kyc === 'rejected';
+  const depositDone = Boolean(account && account.activation_deposit_done);
+
+  const statusByKey = {
+    registration: 'complete',
+    email_verification: user.email_verified ? 'complete' : 'current',
+    kyc_review: ['under_review', 'video_kyc_pending', 'approved'].includes(kyc)
+      ? 'complete'
+      : (rejected ? 'rejected' : 'current'),
+    video_kyc: user.video_kyc_completed
+      ? 'complete'
+      : (kyc === 'video_kyc_pending' ? 'current' : (rejected ? 'rejected' : 'pending')),
+    approval: kyc === 'approved' ? 'complete' : (rejected ? 'rejected' : 'pending'),
+    activation_deposit: depositDone ? 'complete' : 'pending',
+    account_setup: user.setup_completed ? 'complete' : 'pending',
+  };
+
+  // Whether re-sending each step's email makes sense in the CURRENT state.
+  const resendableByKey = {
+    email_verification: !user.email_verified,
+    kyc_review: ['under_review', 'video_kyc_pending'].includes(kyc),
+    video_kyc: !user.video_kyc_completed && ['pending', 'under_review', 'video_kyc_pending'].includes(kyc),
+    activation_deposit: Boolean(account) && !depositDone && kyc === 'approved',
+    account_setup: kyc === 'approved' && !user.setup_completed,
+  };
+
+  return ONBOARDING_STEPS.map((s) => ({
+    key: s.key,
+    label: s.label,
+    status: statusByKey[s.key],
+    canResend: Boolean(resendableByKey[s.key]),
+  }));
+}
+
+// ─── Onboarding Progress List ─────────────────────────────────────────────────
+// GET /api/admin/onboarding?search=&page=&limit=&includeCompleted=
+// Lists users (newest first) with a computed per-step onboarding status so the
+// admin can see exactly where each new signup is stuck. Defaults to users who
+// have NOT finished account setup; pass includeCompleted=true to show everyone.
+exports.getOnboardingProgress = async (req, res) => {
+  try {
+    const { page = 1, limit = 20, search, includeCompleted } = req.query;
+    const where = {};
+
+    // By default only show users still mid-onboarding (setup not completed).
+    if (!includeCompleted || includeCompleted === 'false') {
+      where.setup_completed = false;
+    }
+
+    if (search) {
+      where[Op.or] = [
+        { email: { [Op.like]: `%${search}%` } },
+        { customer_id: { [Op.like]: `%${search}%` } },
+        { first_name: { [Op.like]: `%${search}%` } },
+        { last_name: { [Op.like]: `%${search}%` } },
+        { phone: { [Op.like]: `%${search}%` } },
+      ];
+    }
+
+    const { limit: lim, offset } = paginate(page, limit);
+    const { count, rows } = await User.findAndCountAll({
+      where,
+      attributes: { exclude: ['password_hash', 'security_pin'] },
+      include: [{ model: Account, as: 'account', attributes: ['account_number', 'status', 'activation_deposit_done', 'minimum_balance', 'account_type'] }],
+      order: [['created_at', 'DESC']],
+      limit: lim,
+      offset,
+    });
+
+    const users = rows.map((row) => {
+      const u = row.toJSON();
+      const steps = computeOnboardingSteps(u, u.account);
+      // The user's current step = first non-complete (and non-rejected) step.
+      const current = steps.find((s) => s.status === 'current')
+        || steps.find((s) => s.status === 'pending')
+        || steps.find((s) => s.status === 'rejected');
+      return {
+        id: u.id,
+        customer_id: u.customer_id,
+        first_name: u.first_name,
+        last_name: u.last_name,
+        email: u.email,
+        phone: u.phone,
+        kyc_status: u.kyc_status,
+        account_status: u.account_status,
+        email_verified: u.email_verified,
+        video_kyc_completed: u.video_kyc_completed,
+        setup_completed: u.setup_completed,
+        created_at: u.created_at,
+        account_number: u.account?.account_number || null,
+        steps,
+        currentStep: current ? current.key : 'completed',
+        completed: steps.every((s) => s.status === 'complete'),
+      };
+    });
+
+    return success(res, {
+      users,
+      pagination: { total: count, page: parseInt(page), limit: lim, totalPages: Math.ceil(count / lim) },
+    });
+  } catch (err) {
+    logger.error(`Onboarding progress error: ${err.message}`);
+    return error(res, 'Failed to fetch onboarding progress.');
+  }
+};
+
+// ─── Resend an Onboarding Step's Email ────────────────────────────────────────
+// POST /api/admin/users/:id/resend-step   body: { step }
+// Re-dispatches the email for a specific onboarding step (e.g. when the user
+// never received it). For link-based steps it invalidates any prior unused link
+// and mints a fresh 24-hour token, mirroring authController.regenerateOnboardingLink.
+exports.resendOnboardingStep = async (req, res) => {
+  try {
+    const { step } = req.body;
+    if (!RESENDABLE_STEPS.includes(step)) {
+      return badRequest(res, 'Invalid or non-resendable onboarding step.');
+    }
+
+    const user = await User.findByPk(req.params.id, { include: [{ model: Account, as: 'account' }] });
+    if (!user) return notFound(res, 'User not found.');
+    if (!user.email) return badRequest(res, 'This user has no email address on file.');
+
+    const name = user.first_name || 'Customer';
+    const FRONTEND_URL = process.env.FRONTEND_URL;
+    let message;
+
+    switch (step) {
+      case 'email_verification': {
+        if (user.email_verified) return badRequest(res, 'Email is already verified.');
+        // Invalidate prior unused verification OTPs, then issue a fresh one (10 min).
+        await OTP.update({ used: true }, { where: { email: user.email, purpose: 'email_verification', used: false } });
+        const otp = generateOTP();
+        await OTP.create({
+          email: user.email,
+          otp_hash: hashValue(otp),
+          purpose: 'email_verification',
+          expires_at: getOTPExpiry(10),
+          ip_address: req.ip,
+        });
+        await sendOTPEmail(user.email, otp, 'verification');
+        message = 'Verification OTP re-sent to the user.';
+        break;
+      }
+
+      case 'kyc_review': {
+        await sendKYCUnderReviewEmail(user.email, name, user.customer_id);
+        message = 'KYC under-review confirmation re-sent.';
+        break;
+      }
+
+      case 'video_kyc': {
+        if (user.video_kyc_completed) return badRequest(res, 'Video KYC is already completed.');
+        await SecureLink.update(
+          { used: true, used_at: new Date() },
+          { where: { user_id: user.id, purpose: 'video_kyc', used: false } }
+        );
+        const token = generateSecureToken();
+        await SecureLink.create({
+          user_id: user.id,
+          token,
+          purpose: 'video_kyc',
+          expires_at: getOnboardingLinkExpiry(),
+          ip_address: req.ip,
+        });
+        await sendVideoKYCEmail(user.email, name, `${FRONTEND_URL}/video-kyc?token=${token}`);
+        // Reflect that the link is now out (so the step shows "current").
+        if (['pending', 'under_review'].includes(user.kyc_status)) {
+          await user.update({ kyc_status: 'video_kyc_pending' });
+        }
+        message = 'Video KYC link re-sent (valid for 24 hours).';
+        break;
+      }
+
+      case 'activation_deposit': {
+        const account = user.account || (await Account.findOne({ where: { user_id: user.id } }));
+        if (!account) return badRequest(res, 'No account yet — approve the user\'s KYC first.');
+        if (account.activation_deposit_done) return badRequest(res, 'Activation deposit is already completed.');
+        const { token } = issueDepositToken(user.id);
+        await sendActivationDepositEmail(user.email, name, {
+          depositLink: `${FRONTEND_URL}/activate-deposit?token=${token}`,
+          minimumBalance: parseFloat(account.minimum_balance) || minimumBalanceForType(account.account_type),
+          accountNumber: account.account_number,
+        });
+        message = 'Activation deposit link re-sent.';
+        break;
+      }
+
+      case 'account_setup': {
+        if (user.setup_completed) return badRequest(res, 'Account setup is already completed.');
+        const account = user.account || (await Account.findOne({ where: { user_id: user.id } }));
+        await SecureLink.update(
+          { used: true, used_at: new Date() },
+          { where: { user_id: user.id, purpose: 'account_setup', used: false } }
+        );
+        const token = generateSecureToken();
+        await SecureLink.create({
+          user_id: user.id,
+          token,
+          purpose: 'account_setup',
+          expires_at: getOnboardingLinkExpiry(),
+          ip_address: req.ip,
+        });
+        await sendAccountApprovedEmail(
+          user.email,
+          name,
+          `${FRONTEND_URL}/account-setup?token=${token}`,
+          account?.account_number || user.customer_id
+        );
+        message = 'Account setup link re-sent (valid for 24 hours).';
+        break;
+      }
+
+      default:
+        return badRequest(res, 'Unsupported onboarding step.');
+    }
+
+    await createAuditLog({
+      adminId: req.admin.id,
+      userId: user.id,
+      action: 'ONBOARDING_STEP_RESENT',
+      entityType: 'User',
+      entityId: user.id,
+      newValues: { step },
+      ipAddress: req.ip,
+      status: 'success',
+      description: `Admin re-sent onboarding step "${step}" to ${user.email}.`,
+    });
+
+    return success(res, { step }, message);
+  } catch (err) {
+    logger.error(`Resend onboarding step error: ${err.message}`);
+    return error(res, 'Failed to re-send the onboarding email.');
+  }
+};
 
 // ─── Onboarding helper: start the (simulated) activation-deposit step ─────────
 // Issues a signed deposit link and emails it to the user. Used after Video KYC

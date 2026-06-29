@@ -6,12 +6,13 @@ import {
   RiFileShield2Line, RiCustomerService2Line,
   RiLogoutBoxLine, RiBankLine, RiShieldLine,
   RiShieldCheckLine, RiMenuLine, RiCloseLine,
-  RiBankCard2Line,
+  RiBankCard2Line, RiUserFollowLine,
 } from 'react-icons/ri';
 
 const navItems = [
   { to: '/admin', icon: RiDashboardLine, label: 'Dashboard', end: true },
   { to: '/admin/users', icon: RiGroupLine, label: 'Users & KYC' },
+  { to: '/admin/onboarding', icon: RiUserFollowLine, label: 'Onboarding' },
   { to: '/admin/kyc-review', icon: RiShieldCheckLine, label: 'KYC Review' },
   { to: '/admin/transactions', icon: RiExchangeLine, label: 'Transactions' },
   { to: '/admin/neft-requests', icon: RiBankLine, label: 'NEFT Requests' },
