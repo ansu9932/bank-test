@@ -258,6 +258,8 @@ const sendVideoKYCEmail = async (email, name, kycLink) => {
     ${para(`Dear ${hl(name)},`)}
     ${para('Your documents have been reviewed. To proceed with account activation, please complete your <strong>Video KYC</strong> verification.')}
     ${button('Start Video KYC →', kycLink)}
+    ${para('If the button above doesn\'t open, or your <strong>camera won\'t turn on</strong>, copy this link and paste it into <strong>Chrome or Safari</strong> (don\'t open it inside the email app):')}
+    ${para(`<a href="${kycLink}" target="_blank" style="color:#dc2626; word-break:break-all;">${kycLink}</a>`)}
     ${infoBox('&#9201; This link expires in <strong>24 hours</strong>. Do not share this link with anyone.')}
     ${para('<strong>What you\'ll need:</strong>')}
     ${para('• Good lighting and a clear background<br/>• Your original ID document ready<br/>• A stable internet connection')}

@@ -642,6 +642,18 @@ function VerifyingSplash() {
 }
 
 
+// ─── Helper: detect in-app / embedded browsers where the camera is blocked ───
+// Email apps (Gmail/Outlook), Facebook, Instagram, etc. open links inside an
+// embedded WebView where getUserMedia is frequently blocked or unsupported —
+// the #1 reason "Start Video KYC" appears broken. We detect this so we can tell
+// the user to reopen the link in a real browser (Chrome/Safari).
+function isInAppBrowser() {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  return /FBAN|FBAV|Instagram|Line\/|Twitter|Snapchat|WhatsApp|MicroMessenger|; wv\)|GSA\//i.test(ua);
+}
+
+
 // ─── MAIN ORCHESTRATOR · 3-phase state machine ───────────────────────────────
 export default function CyberVideoKYC() {
   const [searchParams] = useSearchParams();
@@ -661,6 +673,18 @@ export default function CyberVideoKYC() {
   const [error, setError] = useState('');
   const [processing, setProcessing] = useState(false);
   const [hw, setHw] = useState({ camera: 'pending', mic: 'pending', channel: 'pending' });
+
+  // In-app/embedded browser detection — used to warn the user (camera is often
+  // blocked in email/app WebViews) and let them copy the link to a real browser.
+  const inApp = isInAppBrowser();
+  const [linkCopied, setLinkCopied] = useState(false);
+  const copyKycLink = useCallback(() => {
+    try {
+      navigator.clipboard?.writeText(window.location.href);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2500);
+    } catch { /* clipboard unavailable */ }
+  }, []);
 
   const next = useCallback(() => setStep((s) => Math.min(s + 1, DONE_STEP)), [DONE_STEP]);
 
@@ -839,6 +863,16 @@ export default function CyberVideoKYC() {
       <GridBackground />
 
       <div className="relative z-10 min-h-screen flex flex-col">
+        {/* In-app browser warning — camera is blocked inside email/app WebViews */}
+        {inApp && (
+          <div className="px-4 py-3 text-center text-[13px] leading-snug" style={{ background: RED.deep, color: '#fff' }}>
+            ⚠️ Your camera may be blocked here. Please open this page in <strong>Chrome</strong> or <strong>Safari</strong> (not inside the email/app).
+            <button onClick={copyKycLink} className="ml-2 underline font-semibold whitespace-nowrap">
+              {linkCopied ? '✓ Link copied' : 'Copy link'}
+            </button>
+          </div>
+        )}
+
         {/* Header */}
         <header className="flex items-center justify-between px-5 sm:px-8 py-5">
           <div className="flex items-center gap-3">
