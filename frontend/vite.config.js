@@ -4,6 +4,12 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
+  // Strip console.* and debugger statements from the production bundle. They're
+  // dead weight in shipped JS (contributes to "unused JavaScript") and leak
+  // internal logs to end users. Errors still surface via the app's UI/toasts.
+  esbuild: {
+    drop: ['console', 'debugger'],
+  },
   resolve: {
     alias: { '@': path.resolve(__dirname, './src') },
   },

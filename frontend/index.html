@@ -9,7 +9,25 @@
     <title>Alister Bank</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Playfair+Display:wght@700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <!--
+      Load Google Fonts asynchronously so it is NOT render-blocking.
+      `preload as=style` fetches without blocking paint, then the onload handler
+      promotes it to a real stylesheet. `display=swap` (in the URL) means text
+      paints instantly in a fallback font and swaps when the web font arrives.
+      The <noscript> keeps it working when JS is disabled.
+    -->
+    <link
+      rel="preload"
+      as="style"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Playfair+Display:wght@700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      onload="this.onload=null;this.rel='stylesheet'"
+    />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Playfair+Display:wght@700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      />
+    </noscript>
   </head>
   <body>
     <div id="root"></div>
