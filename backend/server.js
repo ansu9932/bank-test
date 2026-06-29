@@ -23,9 +23,36 @@ app.use(securityHeaders);
 app.use(securityResponseHeaders);
 app.use(hpp());
 
-// ─── CORS (origin from FRONTEND_URL env) ──────────────────────────────────────
+// ─── CORS (multi-origin allowlist) ────────────────────────────────────────────
+// Allowed: the configured frontend domain (+ www), any extra origins from
+// CORS_EXTRA_ORIGINS (comma-separated), and Cloudflare test/preview domains
+// (*.workers.dev / *.pages.dev) so the site can be verified before the custom
+// domain is attached.
+const STATIC_ALLOWED_ORIGINS = [
+  process.env.FRONTEND_URL || 'https://alisterbank.online',
+  'https://alisterbank.online',
+  'https://www.alisterbank.online',
+  ...(process.env.CORS_EXTRA_ORIGINS
+    ? process.env.CORS_EXTRA_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean)
+    : []),
+];
+
+const isAllowedOrigin = (origin) => {
+  // No Origin header → non-browser client (curl, server-to-server) → allow.
+  if (!origin) return true;
+  if (STATIC_ALLOWED_ORIGINS.includes(origin)) return true;
+  try {
+    const host = new URL(origin).hostname;
+    // Cloudflare Workers/Pages test + preview domains.
+    if (host.endsWith('.workers.dev') || host.endsWith('.pages.dev')) return true;
+  } catch {
+    /* malformed origin → fall through to deny */
+  }
+  return false;
+};
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'https://alisterbank.online',
+  origin: (origin, cb) => (isAllowedOrigin(origin) ? cb(null, true) : cb(new Error('Not allowed by CORS'))),
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Registration-Token'],
