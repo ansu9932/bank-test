@@ -51,7 +51,14 @@ const transactionSlice = createSlice({
       .addCase(fetchTransactions.pending, (s) => { s.loading = true; })
       .addCase(fetchTransactions.fulfilled, (s, a) => {
         s.loading = false;
-        s.transactions = a.payload.transactions;
+        // Normalize the timestamp field: the API returns raw Sequelize rows whose
+        // auto timestamp serializes as camelCase `createdAt` (underscored:true),
+        // while the UI reads `created_at`. Map it once here so every page
+        // (Transactions, Dashboard, Analytics) shows the date/time correctly.
+        s.transactions = (a.payload.transactions || []).map((t) => ({
+          ...t,
+          created_at: t.created_at || t.createdAt,
+        }));
         s.pagination = a.payload.pagination;
       })
       .addCase(fetchTransactions.rejected, (s, a) => { s.loading = false; s.error = a.payload; })
