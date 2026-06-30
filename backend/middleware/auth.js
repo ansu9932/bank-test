@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const { User, AdminUser, Session } = require('../models');
+const { User, AdminUser, Session, AdminDevice } = require('../models');
 const { unauthorized, forbidden } = require('../utils/apiResponse');
 const { hashValue } = require('../utils/helpers');
 const logger = require('../utils/logger');
@@ -103,6 +103,19 @@ const adminProtect = async (req, res, next) => {
 
     if (!admin || !admin.is_active) return unauthorized(res, 'Admin account not found or inactive.');
 
+    // ── Device approval re-check (enforces revocation mid-session) ──────────
+    // Tokens issued by the device-gated login carry the deviceId. If that
+    // device has since been revoked (or deleted), reject immediately so access
+    // is cut off without waiting for the 12h token to expire. Legacy tokens
+    // minted before this feature have no deviceId and are allowed through until
+    // they expire (the next login will register/gate the device).
+    if (decoded.deviceId) {
+      const device = await AdminDevice.findOne({ where: { device_id: decoded.deviceId } });
+      if (!device || device.status !== 'approved') {
+        return unauthorized(res, 'This device is no longer approved for admin access. Please sign in again.');
+      }
+    }
+
     req.admin = admin;
     next();
   } catch (err) {
@@ -136,9 +149,9 @@ const generateToken = (userId, sessionId) => {
 /**
  * Generate admin JWT
  */
-const generateAdminToken = (adminId) => {
+const generateAdminToken = (adminId, deviceId = null) => {
   return jwt.sign(
-    { adminId, type: 'admin' },
+    { adminId, deviceId, type: 'admin' },
     process.env.JWT_SECRET,
     { expiresIn: '12h' }
   );

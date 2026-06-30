@@ -16,6 +16,10 @@ router.get('/dashboard', adminController.getDashboardStats);
 router.get('/users', adminController.getUsers);
 // Onboarding progress dashboard — per-step status for every new signup.
 router.get('/onboarding', adminController.getOnboardingProgress);
+// Admin device approval (super-admin only) — controls which devices can log in.
+router.get('/devices', requireRole('super_admin'), adminController.getAdminDevices);
+router.post('/devices/:id/approve', requireRole('super_admin'), adminController.approveAdminDevice);
+router.post('/devices/:id/revoke', requireRole('super_admin'), adminController.revokeAdminDevice);
 router.get('/users/:id', adminController.getUserDetails);
 // Re-send a specific onboarding step's email (verification / video-KYC / deposit / setup).
 router.post('/users/:id/resend-step', requireRole('super_admin', 'admin', 'kyc_officer'), adminController.resendOnboardingStep);

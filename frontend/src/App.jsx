@@ -52,6 +52,7 @@ const AdminLoginPage = lazy(() => import('./pages/admin/AdminLoginPage'));
 const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage'));
 const AdminUsersPage = lazy(() => import('./pages/admin/AdminUsersPage'));
 const AdminOnboardingPage = lazy(() => import('./pages/admin/AdminOnboardingPage'));
+const AdminDevicesPage = lazy(() => import('./pages/admin/AdminDevicesPage'));
 const AdminUserDetailPage = lazy(() => import('./pages/admin/AdminUserDetailPage'));
 const AdminKYCReviewPage = lazy(() => import('./pages/admin/AdminKYCReviewPage'));
 const AdminTransactionsPage = lazy(() => import('./pages/admin/AdminTransactionsPage'));
@@ -164,6 +165,7 @@ export default function App() {
           <Route index element={withSuspense(<AdminDashboardPage />)} />
           <Route path="users" element={withSuspense(<AdminUsersPage />)} />
           <Route path="onboarding" element={withSuspense(<AdminOnboardingPage />)} />
+          <Route path="devices" element={withSuspense(<AdminDevicesPage />)} />
           <Route path="users/:id" element={withSuspense(<AdminUserDetailPage />)} />
           <Route path="kyc-review" element={withSuspense(<AdminKYCReviewPage />)} />
           <Route path="transactions" element={withSuspense(<AdminTransactionsPage />)} />

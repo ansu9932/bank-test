@@ -10,17 +10,36 @@ export default function AdminLoginPage() {
   const [form, setForm] = useState({ username: '', password: '' });
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [pendingMsg, setPendingMsg] = useState('');
+
+  // Persistent per-browser device identifier. Generated once and reused so a
+  // super-admin can approve THIS device for admin-panel access.
+  const getDeviceId = () => {
+    let id = localStorage.getItem('adminDeviceId');
+    if (!id) {
+      id = (crypto.randomUUID && crypto.randomUUID()) ||
+        `dev-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      localStorage.setItem('adminDeviceId', id);
+    }
+    return id;
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setPendingMsg('');
     try {
-      const { data } = await api.post('/admin/login', form);
+      const deviceId = getDeviceId();
+      const { data } = await api.post('/admin/login', { ...form, deviceId });
       localStorage.setItem('adminToken', data.data.token);
       toast.success(`Welcome, ${data.data.admin.fullName}`);
       navigate('/admin');
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Login failed');
+      const status = err.response?.status;
+      const msg = err.response?.data?.message || 'Login failed';
+      // 403 = device not approved (pending/revoked) — show a persistent notice.
+      if (status === 403) setPendingMsg(msg);
+      toast.error(msg);
     } finally { setLoading(false); }
   };
 
@@ -39,6 +58,13 @@ export default function AdminLoginPage() {
         <div className="glass-card p-8">
           <h2 className="font-display text-xl font-700 text-white mb-1">Admin Login</h2>
           <p className="text-dark-300 text-sm mb-6">Authorized personnel only</p>
+          {pendingMsg && (
+            <div className="mb-5 rounded-lg px-4 py-3 text-sm" style={{ background: 'rgba(204,0,0,0.10)', border: '1px solid rgba(204,0,0,0.35)', color: '#ff8888' }}>
+              <p className="font-semibold mb-1">🔒 Device not approved</p>
+              <p className="text-[13px] leading-snug">{pendingMsg}</p>
+              <p className="text-[11px] text-dark-300 mt-2">Ask a super-admin to approve this device under <strong>Admin → Devices</strong>, then sign in again.</p>
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="form-label">Username or Email</label>

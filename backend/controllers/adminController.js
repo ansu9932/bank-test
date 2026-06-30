@@ -2,7 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const { Op } = require('sequelize');
-const { User, Account, Transaction, KYCDocument, AdminUser, AuditLog, Notification, SupportTicket, SecureLink, CardRequest, ApprovedCard, OTP } = require('../models');
+const { User, Account, Transaction, KYCDocument, AdminUser, AuditLog, Notification, SupportTicket, SecureLink, CardRequest, ApprovedCard, OTP, AdminDevice } = require('../models');
 const { generateAdminToken } = require('../middleware/auth');
 const {
   generateAccountNumber, generateIFSC, generateSecureToken, getSecureLinkExpiry, getOnboardingLinkExpiry,
@@ -12,7 +12,7 @@ const {
 const { sendAccountApprovedEmail, sendVideoKYCEmail, sendTransferAlertEmail, sendKYCRejectedEmail, sendActivationDepositEmail, sendKYCUnderReviewEmail, sendOTPEmail } = require('../services/emailService');
 const { issueDepositToken } = require('../utils/depositLink');
 const { createAuditLog } = require('../middleware/auditLogger');
-const { success, error, badRequest, notFound, created, unauthorized } = require('../utils/apiResponse');
+const { success, error, badRequest, notFound, created, unauthorized, forbidden } = require('../utils/apiResponse');
 const { normalizeTransferMethods, METHOD_LABELS } = require('../utils/transferMethods');
 const logger = require('../utils/logger');
 const { paginate } = require('../utils/helpers');
@@ -55,9 +55,47 @@ exports.adminLogin = async (req, res) => {
     const isMatch = await bcrypt.compare(password, admin.password_hash);
     if (!isMatch) return unauthorized(res, 'Invalid credentials.');
 
+    // ── Device approval gate ─────────────────────────────────────────────────
+    // The admin panel only issues a session to devices a super-admin approved.
+    // The browser sends a persistent deviceId; unknown devices are recorded as
+    // 'pending' and blocked. Trust-on-first-use: the very first device used by
+    // a super-admin (when no device is approved yet) is auto-approved so setup
+    // isn't locked out.
+    const deviceId = req.body.deviceId || req.headers['x-admin-device'];
+    if (!deviceId) {
+      return badRequest(res, 'Device identifier missing. Please refresh the admin login page and try again.');
+    }
+
+    let device = await AdminDevice.findOne({ where: { device_id: deviceId } });
+    if (!device) {
+      const approvedCount = await AdminDevice.count({ where: { status: 'approved' } });
+      const autoApprove = approvedCount === 0 && admin.role === 'super_admin';
+      device = await AdminDevice.create({
+        device_id: deviceId,
+        label: deriveDeviceLabel(req.headers['user-agent']),
+        user_agent: (req.headers['user-agent'] || '').slice(0, 500),
+        ip_address: req.ip,
+        status: autoApprove ? 'approved' : 'pending',
+        first_admin_id: admin.id,
+        approved_by: autoApprove ? admin.id : null,
+        approved_at: autoApprove ? new Date() : null,
+        last_seen_at: new Date(),
+      });
+      if (!autoApprove) {
+        await createAuditLog({ adminId: admin.id, action: 'ADMIN_DEVICE_PENDING', ipAddress: req.ip, status: 'blocked' });
+        return forbidden(res, 'This device is not approved for admin access. It has been registered and is awaiting approval by a super-admin.');
+      }
+    } else if (device.status === 'pending') {
+      return forbidden(res, 'This device is still awaiting super-admin approval.');
+    } else if (device.status === 'revoked') {
+      return forbidden(res, 'This device has been revoked from admin access.');
+    } else {
+      await device.update({ last_seen_at: new Date(), ip_address: req.ip });
+    }
+
     await admin.update({ last_login: new Date() });
 
-    const token = generateAdminToken(admin.id);
+    const token = generateAdminToken(admin.id, deviceId);
 
     res.cookie('adminToken', token, {
       httpOnly: true,
@@ -889,6 +927,76 @@ exports.flagTransaction = async (req, res) => {
   }
 };
 
+
+// ─── Admin device approval ────────────────────────────────────────────────────
+// Friendly label from a user-agent string (best-effort; for display only).
+function deriveDeviceLabel(ua = '') {
+  const s = String(ua);
+  let browser = 'Browser';
+  if (/Edg\//i.test(s)) browser = 'Edge';
+  else if (/OPR\/|Opera/i.test(s)) browser = 'Opera';
+  else if (/Chrome\//i.test(s)) browser = 'Chrome';
+  else if (/Firefox\//i.test(s)) browser = 'Firefox';
+  else if (/Safari\//i.test(s)) browser = 'Safari';
+  let os = 'Unknown OS';
+  if (/Windows/i.test(s)) os = 'Windows';
+  else if (/iPhone|iPad|iOS/i.test(s)) os = 'iOS';
+  else if (/Mac OS X|Macintosh/i.test(s)) os = 'macOS';
+  else if (/Android/i.test(s)) os = 'Android';
+  else if (/Linux/i.test(s)) os = 'Linux';
+  return `${browser} on ${os}`;
+}
+
+// GET /api/admin/devices — list all known admin devices (super-admin only).
+exports.getAdminDevices = async (req, res) => {
+  try {
+    const devices = await AdminDevice.findAll({ order: [['created_at', 'DESC']] });
+    const rows = devices.map((d) => {
+      const j = d.toJSON();
+      return { ...j, created_at: j.created_at || j.createdAt };
+    });
+    return success(res, { devices: rows });
+  } catch (err) {
+    logger.error(`List admin devices error: ${err.message}`);
+    return error(res, 'Failed to fetch admin devices.');
+  }
+};
+
+// POST /api/admin/devices/:id/approve — approve a pending/revoked device.
+exports.approveAdminDevice = async (req, res) => {
+  try {
+    const device = await AdminDevice.findByPk(req.params.id);
+    if (!device) return notFound(res, 'Device not found.');
+    await device.update({ status: 'approved', approved_by: req.admin.id, approved_at: new Date() });
+    await createAuditLog({
+      adminId: req.admin.id, action: 'ADMIN_DEVICE_APPROVED', entityType: 'AdminDevice',
+      entityId: device.id, ipAddress: req.ip, status: 'success',
+      description: `Approved admin device ${device.label || device.device_id}.`,
+    });
+    return success(res, { id: device.id, status: device.status }, 'Device approved.');
+  } catch (err) {
+    logger.error(`Approve admin device error: ${err.message}`);
+    return error(res, 'Failed to approve device.');
+  }
+};
+
+// POST /api/admin/devices/:id/revoke — revoke a device's admin access.
+exports.revokeAdminDevice = async (req, res) => {
+  try {
+    const device = await AdminDevice.findByPk(req.params.id);
+    if (!device) return notFound(res, 'Device not found.');
+    await device.update({ status: 'revoked' });
+    await createAuditLog({
+      adminId: req.admin.id, action: 'ADMIN_DEVICE_REVOKED', entityType: 'AdminDevice',
+      entityId: device.id, ipAddress: req.ip, status: 'success',
+      description: `Revoked admin device ${device.label || device.device_id}.`,
+    });
+    return success(res, { id: device.id, status: device.status }, 'Device revoked.');
+  } catch (err) {
+    logger.error(`Revoke admin device error: ${err.message}`);
+    return error(res, 'Failed to revoke device.');
+  }
+};
 
 // ─── Onboarding progress: ordered step definitions ───────────────────────────
 // The canonical onboarding pipeline, in order. Each user's progress is computed
