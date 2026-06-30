@@ -29,6 +29,7 @@ const TermsOfServicePage = lazy(() => import('./pages/public/TermsOfServicePage'
 // Account opening flow (lazy-loaded — only fetched when these routes are hit)
 import DashboardLayout from './components/layout/DashboardLayout';
 import AdminLayout from './components/layout/AdminLayout';
+import AdminDeviceGate from './components/AdminDeviceGate';
 const AccountOpeningPage = lazy(() => import('./pages/account-opening/AccountOpeningPage'));
 const CyberVideoKYC = lazy(() => import('./pages/account-opening/CyberVideoKYC'));
 const AccountSetupPage = lazy(() => import('./pages/account-opening/AccountSetupPage'));
@@ -160,8 +161,8 @@ export default function App() {
         </Route>
 
         {/* Admin */}
-        <Route path="/admin/login" element={withSuspense(<AdminLoginPage />)} />
-        <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>
+        <Route path="/admin/login" element={<AdminDeviceGate>{withSuspense(<AdminLoginPage />)}</AdminDeviceGate>} />
+        <Route path="/admin" element={<AdminDeviceGate><AdminRoute><AdminLayout /></AdminRoute></AdminDeviceGate>}>
           <Route index element={withSuspense(<AdminDashboardPage />)} />
           <Route path="users" element={withSuspense(<AdminUsersPage />)} />
           <Route path="onboarding" element={withSuspense(<AdminOnboardingPage />)} />

@@ -998,6 +998,41 @@ exports.revokeAdminDevice = async (req, res) => {
   }
 };
 
+// POST /api/admin/device-check — PUBLIC pre-login gate used by the frontend to
+// decide whether to even show the admin panel. Unapproved devices get a 404-style
+// "page not found" instead of the login screen. Unknown devices are silently
+// registered as pending so a super-admin can approve them later.
+exports.checkAdminDevice = async (req, res) => {
+  try {
+    const deviceId = req.body.deviceId || req.headers['x-admin-device'];
+    if (!deviceId) return success(res, { allowed: false });
+
+    // Bootstrap window: if NO device is approved yet (fresh setup), allow the
+    // login page so the first super-admin can sign in (which auto-approves it).
+    const approvedCount = await AdminDevice.count({ where: { status: 'approved' } });
+    if (approvedCount === 0) return success(res, { allowed: true });
+
+    let device = await AdminDevice.findOne({ where: { device_id: deviceId } });
+    if (!device) {
+      // Register unknown device as pending (so it shows up for approval), but
+      // hide the panel from it.
+      await AdminDevice.create({
+        device_id: deviceId,
+        label: deriveDeviceLabel(req.headers['user-agent']),
+        user_agent: (req.headers['user-agent'] || '').slice(0, 500),
+        ip_address: req.ip,
+        status: 'pending',
+        last_seen_at: new Date(),
+      });
+      return success(res, { allowed: false });
+    }
+    return success(res, { allowed: device.status === 'approved' });
+  } catch (err) {
+    logger.error(`Device check error: ${err.message}`);
+    return success(res, { allowed: false });
+  }
+};
+
 // ─── Onboarding progress: ordered step definitions ───────────────────────────
 // The canonical onboarding pipeline, in order. Each user's progress is computed
 // from existing User/Account fields (no new columns) — see computeOnboardingSteps.

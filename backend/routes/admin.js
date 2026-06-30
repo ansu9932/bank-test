@@ -6,6 +6,9 @@ const { adminProtect, requireRole } = require('../middleware/auth');
 const { authLimiter } = require('../middleware/security');
 
 router.post('/login', authLimiter, adminController.adminLogin);
+// Public device gate — the frontend calls this to decide whether to show the
+// admin panel at all (unapproved devices see a 404 page).
+router.post('/device-check', authLimiter, adminController.checkAdminDevice);
 
 // All routes below require admin auth
 router.use(adminProtect);
