@@ -5,7 +5,6 @@ import { useSelector, useDispatch } from 'react-redux';
 import { getMe } from './store/slices/authSlice';
 
 import PageLoader from './components/common/PageLoader';
-import DemoBanner from './components/DemoBanner';
 
 // Auth pages
 import LoginPage from './pages/auth/LoginPage';
@@ -99,7 +98,6 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <DemoBanner />
       <Toaster
         position="top-right"
         toastOptions={{
