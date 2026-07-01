@@ -27,6 +27,7 @@ const TRANSFER_METHOD_DEFS = [
   { key: 'upi', label: 'UPI', desc: 'Pay to any UPI ID' },
   { key: 'internal', label: 'Alister Internal', desc: 'On-us Alister → Alister' },
   { key: 'add_money', label: 'Add Money', desc: 'Deposit / top-up funds' },
+  { key: 'swift', label: 'SWIFT (International)', desc: 'Cross-border wire · demo/simulated' },
 ];
 
 export default function AdminUserDetailPage() {
@@ -38,7 +39,7 @@ export default function AdminUserDetailPage() {
   const [ceiling, setCeiling] = useState('');
   const [ceilingLoading, setCeilingLoading] = useState(false);
   // Per-user transfer-method locks (IMPS/NEFT/UPI off by default, internal on).
-  const [methods, setMethods] = useState({ imps: false, neft: false, upi: false, internal: true, add_money: false });
+  const [methods, setMethods] = useState({ imps: false, neft: false, upi: false, internal: true, add_money: false, swift: false });
   const [methodsLoading, setMethodsLoading] = useState(false);
   const headers = { Authorization: `Bearer ${localStorage.getItem('adminToken')}` };
 
@@ -58,6 +59,7 @@ export default function AdminUserDetailPage() {
         upi: parsed?.upi === true,
         internal: parsed ? parsed.internal !== false : true,
         add_money: parsed?.add_money === true,
+        swift: parsed?.swift === true,
       });
     } catch { toast.error('Failed to load user'); }
     finally { setLoading(false); }
