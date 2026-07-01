@@ -6,7 +6,7 @@ const Transaction = sequelize.define('Transaction', {
   account_id: { type: DataTypes.UUID, allowNull: false },
   reference_number: { type: DataTypes.STRING(30), unique: true, allowNull: false },
   transaction_type: { type: DataTypes.ENUM('credit', 'debit'), allowNull: false },
-  transfer_mode: { type: DataTypes.ENUM('NEFT', 'RTGS', 'IMPS', 'INTERNAL', 'SALARY', 'INTEREST', 'CHARGE', 'REVERSAL', 'SYSTEM'), defaultValue: 'INTERNAL' },
+  transfer_mode: { type: DataTypes.ENUM('NEFT', 'RTGS', 'IMPS', 'INTERNAL', 'SALARY', 'INTEREST', 'CHARGE', 'REVERSAL', 'SYSTEM', 'SWIFT'), defaultValue: 'INTERNAL' },
   amount: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
   balance_before: { type: DataTypes.DECIMAL(15, 2) },
   balance_after: { type: DataTypes.DECIMAL(15, 2) },

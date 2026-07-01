@@ -23,6 +23,8 @@ const DEFAULT_TRANSFER_METHODS = Object.freeze({
   // "Add Money" (deposit / top-up) is an admin-activated feature, locked by
   // default for every account — only an admin can switch it on.
   add_money: false,
+  // SWIFT international transfer — locked by default; admin enables per user.
+  swift: false,
 });
 
 // Human-readable labels for messages / UI.
@@ -32,10 +34,11 @@ const METHOD_LABELS = Object.freeze({
   upi: 'UPI',
   internal: 'Alister Internal',
   add_money: 'Add Money',
+  swift: 'SWIFT',
 });
 
 // The canonical method keys.
-const METHOD_KEYS = Object.freeze(['imps', 'neft', 'upi', 'internal', 'add_money']);
+const METHOD_KEYS = Object.freeze(['imps', 'neft', 'upi', 'internal', 'add_money', 'swift']);
 
 /**
  * Map a transfer mode/string (as used by the controllers / frontend) to the
@@ -51,6 +54,7 @@ function methodKeyFromMode(mode) {
     case 'UPI': return 'upi';
     case 'ALISTER':
     case 'INTERNAL': return 'internal';
+    case 'SWIFT': return 'swift';
     default: return null;
   }
 }
@@ -76,6 +80,8 @@ function normalizeTransferMethods(raw) {
     internal: parsed.internal !== false,
     // Add Money is locked unless explicitly enabled by an admin.
     add_money: parsed.add_money === true,
+    // SWIFT international transfer is locked unless explicitly enabled.
+    swift: parsed.swift === true,
   };
 }
 

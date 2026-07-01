@@ -27,5 +27,7 @@ router.get('/transfer-limit', protect, payoutController.getTransferLimit);
 router.post('/disburse-payout', protect, verifyLimits, payoutController.disbursePayout);
 // Internal on-us transfer (Alister → Alister): protect → verifyLimits → controller.
 router.post('/internal-transfer', protect, verifyLimits, payoutController.internalTransfer);
+// SWIFT international transfer (DEMO/simulated): protect → verifyLimits → controller.
+router.post('/swift-transfer', protect, verifyLimits, payoutController.swiftTransfer);
 
 module.exports = router;

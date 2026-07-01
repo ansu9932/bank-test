@@ -5,7 +5,7 @@ import {
   RiSendPlaneLine, RiCheckDoubleLine, RiArrowLeftLine, RiInformationLine,
   RiBankLine, RiSmartphoneLine, RiShieldCheckLine, RiLoader4Line,
   RiTimer2Line, RiCheckLine, RiErrorWarningLine, RiWallet3Line,
-  RiExchangeLine, RiGroupLine, RiLockLine,
+  RiExchangeLine, RiGroupLine, RiLockLine, RiGlobalLine,
 } from 'react-icons/ri';
 import api from '../../services/api';
 import { fetchAccount } from '../../store/slices/accountSlice';
@@ -20,12 +20,23 @@ const MODES = [
   { value: 'NEFT', label: 'NEFT', desc: 'Batch settled · Any amount', kind: 'bank', icon: RiBankLine },
   { value: 'UPI', label: 'UPI Transfer', desc: 'Instant · Pay to any UPI ID', kind: 'upi', icon: RiSmartphoneLine },
   { value: 'ALISTER', label: 'Alister Internal', desc: 'Instant · Alister to Alister', kind: 'internal', icon: RiExchangeLine },
+  { value: 'SWIFT', label: 'SWIFT (International)', desc: 'Cross-border wire · 1–5 business days', kind: 'swift', icon: RiGlobalLine },
 ];
+
+// Supported SWIFT destination countries (demo). Delivery windows are shown to
+// the user for realism; the transfer itself is simulated.
+const SWIFT_COUNTRIES = [
+  { code: 'IN', name: 'India', eta: '1–3 business days' },
+  { code: 'NP', name: 'Nepal', eta: '2–4 business days' },
+  { code: 'BT', name: 'Bhutan', eta: '3–5 business days' },
+  { code: 'BD', name: 'Bangladesh', eta: '2–4 business days' },
+];
+const BIC_REGEX = /^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/;
 
 // Maps a UI mode to its per-user transfer-method flag key (see backend
 // utils/transferMethods.js). IMPS/NEFT/UPI are locked by default; an admin must
 // activate them per user. Internal ('ALISTER') is enabled by default.
-const MODE_TO_KEY = { IMPS: 'imps', NEFT: 'neft', UPI: 'upi', ALISTER: 'internal' };
+const MODE_TO_KEY = { IMPS: 'imps', NEFT: 'neft', UPI: 'upi', ALISTER: 'internal', SWIFT: 'swift' };
 
 // Structural VPA check used to gate the debounced lookup.
 const VPA_REGEX = /^[\w.\-]{2,}@[a-zA-Z][\w.\-]{1,}$/;
@@ -41,6 +52,7 @@ export default function TransferPage() {
   const [form, setForm] = useState({
     beneficiaryName: '', accountNumber: '', confirmAccountNumber: '',
     ifsc: '', vpa: '', amount: '', description: '', securityPin: '',
+    swiftCode: '', beneficiaryBank: '', country: 'IN',
   });
   const [selectedBeneficiary, setSelectedBeneficiary] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -61,6 +73,7 @@ export default function TransferPage() {
 
   const isUpi = mode === 'UPI';
   const isInternal = mode === 'ALISTER';
+  const isSwift = mode === 'SWIFT';
 
   // Per-user transfer-method locks (delivered by /payments/transfer-limit).
   // Until the limit info loads we don't lock the UI — the backend still
@@ -251,6 +264,13 @@ export default function TransferPage() {
         if (account && String(form.accountNumber) === String(account.account_number)) {
           toast.error('You cannot transfer to your own account'); return false;
         }
+      } else if (isSwift) {
+        if (!BIC_REGEX.test(String(form.swiftCode || '').trim().toUpperCase())) {
+          toast.error('Enter a valid SWIFT/BIC code (8 or 11 characters)'); return false;
+        }
+        if (!SWIFT_COUNTRIES.some((c) => c.code === form.country)) {
+          toast.error('Select a supported destination country'); return false;
+        }
       } else if (!/^[A-Za-z]{4}0[A-Za-z0-9]{6}$/.test(form.ifsc.trim())) {
         toast.error('Enter a valid IFSC code'); return false;
       }
@@ -281,6 +301,20 @@ export default function TransferPage() {
           accountNumber: form.accountNumber,
           confirmAccountNumber: form.confirmAccountNumber,
           beneficiaryName: form.beneficiaryName,
+          description: form.description,
+          securityPin: form.securityPin,
+        };
+      } else if (isSwift) {
+        // SWIFT international transfer (simulated demo) → admin-approved.
+        endpoint = '/payments/swift-transfer';
+        payload = {
+          amount: parseFloat(form.amount),
+          beneficiaryName: form.beneficiaryName,
+          accountNumber: form.accountNumber,
+          confirmAccountNumber: form.confirmAccountNumber,
+          swiftCode: form.swiftCode.trim().toUpperCase(),
+          beneficiaryBank: form.beneficiaryBank,
+          country: form.country,
           description: form.description,
           securityPin: form.securityPin,
         };
@@ -320,6 +354,7 @@ export default function TransferPage() {
     setForm({
       beneficiaryName: '', accountNumber: '', confirmAccountNumber: '',
       ifsc: '', vpa: '', amount: '', description: '', securityPin: '',
+      swiftCode: '', beneficiaryBank: '', country: 'IN',
     });
     setSelectedBeneficiary('');
     setResult(null);
@@ -347,11 +382,11 @@ export default function TransferPage() {
             </div>
           </motion.div>
           <h2 className="font-display text-2xl font-700 text-white mb-2">
-            {isPending ? 'NEFT Transfer Initiated' : 'Transfer Successful!'}
+            {isPending ? `${result.mode || 'Transfer'} Transfer Initiated` : 'Transfer Successful!'}
           </h2>
           <p className="text-dark-200 text-sm mb-4">
             {isPending
-              ? `${fmtINR(result.amount)} has been initiated and typically completes ${result.etaLabel || 'within a couple of hours'}. You'll get an email as soon as it's done.`
+              ? `${fmtINR(result.amount)} has been initiated. Estimated delivery: ${result.etaLabel || 'a couple of hours'}. You'll get an email as soon as it's done.`
               : `${fmtINR(result.amount)} sent successfully.${result.recipientName ? ` to ${result.recipientName}` : ''}`}
           </p>
           <div className="bg-dark-700/50 rounded-xl p-4 mb-5 space-y-2">
@@ -512,7 +547,7 @@ export default function TransferPage() {
                     </div>
                     <div>
                       <label className="form-label">
-                        {isInternal ? 'Alister Account Number' : 'Bank Account Number'}
+                        {isInternal ? 'Alister Account Number' : isSwift ? 'Beneficiary Account / IBAN' : 'Bank Account Number'}
                       </label>
                       <input type="text" value={form.accountNumber} onChange={set('accountNumber')}
                         placeholder={isInternal
@@ -533,7 +568,7 @@ export default function TransferPage() {
                     {/* IFSC field — fully hidden for internal Alister transfers
                         (no routing code needed); shown with real-time branch
                         verification for IMPS / NEFT. */}
-                    {!isInternal && (
+                    {!isInternal && !isSwift && (
                       <div className="sm:col-span-2">
                         <label className="form-label">IFSC Code</label>
                         <input type="text" value={form.ifsc} onChange={onIfscChange}
@@ -559,6 +594,38 @@ export default function TransferPage() {
                           )}
                         </div>
                       </div>
+                    )}
+
+                    {isSwift && (
+                      <>
+                        <div className="sm:col-span-2">
+                          <label className="form-label">Destination Country</label>
+                          <select value={form.country} onChange={set('country')} className="input-field cursor-pointer">
+                            {SWIFT_COUNTRIES.map((c) => (
+                              <option key={c.code} value={c.code}>{c.name} — arrives in {c.eta}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="form-label">SWIFT / BIC Code</label>
+                          <input type="text" value={form.swiftCode}
+                            onChange={(e) => setForm((f) => ({ ...f, swiftCode: e.target.value.toUpperCase() }))}
+                            placeholder="e.g. HDFCINBB" maxLength={11}
+                            className="input-field uppercase" autoComplete="off" />
+                        </div>
+                        <div>
+                          <label className="form-label">Beneficiary Bank (optional)</label>
+                          <input type="text" value={form.beneficiaryBank} onChange={set('beneficiaryBank')}
+                            placeholder="Bank name" className="input-field" />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <p className="text-[11px] flex items-start gap-1.5 rounded-lg px-3 py-2"
+                            style={{ background: 'rgba(245,158,11,0.10)', border: '1px solid rgba(245,158,11,0.3)', color: '#fbbf24' }}>
+                            <RiInformationLine className="mt-0.5 flex-shrink-0" />
+                            Demo: this is a <strong>simulated</strong> international transfer. The delivery time shown is illustrative — no real money is sent.
+                          </p>
+                        </div>
+                      </>
                     )}
 
                     {isInternal && (

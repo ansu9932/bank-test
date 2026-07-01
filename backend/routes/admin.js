@@ -50,6 +50,11 @@ router.post('/transactions/:id/flag', requireRole('super_admin', 'admin'), admin
 router.get('/neft-requests', requireRole('super_admin', 'admin'), payoutController.adminListNeftRequests);
 router.post('/neft-requests/:id/review', requireRole('super_admin', 'admin'), payoutController.adminReviewNeftTransfer);
 
+// SWIFT international transfers — admin approval queue (DEMO/simulated).
+// Approve = mark completed + notify; Reject = refund the debit + notify.
+router.get('/swift-requests', requireRole('super_admin', 'admin'), payoutController.adminListSwiftRequests);
+router.post('/swift-requests/:id/review', requireRole('super_admin', 'admin'), payoutController.adminReviewSwiftTransfer);
+
 // Audit & Tickets
 router.get('/audit-logs', requireRole('super_admin', 'admin'), adminController.getAuditLogs);
 router.get('/tickets', adminController.getAdminTickets);

@@ -5,6 +5,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import { getMe } from './store/slices/authSlice';
 
 import PageLoader from './components/common/PageLoader';
+import DemoBanner from './components/DemoBanner';
 
 // Auth pages
 import LoginPage from './pages/auth/LoginPage';
@@ -58,6 +59,7 @@ const AdminUserDetailPage = lazy(() => import('./pages/admin/AdminUserDetailPage
 const AdminKYCReviewPage = lazy(() => import('./pages/admin/AdminKYCReviewPage'));
 const AdminTransactionsPage = lazy(() => import('./pages/admin/AdminTransactionsPage'));
 const AdminNeftRequestsPage = lazy(() => import('./pages/admin/AdminNeftRequestsPage'));
+const AdminSwiftRequestsPage = lazy(() => import('./pages/admin/AdminSwiftRequestsPage'));
 const AdminAuditPage = lazy(() => import('./pages/admin/AdminAuditPage'));
 const AdminTicketsPage = lazy(() => import('./pages/admin/AdminTicketsPage'));
 const AdminApprovedCardsPage = lazy(() => import('./pages/admin/AdminApprovedCardsPage'));
@@ -97,6 +99,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <DemoBanner />
       <Toaster
         position="top-right"
         toastOptions={{
@@ -172,6 +175,8 @@ export default function App() {
           <Route path="transactions" element={withSuspense(<AdminTransactionsPage />)} />
           {/* NEFT transfers awaiting admin approval (approve = complete, reject = refund) */}
           <Route path="neft-requests" element={withSuspense(<AdminNeftRequestsPage />)} />
+          {/* SWIFT international transfers awaiting admin approval (demo/simulated) */}
+          <Route path="swift-requests" element={withSuspense(<AdminSwiftRequestsPage />)} />
           {/* approved cards — sandbox allow-list for the activation-deposit simulator */}
           <Route path="approved-cards" element={withSuspense(<AdminApprovedCardsPage />)} />
           {/* audit — matches the /admin/audit path used in Sidebar and AdminLayout */}

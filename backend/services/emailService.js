@@ -580,6 +580,91 @@ const sendNeftFailedEmail = async (email, name, { amount, reference, beneficiary
   return sendEmail({ to: email, subject: `Alister Bank — NEFT Transfer Failed (Refunded): $${amount}`, html });
 };
 
+// ─── SWIFT (international) transfer emails ─────────────────────────────────────
+// A small demo/simulation banner reused across all three SWIFT emails so the
+// recipient always understands this is a simulated transfer.
+const swiftDemoNotice = (disclaimer) => infoBox(
+  `&#8505;&#65039; <strong>Simulated transfer:</strong> ${disclaimer || 'This is a demo. No real international payment is processed.'}`
+);
+
+/**
+ * SWIFT transfer INITIATED — sent when an international wire is requested.
+ * Mentions the realistic per-country delivery window and that it's simulated.
+ */
+const sendSwiftInitiatedEmail = async (email, name, { amount, reference, beneficiary, bank, swiftCode, country, eta, balance, time, disclaimer }) => {
+  const html = baseTemplate(bodyShell(`
+    ${badge('&#127760; SWIFT Transfer Initiated')}
+    ${heading('Your International (SWIFT) Transfer Has Been Initiated')}
+    ${para(`Dear ${hl(name)},`)}
+    ${para(`We've received your international SWIFT transfer request and it is now being processed. Cross-border wires are cleared through correspondent banks, so this transfer <strong>${eta || 'typically takes a few business days'}</strong>. Your account has been debited while the wire is in transit.`)}
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${BRAND.panelAlt}; border-radius:10px; padding:4px 20px; margin:20px 0;">
+      ${detailRow('Amount', `$${amount}`, '#f59e0b')}
+      ${detailRow('Beneficiary', beneficiary || '—')}
+      ${detailRow('Beneficiary Bank', bank || '—')}
+      ${detailRow('SWIFT / BIC', swiftCode || '—')}
+      ${detailRow('Destination', country || '—')}
+      ${detailRow('Reference', reference || '—')}
+      ${detailRow('Status', 'Processing', '#f59e0b')}
+      ${detailRow('Expected delivery', eta || '—')}
+      ${detailRow('Date &amp; Time', time)}
+    </table>
+    ${swiftDemoNotice(disclaimer)}
+    ${para('No action is needed from you. We\'ll email you again as soon as the transfer is completed or if anything changes.')}
+  `));
+  return sendEmail({ to: email, subject: `Alister Bank — SWIFT Transfer Initiated: $${amount}`, html });
+};
+
+/**
+ * SWIFT transfer COMPLETED — sent when an admin approves the wire.
+ */
+const sendSwiftCompletedEmail = async (email, name, { amount, reference, beneficiary, bank, swiftCode, country, balance, time, disclaimer }) => {
+  const html = baseTemplate(bodyShell(`
+    ${badge('&#9989; SWIFT Transfer Completed')}
+    ${heading('Your International (SWIFT) Transfer Is Complete')}
+    ${para(`Dear ${hl(name)},`)}
+    ${para('Good news — your international SWIFT transfer has been processed and released to the beneficiary bank successfully.')}
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${BRAND.panelAlt}; border-radius:10px; padding:4px 20px; margin:20px 0;">
+      ${detailRow('Amount', `$${amount}`, '#22c55e')}
+      ${detailRow('Beneficiary', beneficiary || '—')}
+      ${detailRow('Beneficiary Bank', bank || '—')}
+      ${detailRow('SWIFT / BIC', swiftCode || '—')}
+      ${detailRow('Destination', country || '—')}
+      ${detailRow('Reference', reference || '—')}
+      ${detailRow('Status', 'Completed', '#22c55e')}
+      ${balance != null ? detailRow('Account Balance', `$${balance}`) : ''}
+      ${detailRow('Date &amp; Time', time)}
+    </table>
+    ${swiftDemoNotice(disclaimer)}
+    ${para('Thank you for banking with Alister Bank.')}
+  `));
+  return sendEmail({ to: email, subject: `Alister Bank — SWIFT Transfer Completed: $${amount}`, html });
+};
+
+/**
+ * SWIFT transfer FAILED + REFUNDED — sent when an admin rejects the wire.
+ */
+const sendSwiftFailedEmail = async (email, name, { amount, reference, beneficiary, country, reason, refundAmount, balance, time, disclaimer }) => {
+  const html = baseTemplate(bodyShell(`
+    ${badge('&#10060; SWIFT Transfer Failed')}
+    ${heading('Your International (SWIFT) Transfer Could Not Be Completed')}
+    ${para(`Dear ${hl(name)},`)}
+    ${para('We\'re sorry — your international SWIFT transfer could not be completed and has been reversed.')}
+    ${infoBox(`<strong>Reason:</strong> ${reason || 'The beneficiary/correspondent bank could not process the wire.'}`)}
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${BRAND.panelAlt}; border-radius:10px; padding:4px 20px; margin:20px 0;">
+      ${detailRow('Amount', `$${amount}`, '#ef4444')}
+      ${detailRow('Beneficiary', beneficiary || '—')}
+      ${detailRow('Destination', country || '—')}
+      ${detailRow('Reference', reference || '—')}
+      ${detailRow('Refunded to your account', `$${refundAmount}`, '#22c55e')}
+      ${balance != null ? detailRow('Account Balance', `$${balance}`) : ''}
+      ${detailRow('Date &amp; Time', time)}
+    </table>
+    ${swiftDemoNotice(disclaimer)}
+    ${para('The full amount has been refunded to your Alister Bank account. You\'re welcome to try again later, or contact support if the issue continues.')}
+  `));
+  return sendEmail({ to: email, subject: `Alister Bank — SWIFT Transfer Failed (Refunded): $${amount}`, html });
+};
+
 module.exports = {
   sendEmail,
   sendOTPEmail,
@@ -600,4 +685,7 @@ module.exports = {
   sendNeftInitiatedEmail,
   sendNeftCompletedEmail,
   sendNeftFailedEmail,
+  sendSwiftInitiatedEmail,
+  sendSwiftCompletedEmail,
+  sendSwiftFailedEmail,
 };

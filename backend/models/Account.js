@@ -26,7 +26,7 @@ const Account = sequelize.define('Account', {
   // secure default so the lock holds even before the column backfill runs).
   transfer_methods: {
     type: DataTypes.JSON,
-    defaultValue: { imps: false, neft: false, upi: false, internal: true, add_money: false },
+    defaultValue: { imps: false, neft: false, upi: false, internal: true, add_money: false, swift: false },
   },
   daily_transferred: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0.00 },
   last_limit_reset: { type: DataTypes.DATE },

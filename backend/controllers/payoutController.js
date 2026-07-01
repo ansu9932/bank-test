@@ -6,8 +6,10 @@ const opfin = require('../utils/opfin');
 const { resolveUpiProvider, isValidVpa } = require('../utils/upiProviders');
 const { generateReferenceNumber } = require('../utils/helpers');
 const { isMethodEnabled, methodBlockedMessage, normalizeTransferMethods } = require('../utils/transferMethods');
+const { SWIFT_COUNTRY_CODES, SWIFT_DEMO_DISCLAIMER, isValidBic, getSwiftCountry, swiftEtaLabel } = require('../utils/swiftCountries');
 const {
   sendTransferAlertEmail, sendNeftInitiatedEmail, sendNeftCompletedEmail, sendNeftFailedEmail,
+  sendSwiftInitiatedEmail, sendSwiftCompletedEmail, sendSwiftFailedEmail,
 } = require('../services/emailService');
 const { createAuditLog } = require('../middleware/auditLogger');
 const { success, error, badRequest, notFound } = require('../utils/apiResponse');
@@ -805,6 +807,361 @@ exports.adminReviewNeftTransfer = async (req, res) => {
   } catch (err) {
     logger.error(`adminReviewNeftTransfer error: ${err.message}`);
     return error(res, 'Failed to process the NEFT transfer.');
+  }
+};
+
+// ─── SWIFT (international) transfer — initiate ────────────────────────────────
+// POST /api/payments/swift-transfer   (protect + verifyLimits)
+// DEMO/simulated cross-border wire. Locked per-user (admin enables 'swift').
+// Debits immediately and holds the transfer in 'processing' until an admin
+// approves (complete) or rejects (refund) — same lifecycle as NEFT.
+exports.swiftTransfer = async (req, res) => {
+  try {
+    const {
+      amount, beneficiaryName, accountNumber, confirmAccountNumber,
+      swiftCode, beneficiaryBank, country, description, securityPin,
+    } = req.body;
+
+    const parsedAmount = parseFloat(amount);
+    if (!parsedAmount || Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+      return badRequest(res, 'Enter a valid transfer amount.');
+    }
+    if (!beneficiaryName) return badRequest(res, 'Beneficiary name is required.');
+    if (!accountNumber) return badRequest(res, 'Beneficiary account number / IBAN is required.');
+    if (confirmAccountNumber !== undefined && String(accountNumber) !== String(confirmAccountNumber)) {
+      return badRequest(res, 'Account number and confirmation do not match.');
+    }
+    const bic = String(swiftCode || '').trim().toUpperCase();
+    if (!isValidBic(bic)) return badRequest(res, 'Enter a valid SWIFT/BIC code (8 or 11 characters).');
+
+    const countryCode = String(country || '').trim().toUpperCase();
+    if (!SWIFT_COUNTRY_CODES.includes(countryCode)) {
+      return badRequest(res, 'Select a supported destination country (India, Nepal, Bhutan, or Bangladesh).');
+    }
+    const countryInfo = getSwiftCountry(countryCode);
+
+    const account = req.transferAccount || await Account.findOne({ where: { user_id: req.user.id } });
+    if (!account) return notFound(res, 'No active bank account found for this profile.');
+
+    // Per-user lock — SWIFT is disabled by default; an admin must enable it.
+    if (!isMethodEnabled(account, 'SWIFT')) {
+      return error(res, methodBlockedMessage('SWIFT'), 403);
+    }
+
+    const user = await User.findByPk(req.user.id);
+    if (!user?.security_pin) return badRequest(res, 'No security PIN set. Please contact support.');
+    const pinValid = await bcrypt.compare(String(securityPin || ''), user.security_pin);
+    if (!pinValid) return badRequest(res, 'Incorrect security PIN.');
+
+    if (parseFloat(account.available_balance) < parsedAmount) {
+      return badRequest(res, 'Insufficient balance for this transfer.');
+    }
+
+    const referenceNumber = generateReferenceNumber('SWIFT');
+    const etaLabel = swiftEtaLabel(countryCode);
+    const beneLabel = `${beneficiaryName} · ${accountNumber}`;
+
+    const t = await sequelize.transaction();
+    let writeResult;
+    try {
+      const locked = await Account.findOne({ where: { id: account.id }, transaction: t, lock: t.LOCK.UPDATE });
+      const balanceBefore = parseFloat(locked.balance);
+      const balanceAfter = balanceBefore - parsedAmount;
+      if (balanceAfter < 0) throw new Error('Insufficient balance');
+
+      await locked.update({
+        balance: balanceAfter,
+        available_balance: parseFloat(locked.available_balance) - parsedAmount,
+        daily_transferred: parseFloat(locked.daily_transferred || 0) + parsedAmount,
+      }, { transaction: t });
+
+      const txn = await Transaction.create({
+        account_id: locked.id,
+        reference_number: referenceNumber,
+        transaction_type: 'debit',
+        transfer_mode: 'SWIFT',
+        amount: parsedAmount,
+        balance_before: balanceBefore,
+        balance_after: balanceAfter,
+        description: description || `SWIFT transfer to ${beneLabel} (${countryInfo.name})`,
+        narration: `SWIFT ${bic} ${accountNumber}`,
+        category: 'swift', // discriminator for the admin SWIFT queue
+        status: 'processing',
+        to_account_number: accountNumber,
+        to_account_name: beneficiaryName,
+        to_bank_name: beneficiaryBank || null,
+        processed_at: null,
+        ip_address: req.ip,
+        tags: {
+          railMode: 'SWIFT',
+          swiftCode: bic,
+          country: countryCode,
+          countryName: countryInfo.name,
+          etaLabel,
+          settlement: 'pending_approval',
+          demo: true,
+        },
+      }, { transaction: t });
+
+      await Notification.create({
+        user_id: locked.user_id,
+        title: `${fmtINR(parsedAmount)} SWIFT transfer initiated`,
+        message: `Your international SWIFT transfer to ${beneLabel} (${countryInfo.name}) has been initiated and ${etaLabel}. Ref: ${referenceNumber}. (Simulated demo transfer.)`,
+        type: 'transaction',
+        priority: 'high',
+      }, { transaction: t });
+
+      await t.commit();
+      writeResult = { transactionId: txn.id, balanceAfter };
+    } catch (txErr) {
+      await t.rollback();
+      logger.error(`SWIFT ledger write failed (${referenceNumber}): ${txErr.message}`);
+      return error(res, 'Transfer could not be completed. Please try again.');
+    }
+
+    sendSwiftInitiatedEmail(user.email, user.first_name, {
+      amount: parsedAmount.toFixed(2),
+      reference: referenceNumber,
+      beneficiary: beneLabel,
+      bank: beneficiaryBank || '—',
+      swiftCode: bic,
+      country: countryInfo.name,
+      eta: etaLabel,
+      balance: writeResult.balanceAfter.toFixed(2),
+      time: new Date().toLocaleString(),
+      disclaimer: SWIFT_DEMO_DISCLAIMER,
+    }).catch(() => {});
+
+    createAuditLog({
+      userId: req.user.id, action: 'SWIFT_INITIATED', entityType: 'Transaction',
+      entityId: referenceNumber, ipAddress: req.ip, status: 'success',
+      description: `SWIFT ${fmtINR(parsedAmount)} to ${beneLabel} (${countryInfo.name}) initiated (simulated).`,
+    }).catch(() => {});
+
+    const snapshot = req.transferLimitSnapshot;
+    return success(res, {
+      referenceNumber,
+      transactionId: writeResult.transactionId,
+      mode: 'SWIFT',
+      amount: parsedAmount,
+      status: 'pending_settlement',
+      etaLabel,
+      country: countryInfo.name,
+      balance: writeResult.balanceAfter,
+      available_balance: writeResult.balanceAfter,
+      remainingDailyLimit: snapshot ? snapshot.remainingAfter
+        : Math.max(parseFloat(account.daily_transfer_limit) - parseFloat(account.daily_transferred || 0) - parsedAmount, 0),
+    }, `SWIFT transfer initiated — it ${etaLabel}.`);
+  } catch (err) {
+    logger.error(`swiftTransfer error: ${err.message}`);
+    return error(res, 'Transfer failed. Please try again.');
+  }
+};
+
+// ─── Admin: list pending SWIFT transfers awaiting approval ────────────────────
+// GET /api/admin/swift-requests
+exports.adminListSwiftRequests = async (req, res) => {
+  try {
+    const txns = await Transaction.findAll({
+      where: { category: 'swift', status: 'processing' },
+      limit: 200,
+    });
+
+    const requests = [];
+    for (const txn of txns) {
+      // eslint-disable-next-line no-await-in-loop
+      const account = await Account.findByPk(txn.account_id);
+      let user = null;
+      if (account) {
+        // eslint-disable-next-line no-await-in-loop
+        user = await User.findByPk(account.user_id, {
+          attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'customer_id'],
+        });
+      }
+      const tags = txn.tags || {};
+      requests.push({
+        id: txn.id,
+        reference: txn.reference_number,
+        amount: parseFloat(txn.amount),
+        beneficiaryName: txn.to_account_name,
+        beneficiaryAccount: txn.to_account_number,
+        beneficiaryBank: txn.to_bank_name,
+        swiftCode: tags.swiftCode || null,
+        country: tags.countryName || tags.country || null,
+        description: txn.description,
+        createdAt: txn.createdAt || null,
+        eta: tags.etaLabel || null,
+        fromAccount: account ? account.account_number : null,
+        user: user ? {
+          id: user.id,
+          name: `${user.first_name || ''} ${user.last_name || ''}`.trim(),
+          email: user.email,
+          phone: user.phone,
+          customerId: user.customer_id,
+        } : null,
+      });
+    }
+
+    requests.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    return success(res, { requests, count: requests.length });
+  } catch (err) {
+    logger.error(`adminListSwiftRequests error: ${err.message}`);
+    return error(res, 'Failed to fetch SWIFT requests.');
+  }
+};
+
+// ─── Admin: approve / reject a pending SWIFT transfer ─────────────────────────
+// POST /api/admin/swift-requests/:id/review   Body: { decision:'approve'|'reject', reason? }
+exports.adminReviewSwiftTransfer = async (req, res) => {
+  try {
+    const { decision, reason } = req.body;
+    if (!['approve', 'reject'].includes(decision)) {
+      return badRequest(res, "decision must be 'approve' or 'reject'.");
+    }
+
+    const txn = await Transaction.findByPk(req.params.id);
+    if (!txn || txn.category !== 'swift') {
+      return notFound(res, 'SWIFT transfer not found.');
+    }
+    if (txn.status !== 'processing') {
+      return badRequest(res, 'This SWIFT transfer has already been processed.');
+    }
+
+    const account = await Account.findByPk(txn.account_id);
+    const user = account ? await User.findByPk(account.user_id) : null;
+    const tags = txn.tags || {};
+    const countryName = tags.countryName || tags.country || '—';
+    const beneLabel = txn.to_account_name
+      ? `${txn.to_account_name} · ${txn.to_account_number}`
+      : (txn.to_account_number || 'beneficiary');
+    const amount = parseFloat(txn.amount);
+
+    // ── APPROVE → complete (already debited at creation) ─────────────────────
+    if (decision === 'approve') {
+      await txn.update({
+        status: 'success',
+        processed_at: new Date(),
+        tags: { ...tags, settlement: 'settled', approvedBy: req.admin?.id || null },
+      });
+
+      if (account) {
+        await Notification.create({
+          user_id: account.user_id,
+          title: `SWIFT transfer of ${fmtINR(amount)} completed`,
+          message: `Your international SWIFT transfer to ${beneLabel} (${countryName}) (Ref: ${txn.reference_number}) has been processed successfully. (Simulated demo transfer.)`,
+          type: 'transaction',
+          priority: 'high',
+        }).catch(() => {});
+      }
+
+      if (user?.email) {
+        sendSwiftCompletedEmail(user.email, user.first_name || 'Customer', {
+          amount: amount.toFixed(2),
+          reference: txn.reference_number,
+          beneficiary: beneLabel,
+          bank: txn.to_bank_name || '—',
+          swiftCode: tags.swiftCode || '—',
+          country: countryName,
+          balance: account ? parseFloat(account.balance).toFixed(2) : null,
+          time: new Date().toLocaleString(),
+          disclaimer: SWIFT_DEMO_DISCLAIMER,
+        }).catch((e) => logger.error(`SWIFT completed email failed: ${e.message}`));
+      }
+
+      createAuditLog({
+        adminId: req.admin?.id, userId: account?.user_id, action: 'SWIFT_APPROVED',
+        entityType: 'Transaction', entityId: txn.reference_number, ipAddress: req.ip,
+        status: 'success', description: `SWIFT ${fmtINR(amount)} to ${beneLabel} (${countryName}) approved & completed.`,
+      }).catch(() => {});
+
+      return success(res, { id: txn.id, status: 'success' }, 'SWIFT transfer approved and completed.');
+    }
+
+    // ── REJECT → refund + mark failed ────────────────────────────────────────
+    const failureReason = (reason && String(reason).trim())
+      || 'The beneficiary/correspondent bank could not process the wire. Your money has been refunded.';
+
+    if (!account) {
+      await txn.update({ status: 'failed', failure_reason: failureReason, tags: { ...tags, settlement: 'failed' } });
+      return success(res, { id: txn.id, status: 'failed' }, 'SWIFT transfer rejected.');
+    }
+
+    const refundRef = `${txn.reference_number}-RV`;
+    const t = await sequelize.transaction();
+    let newBalance;
+    try {
+      const locked = await Account.findOne({ where: { id: account.id }, transaction: t, lock: t.LOCK.UPDATE });
+      const before = parseFloat(locked.balance);
+      newBalance = before + amount;
+
+      await locked.update({
+        balance: newBalance,
+        available_balance: parseFloat(locked.available_balance) + amount,
+        daily_transferred: Math.max(parseFloat(locked.daily_transferred || 0) - amount, 0),
+      }, { transaction: t });
+
+      await txn.update({
+        status: 'failed',
+        failure_reason: failureReason,
+        tags: { ...tags, settlement: 'failed', rejectedBy: req.admin?.id || null },
+      }, { transaction: t });
+
+      await Transaction.create({
+        account_id: locked.id,
+        reference_number: refundRef,
+        transaction_type: 'credit',
+        transfer_mode: 'REVERSAL',
+        amount,
+        balance_before: before,
+        balance_after: newBalance,
+        description: `Refund — SWIFT ${txn.reference_number} could not be completed`,
+        narration: `REVERSAL ${txn.reference_number}`,
+        category: 'reversal',
+        status: 'success',
+        processed_at: new Date(),
+        reversal_reason: failureReason,
+        tags: { reversalOf: txn.reference_number },
+      }, { transaction: t });
+
+      await Notification.create({
+        user_id: locked.user_id,
+        title: `SWIFT transfer of ${fmtINR(amount)} failed — refunded`,
+        message: `Your SWIFT transfer to ${beneLabel} (${countryName}) could not be completed (${failureReason}) ${fmtINR(amount)} has been refunded.`,
+        type: 'transaction',
+        priority: 'high',
+      }, { transaction: t });
+
+      await t.commit();
+    } catch (txErr) {
+      await t.rollback();
+      logger.error(`SWIFT refund failed (${txn.reference_number}): ${txErr.message}`);
+      return error(res, 'Could not process the rejection/refund. Please try again.');
+    }
+
+    if (user?.email) {
+      sendSwiftFailedEmail(user.email, user.first_name || 'Customer', {
+        amount: amount.toFixed(2),
+        reference: txn.reference_number,
+        beneficiary: beneLabel,
+        country: countryName,
+        reason: failureReason,
+        refundAmount: amount.toFixed(2),
+        balance: newBalance.toFixed(2),
+        time: new Date().toLocaleString(),
+        disclaimer: SWIFT_DEMO_DISCLAIMER,
+      }).catch((e) => logger.error(`SWIFT failed email error: ${e.message}`));
+    }
+
+    createAuditLog({
+      adminId: req.admin?.id, userId: account.user_id, action: 'SWIFT_REJECTED_REFUNDED',
+      entityType: 'Transaction', entityId: txn.reference_number, ipAddress: req.ip,
+      status: 'success', description: `SWIFT ${fmtINR(amount)} to ${beneLabel} (${countryName}) rejected & refunded. Reason: ${failureReason}`,
+    }).catch(() => {});
+
+    return success(res, { id: txn.id, status: 'failed', refunded: amount }, 'SWIFT transfer rejected and refunded.');
+  } catch (err) {
+    logger.error(`adminReviewSwiftTransfer error: ${err.message}`);
+    return error(res, 'Failed to process the SWIFT transfer.');
   }
 };
 
