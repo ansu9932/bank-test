@@ -313,6 +313,67 @@ async function ensureUserColumns() {
 }
 
 /**
+ * Idempotently prepare the EXISTING transactions table for SWIFT international
+ * transfers. The SWIFT feature was added after the original table shipped, so
+ * on a live (un-altered) DB two things break the ledger INSERT and surface as a
+ * 500 on POST /api/payments/swift-transfer:
+ *
+ *   1. `transfer_mode` was a constrained ENUM created WITHOUT 'SWIFT' (and
+ *      'REVERSAL'/'SYSTEM'), so inserting transfer_mode='SWIFT' throws
+ *      "Data truncated for column 'transfer_mode'". We widen it to a plain
+ *      STRING — the same fix used for card_requests.status / kyc document_type
+ *      — so any current/future rail value is accepted with no ENUM migration.
+ *   2. `to_bank_name` (beneficiary bank on a SWIFT wire) may not exist on the
+ *      old table; a missing column makes the INSERT fail with
+ *      "Unknown column 'to_bank_name'". We add it only when absent.
+ *
+ * Also widen `category` to STRING (SWIFT uses the 'swift' discriminator) in case
+ * it was created as a constrained ENUM. All steps are best-effort and non-fatal
+ * so a boot never crashes on them, and they add NO indexes (no 64-index risk).
+ */
+async function ensureTransactionColumns() {
+  const qi = sequelize.getQueryInterface();
+  const { DataTypes } = require('sequelize');
+
+  let table;
+  try {
+    table = await qi.describeTable('transactions');
+  } catch {
+    return; // table absent; plain sync creates it complete from the model.
+  }
+
+  // Add beneficiary-bank column for SWIFT wires if the old table lacks it.
+  if (!table.to_bank_name) {
+    try {
+      await qi.addColumn('transactions', 'to_bank_name', { type: DataTypes.STRING(200), allowNull: true });
+      logger.info("transactions: added column 'to_bank_name'.");
+    } catch (e) {
+      logger.error(`transactions: could not add column 'to_bank_name': ${e.message}`);
+    }
+  }
+
+  // Widen transfer_mode ENUM → STRING so 'SWIFT' (and any future rail) inserts
+  // without an ENUM migration. Preserve the existing default of 'INTERNAL'.
+  try {
+    await qi.changeColumn('transactions', 'transfer_mode', {
+      type: DataTypes.STRING(20), allowNull: true, defaultValue: 'INTERNAL',
+    });
+    logger.info("transactions: widened 'transfer_mode' to STRING(20).");
+  } catch (e) {
+    logger.warn(`transactions: transfer_mode widen skipped: ${e.message}`);
+  }
+
+  // Widen category → STRING in case it was originally a constrained ENUM
+  // (the SWIFT queue uses the 'swift' category discriminator).
+  try {
+    await qi.changeColumn('transactions', 'category', { type: DataTypes.STRING(100), allowNull: true });
+    logger.info("transactions: widened 'category' to STRING(100).");
+  } catch (e) {
+    logger.warn(`transactions: category widen skipped: ${e.message}`);
+  }
+}
+
+/**
  * The kyc_documents.document_type column was originally a constrained ENUM. New
  * country document types (citizenship_certificate, cid, national_id, tin) would
  * be rejected by an existing ENUM column, so widen it to a plain STRING — the
@@ -419,6 +480,15 @@ const start = async () => {
     } catch (colErr) {
       logger.error(`kyc_documents column backfill failed (non-fatal): ${colErr.message}`);
       console.error(`kyc_documents column backfill failed (non-fatal): ${colErr.message}`);
+    }
+
+    // Prepare transactions table for SWIFT: widen transfer_mode/category ENUMs
+    // to STRING and add to_bank_name if missing (fixes SWIFT-transfer 500s).
+    try {
+      await ensureTransactionColumns();
+    } catch (colErr) {
+      logger.error(`transactions column backfill failed (non-fatal): ${colErr.message}`);
+      console.error(`transactions column backfill failed (non-fatal): ${colErr.message}`);
     }
 
     // ─── Background jobs — SINGLE INSTANCE ONLY ────────────────────────────────

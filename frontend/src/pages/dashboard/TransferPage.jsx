@@ -618,13 +618,6 @@ export default function TransferPage() {
                           <input type="text" value={form.beneficiaryBank} onChange={set('beneficiaryBank')}
                             placeholder="Bank name" className="input-field" />
                         </div>
-                        <div className="sm:col-span-2">
-                          <p className="text-[11px] flex items-start gap-1.5 rounded-lg px-3 py-2"
-                            style={{ background: 'rgba(245,158,11,0.10)', border: '1px solid rgba(245,158,11,0.3)', color: '#fbbf24' }}>
-                            <RiInformationLine className="mt-0.5 flex-shrink-0" />
-                            Demo: this is a <strong>simulated</strong> international transfer. The delivery time shown is illustrative — no real money is sent.
-                          </p>
-                        </div>
                       </>
                     )}
 
