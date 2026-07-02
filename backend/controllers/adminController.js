@@ -9,7 +9,7 @@ const {
   isLuhnValid, detectCardNetwork, hashValue, minimumBalanceForType,
   generateOTP, getOTPExpiry,
 } = require('../utils/helpers');
-const { sendAccountApprovedEmail, sendVideoKYCEmail, sendTransferAlertEmail, sendKYCRejectedEmail, sendActivationDepositEmail, sendKYCUnderReviewEmail, sendOTPEmail } = require('../services/emailService');
+const { sendAccountApprovedEmail, sendVideoKYCEmail, sendTransferAlertEmail, sendKYCRejectedEmail, sendActivationDepositEmail, sendKYCUnderReviewEmail, sendOTPEmail, sendAdminBroadcastEmail } = require('../services/emailService');
 const { issueDepositToken } = require('../utils/depositLink');
 const { createAuditLog } = require('../middleware/auditLogger');
 const { success, error, badRequest, notFound, created, unauthorized, forbidden } = require('../utils/apiResponse');
@@ -1424,5 +1424,101 @@ exports.deleteApprovedCard = async (req, res) => {
   } catch (err) {
     logger.error(`Delete approved card error: ${err.message}`);
     return error(res, 'Failed to delete the approved card.');
+  }
+};
+
+
+// ─── Manual / Broadcast Email (admin-composed) ────────────────────────────────
+// POST /api/admin/send-email
+// body: {
+//   subject: string,              // required
+//   body:    string,              // required — plain text (copy-paste friendly)
+//   userIds: string[],            // recipient user IDs (when sendToAll is false)
+//   sendToAll: boolean,           // when true, ignore userIds and mail every user with an email
+//   greet:   boolean,             // prepend "Dear {first_name}," (default true)
+//   onlyActive: boolean,          // when sendToAll, restrict to active accounts (default false)
+// }
+// Lets an admin type/paste a message, pick recipients (one, many, or all), and
+// dispatch it through the same branded, fault-tolerant email pipeline used by
+// every other Alister Bank email. Each recipient is sent an individual email
+// (no shared To/CC), so addresses are never exposed to other customers.
+exports.sendManualEmail = async (req, res) => {
+  try {
+    const { subject, body, userIds, sendToAll, onlyActive } = req.body;
+    const greet = req.body.greet !== false; // default: personalize with the name
+
+    if (!subject || !String(subject).trim()) {
+      return badRequest(res, 'A subject is required.');
+    }
+    if (!body || !String(body).trim()) {
+      return badRequest(res, 'The email body cannot be empty.');
+    }
+
+    // ── Resolve the recipient list ──────────────────────────────────────────
+    const where = { email: { [Op.ne]: null } };
+    if (sendToAll) {
+      if (onlyActive) where.account_status = 'active';
+    } else {
+      if (!Array.isArray(userIds) || userIds.length === 0) {
+        return badRequest(res, 'Select at least one recipient, or choose "send to all".');
+      }
+      where.id = { [Op.in]: userIds };
+    }
+
+    const recipients = await User.findAll({
+      where,
+      attributes: ['id', 'first_name', 'last_name', 'email'],
+    });
+
+    // Guard against a huge accidental blast.
+    if (recipients.length === 0) {
+      return badRequest(res, 'No matching users with an email address were found.');
+    }
+    if (recipients.length > 5000) {
+      return badRequest(res, 'Recipient list is too large (max 5000 per send).');
+    }
+
+    const cleanSubject = String(subject).trim();
+    const cleanBody = String(body);
+
+    // ── Dispatch sequentially — the transporter is pooled + rate-limited, so a
+    // simple await loop keeps us within Brevo's throughput without hammering it.
+    let sent = 0;
+    const failed = [];
+    for (const u of recipients) {
+      try {
+        const result = await sendAdminBroadcastEmail(u.email, {
+          subject: cleanSubject,
+          body: cleanBody,
+          name: u.first_name || null,
+          greet,
+        });
+        if (result && result.success) sent += 1;
+        else failed.push(u.email);
+      } catch (e) {
+        logger.error(`Manual email to ${u.email} failed: ${e.message}`);
+        failed.push(u.email);
+      }
+    }
+
+    await createAuditLog({
+      adminId: req.admin.id,
+      action: 'ADMIN_MANUAL_EMAIL_SENT',
+      entityType: 'User',
+      ipAddress: req.ip,
+      status: failed.length === 0 ? 'success' : 'failure',
+      newValues: { subject: cleanSubject, recipients: recipients.length, sent, failed: failed.length, sendToAll: Boolean(sendToAll) },
+      description: `Admin sent a manual email "${cleanSubject}" to ${recipients.length} recipient(s): ${sent} delivered, ${failed.length} failed.`,
+    });
+
+    return success(res, {
+      total: recipients.length,
+      sent,
+      failed: failed.length,
+      failedEmails: failed,
+    }, `Email sent to ${sent} of ${recipients.length} recipient(s).`);
+  } catch (err) {
+    logger.error(`Manual email error: ${err.message}`);
+    return error(res, 'Failed to send the email.');
   }
 };

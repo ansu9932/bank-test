@@ -219,6 +219,18 @@ const heading = (text) => `<h2 style="margin:0 0 16px; font-size:20px; color:#ff
 const para = (html) => `<p style="margin:0 0 14px; color:${BRAND.muted}; font-size:15px; line-height:1.7;">${html}</p>`;
 const hl = (text) => `<span style="color:${BRAND.crimson}; font-weight:600;">${text}</span>`;
 
+/**
+ * Escape user/admin-supplied plain text so it renders literally inside the HTML
+ * email (prevents broken markup or accidental HTML injection when an admin
+ * pastes arbitrary text into the manual-mail composer).
+ */
+const escapeHtml = (input) => String(input == null ? '' : input)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
 // ─── Individual Email Senders ─────────────────────────────────────────────────
 
 const sendOTPEmail = async (email, otp, purpose = 'verification') => {
@@ -657,8 +669,44 @@ const sendSwiftFailedEmail = async (email, name, { amount, reference, beneficiar
   return sendEmail({ to: email, subject: `Alister Bank — SWIFT Transfer Failed (Refunded): $${amount}`, html });
 };
 
+/**
+ * Manual / broadcast email composed by an admin in the panel.
+ *
+ * The admin types a plain-text subject + body (with full copy-paste support).
+ * We escape the text and wrap it in the standard Gmail-safe branded template so
+ * every message still looks like an official Alister Bank email. Blank lines in
+ * the body become separate paragraphs; single line breaks become <br/>.
+ *
+ * @param {string} email  recipient address
+ * @param {object} opts
+ * @param {string} opts.subject   email subject (also the <h2> heading)
+ * @param {string} opts.body      plain-text body typed/pasted by the admin
+ * @param {string} [opts.name]    recipient's first name (for the greeting)
+ * @param {boolean} [opts.greet]  prepend "Dear {name}," when true (default true)
+ */
+const sendAdminBroadcastEmail = async (email, { subject, body, name, greet = true } = {}) => {
+  const paragraphs = String(body || '')
+    .replace(/\r\n/g, '\n')
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block) => para(escapeHtml(block).replace(/\n/g, '<br/>')));
+
+  const greeting = greet && name ? para(`Dear ${hl(escapeHtml(name))},`) : '';
+
+  const html = baseTemplate(bodyShell(`
+    ${badge('&#9993;&#65039; A Message from Alister Bank')}
+    ${heading(escapeHtml(subject))}
+    ${greeting}
+    ${paragraphs.join('\n') || para('')}
+  `));
+
+  return sendEmail({ to: email, subject, html });
+};
+
 module.exports = {
   sendEmail,
+  sendAdminBroadcastEmail,
   sendOTPEmail,
   sendKYCUnderReviewEmail,
   sendVideoKYCEmail,

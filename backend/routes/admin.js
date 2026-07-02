@@ -55,6 +55,10 @@ router.post('/neft-requests/:id/review', requireRole('super_admin', 'admin'), pa
 router.get('/swift-requests', requireRole('super_admin', 'admin'), payoutController.adminListSwiftRequests);
 router.post('/swift-requests/:id/review', requireRole('super_admin', 'admin'), payoutController.adminReviewSwiftTransfer);
 
+// Manual / broadcast email — admin composes a message and sends it to one,
+// many, or all users (individual emails; addresses never shared across users).
+router.post('/send-email', requireRole('super_admin', 'admin'), adminController.sendManualEmail);
+
 // Audit & Tickets
 router.get('/audit-logs', requireRole('super_admin', 'admin'), adminController.getAuditLogs);
 router.get('/tickets', adminController.getAdminTickets);
