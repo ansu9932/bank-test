@@ -91,7 +91,6 @@ export default function AdminSwiftRequestsPage() {
           </h1>
           <p className="text-white/45 text-sm mt-0.5">
             International wires awaiting approval. Approve to complete, or reject to refund the customer.
-            <span className="text-amber-400"> Simulated demo — no real money moves.</span>
           </p>
         </div>
         <button

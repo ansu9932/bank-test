@@ -906,7 +906,7 @@ exports.swiftTransfer = async (req, res) => {
       await Notification.create({
         user_id: locked.user_id,
         title: `${fmtINR(parsedAmount)} SWIFT transfer initiated`,
-        message: `Your international SWIFT transfer to ${beneLabel} (${countryInfo.name}) has been initiated and ${etaLabel}. Ref: ${referenceNumber}. (Simulated demo transfer.)`,
+        message: `Your international SWIFT transfer to ${beneLabel} (${countryInfo.name}) has been initiated and ${etaLabel}. Ref: ${referenceNumber}.`,
         type: 'transaction',
         priority: 'high',
       }, { transaction: t });
@@ -1048,7 +1048,7 @@ exports.adminReviewSwiftTransfer = async (req, res) => {
         await Notification.create({
           user_id: account.user_id,
           title: `SWIFT transfer of ${fmtINR(amount)} completed`,
-          message: `Your international SWIFT transfer to ${beneLabel} (${countryName}) (Ref: ${txn.reference_number}) has been processed successfully. (Simulated demo transfer.)`,
+          message: `Your international SWIFT transfer to ${beneLabel} (${countryName}) (Ref: ${txn.reference_number}) has been processed successfully.`,
           type: 'transaction',
           priority: 'high',
         }).catch(() => {});
