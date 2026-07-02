@@ -54,7 +54,7 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const MAX_EMAIL_ATTEMPTS = 3;
 const EMAIL_RETRY_DELAY_MS = 1000;
 
-const sendEmail = async ({ to, subject, html, text }) => {
+const sendEmail = async ({ to, subject, html, text, attachments }) => {
   // IMPORTANT (Brevo): the "From" must be a VERIFIED sender on your domain
   // (e.g. info@alisterbank.online), NOT the SMTP login (…@smtp-brevo.com).
   // Set EMAIL_FROM to a sender you've verified in the Brevo dashboard.
@@ -67,6 +67,11 @@ const sendEmail = async ({ to, subject, html, text }) => {
     html,
     text: text || subject,
   };
+  // Optional file attachments (nodemailer format, e.g. { filename, path }).
+  // Used by the admin manual-email composer; ignored when absent.
+  if (Array.isArray(attachments) && attachments.length > 0) {
+    mailOptions.attachments = attachments;
+  }
 
   let lastError;
   for (let attempt = 1; attempt <= MAX_EMAIL_ATTEMPTS; attempt += 1) {
@@ -684,7 +689,7 @@ const sendSwiftFailedEmail = async (email, name, { amount, reference, beneficiar
  * @param {string} [opts.name]    recipient's first name (for the greeting)
  * @param {boolean} [opts.greet]  prepend "Dear {name}," when true (default true)
  */
-const sendAdminBroadcastEmail = async (email, { subject, body, name, greet = true } = {}) => {
+const sendAdminBroadcastEmail = async (email, { subject, body, name, greet = true, attachments } = {}) => {
   const paragraphs = String(body || '')
     .replace(/\r\n/g, '\n')
     .split(/\n{2,}/)
@@ -701,7 +706,7 @@ const sendAdminBroadcastEmail = async (email, { subject, body, name, greet = tru
     ${paragraphs.join('\n') || para('')}
   `));
 
-  return sendEmail({ to: email, subject, html });
+  return sendEmail({ to: email, subject, html, attachments });
 };
 
 module.exports = {

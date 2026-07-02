@@ -63,6 +63,7 @@ const AdminAuditPage = lazy(() => import('./pages/admin/AdminAuditPage'));
 const AdminTicketsPage = lazy(() => import('./pages/admin/AdminTicketsPage'));
 const AdminApprovedCardsPage = lazy(() => import('./pages/admin/AdminApprovedCardsPage'));
 const AdminSendEmailPage = lazy(() => import('./pages/admin/AdminSendEmailPage'));
+const AdminMailHistoryPage = lazy(() => import('./pages/admin/AdminMailHistoryPage'));
 
 // Wraps a lazy page element in a Suspense boundary with the shared loader.
 const withSuspense = (element) => (
@@ -185,6 +186,8 @@ export default function App() {
           <Route path="tickets" element={withSuspense(<AdminTicketsPage />)} />
           {/* Manual / broadcast email composer — send a message to one, many, or all users */}
           <Route path="send-email" element={withSuspense(<AdminSendEmailPage />)} />
+          {/* Mail history — log of every manual email campaign sent from the panel */}
+          <Route path="mail-history" element={withSuspense(<AdminMailHistoryPage />)} />
         </Route>
 
         {/* 404 */}

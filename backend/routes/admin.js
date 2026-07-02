@@ -4,6 +4,7 @@ const requestController = require('../controllers/requestController');
 const payoutController = require('../controllers/payoutController');
 const { adminProtect, requireRole } = require('../middleware/auth');
 const { authLimiter } = require('../middleware/security');
+const { emailAttachmentUpload } = require('../middleware/upload');
 
 router.post('/login', authLimiter, adminController.adminLogin);
 // Public device gate — the frontend calls this to decide whether to show the
@@ -57,6 +58,12 @@ router.post('/swift-requests/:id/review', requireRole('super_admin', 'admin'), p
 
 // Manual / broadcast email — admin composes a message and sends it to one,
 // many, or all users (individual emails; addresses never shared across users).
+// Flow: upload attachments → resolve recipient ids → create campaign → send in
+// batches (each batch advances the campaign's progress) → view mail history.
+router.get('/user-ids', requireRole('super_admin', 'admin'), adminController.getUserIds);
+router.post('/email-attachments', requireRole('super_admin', 'admin'), emailAttachmentUpload.array('files', 5), adminController.uploadEmailAttachments);
+router.post('/email-campaigns', requireRole('super_admin', 'admin'), adminController.createEmailCampaign);
+router.get('/email-campaigns', requireRole('super_admin', 'admin'), adminController.getEmailCampaigns);
 router.post('/send-email', requireRole('super_admin', 'admin'), adminController.sendManualEmail);
 
 // Audit & Tickets

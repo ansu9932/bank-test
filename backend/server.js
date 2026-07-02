@@ -174,7 +174,7 @@ app.use((err, req, res, next) => {
  * assets are always servable immediately, with no manual intervention.
  */
 function ensureUploadDirs() {
-  const subDirs = ['documents', 'selfies', 'kyc-videos', 'profiles'];
+  const subDirs = ['documents', 'selfies', 'kyc-videos', 'profiles', 'email-attachments'];
   const targets = [UPLOADS_ROOT, ...subDirs.map((d) => path.join(UPLOADS_ROOT, d))];
   targets.forEach((dir) => {
     try {

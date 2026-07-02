@@ -92,6 +92,32 @@ const profileUpload = multer({
   fileFilter: fileFilter(imageTypes, imageExts),
 });
 
+// ─── Admin manual-email attachments ──────────────────────────────────────────
+// Files an admin attaches to a composed broadcast email. Broader allow-list
+// than KYC (docs/sheets/slides/zip are legitimate here), each capped at 15MB.
+const emailAttachmentTypes = [
+  'application/pdf',
+  'image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'text/plain', 'text/csv',
+  'application/zip', 'application/x-zip-compressed',
+];
+const emailAttachmentExts = [
+  '.pdf', '.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.heif',
+  '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.csv', '.zip',
+];
+
+const emailAttachmentUpload = multer({
+  storage: createStorage('email-attachments'),
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB per file
+  fileFilter: fileFilter(emailAttachmentTypes, emailAttachmentExts),
+});
+
 // KYC multi-document upload fields. Covers every country's document set
 // (India + Nepal/Bhutan/Bangladesh national IDs). Only the fields relevant to
 // the chosen country are actually sent; the rest are simply absent.
@@ -111,4 +137,4 @@ const kycFields = [
   { name: 'address_proof', maxCount: 1 },
 ];
 
-module.exports = { kycUpload, selfieUpload, videoUpload, profileUpload, kycFields };
+module.exports = { kycUpload, selfieUpload, videoUpload, profileUpload, emailAttachmentUpload, kycFields };

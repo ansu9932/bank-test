@@ -2,7 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const { Op } = require('sequelize');
-const { User, Account, Transaction, KYCDocument, AdminUser, AuditLog, Notification, SupportTicket, SecureLink, CardRequest, ApprovedCard, OTP, AdminDevice } = require('../models');
+const { User, Account, Transaction, KYCDocument, AdminUser, AuditLog, Notification, SupportTicket, SecureLink, CardRequest, ApprovedCard, OTP, AdminDevice, EmailCampaign } = require('../models');
 const { generateAdminToken } = require('../middleware/auth');
 const {
   generateAccountNumber, generateIFSC, generateSecureToken, getSecureLinkExpiry, getOnboardingLinkExpiry,
@@ -1428,61 +1428,148 @@ exports.deleteApprovedCard = async (req, res) => {
 };
 
 
-// ─── Manual / Broadcast Email (admin-composed) ────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+//  MANUAL / BROADCAST EMAIL (admin-composed)
+//
+//  Flow (frontend orchestrates for a live progress bar):
+//    1. POST /admin/email-attachments   → upload files (optional), get refs
+//    2. GET  /admin/user-ids            → resolve recipient IDs for "send to all"
+//    3. POST /admin/email-campaigns     → create the history row, get campaignId
+//    4. POST /admin/send-email (xN)     → send in batches; each batch updates
+//                                          the campaign's sent/failed counts
+//    5. GET  /admin/email-campaigns     → mail history page
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Absolute directory where admin email attachments are stored on disk.
+const EMAIL_ATTACH_DIR = path.resolve(__dirname, '..', 'uploads', 'email-attachments');
+
+// Convert client-supplied attachment refs into nodemailer attachments, with a
+// hard path-traversal guard: every file MUST resolve inside EMAIL_ATTACH_DIR.
+const resolveEmailAttachments = (attachments) => {
+  if (!Array.isArray(attachments)) return [];
+  const out = [];
+  for (const a of attachments) {
+    if (!a || !a.storedPath) continue;
+    const abs = path.resolve(__dirname, '..', String(a.storedPath).replace(/^\/+/, ''));
+    if (!abs.startsWith(EMAIL_ATTACH_DIR)) continue; // reject traversal escapes
+    if (!fs.existsSync(abs)) continue;
+    out.push({ filename: a.filename || path.basename(abs), path: abs });
+  }
+  return out;
+};
+
+// ─── Upload email attachments ─────────────────────────────────────────────────
+// POST /api/admin/email-attachments  (multipart, field: files[])
+// Stores files under uploads/email-attachments and returns lightweight refs the
+// composer holds onto and passes to each send-email batch.
+exports.uploadEmailAttachments = async (req, res) => {
+  try {
+    const files = req.files || [];
+    if (files.length === 0) return badRequest(res, 'No files were uploaded.');
+    const attachments = files.map((f) => ({
+      filename: f.originalname,
+      storedPath: `uploads/email-attachments/${path.basename(f.path)}`,
+      size: f.size,
+    }));
+    return success(res, { attachments }, 'Attachments uploaded.');
+  } catch (err) {
+    logger.error(`Email attachment upload error: ${err.message}`);
+    return error(res, 'Failed to upload attachments.');
+  }
+};
+
+// ─── Resolve recipient IDs (for "send to all") ────────────────────────────────
+// GET /api/admin/user-ids?onlyActive=true|false
+// Returns just the IDs of users that have an email, so the frontend can batch
+// the send the same way it does for a hand-picked selection.
+exports.getUserIds = async (req, res) => {
+  try {
+    const where = { email: { [Op.ne]: null } };
+    if (req.query.onlyActive === 'true') where.account_status = 'active';
+    const rows = await User.findAll({ where, attributes: ['id'] });
+    return success(res, { ids: rows.map((r) => r.id), total: rows.length });
+  } catch (err) {
+    logger.error(`Get user ids error: ${err.message}`);
+    return error(res, 'Failed to resolve recipients.');
+  }
+};
+
+// ─── Create an email campaign (mail-history row) ──────────────────────────────
+// POST /api/admin/email-campaigns
+// body: { subject, body, greet, sendToAll, onlyActive, totalRecipients, attachmentNames }
+exports.createEmailCampaign = async (req, res) => {
+  try {
+    const { subject, body, greet, sendToAll, onlyActive, totalRecipients, attachmentNames } = req.body;
+
+    if (!subject || !String(subject).trim()) return badRequest(res, 'A subject is required.');
+    if (!body || !String(body).trim()) return badRequest(res, 'The email body cannot be empty.');
+
+    const total = parseInt(totalRecipients, 10) || 0;
+    if (total <= 0) return badRequest(res, 'No recipients were selected.');
+    if (total > 5000) return badRequest(res, 'Recipient list is too large (max 5000 per send).');
+
+    const campaign = await EmailCampaign.create({
+      admin_id: req.admin.id,
+      admin_name: req.admin.full_name || req.admin.username || req.admin.email || 'Admin',
+      subject: String(subject).trim(),
+      body: String(body),
+      greet: greet !== false,
+      send_to_all: Boolean(sendToAll),
+      only_active: Boolean(onlyActive),
+      attachment_names: Array.isArray(attachmentNames) ? attachmentNames.slice(0, 20) : [],
+      total_recipients: total,
+      sent_count: 0,
+      failed_count: 0,
+      status: 'sending',
+    });
+
+    await createAuditLog({
+      adminId: req.admin.id,
+      action: 'ADMIN_MANUAL_EMAIL_SENT',
+      entityType: 'EmailCampaign',
+      entityId: campaign.id,
+      ipAddress: req.ip,
+      status: 'success',
+      newValues: { subject: campaign.subject, total, sendToAll: Boolean(sendToAll) },
+      description: `Admin started an email campaign "${campaign.subject}" to ${total} recipient(s).`,
+    });
+
+    return success(res, { campaignId: campaign.id }, 'Campaign created.');
+  } catch (err) {
+    logger.error(`Create email campaign error: ${err.message}`);
+    return error(res, 'Failed to start the email campaign.');
+  }
+};
+
+// ─── Send ONE batch of recipients ─────────────────────────────────────────────
 // POST /api/admin/send-email
-// body: {
-//   subject: string,              // required
-//   body:    string,              // required — plain text (copy-paste friendly)
-//   userIds: string[],            // recipient user IDs (when sendToAll is false)
-//   sendToAll: boolean,           // when true, ignore userIds and mail every user with an email
-//   greet:   boolean,             // prepend "Dear {first_name}," (default true)
-//   onlyActive: boolean,          // when sendToAll, restrict to active accounts (default false)
-// }
-// Lets an admin type/paste a message, pick recipients (one, many, or all), and
-// dispatch it through the same branded, fault-tolerant email pipeline used by
-// every other Alister Bank email. Each recipient is sent an individual email
-// (no shared To/CC), so addresses are never exposed to other customers.
+// body: { subject, body, greet, userIds: string[], attachments?: [], campaignId? }
+// Sends to the batch's users individually (no shared To/CC), attaches any files,
+// and — when campaignId is supplied — advances that campaign's progress counters.
 exports.sendManualEmail = async (req, res) => {
   try {
-    const { subject, body, userIds, sendToAll, onlyActive } = req.body;
+    const { subject, body, userIds, attachments, campaignId } = req.body;
     const greet = req.body.greet !== false; // default: personalize with the name
 
-    if (!subject || !String(subject).trim()) {
-      return badRequest(res, 'A subject is required.');
+    if (!subject || !String(subject).trim()) return badRequest(res, 'A subject is required.');
+    if (!body || !String(body).trim()) return badRequest(res, 'The email body cannot be empty.');
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      return badRequest(res, 'This batch has no recipients.');
     }
-    if (!body || !String(body).trim()) {
-      return badRequest(res, 'The email body cannot be empty.');
-    }
-
-    // ── Resolve the recipient list ──────────────────────────────────────────
-    const where = { email: { [Op.ne]: null } };
-    if (sendToAll) {
-      if (onlyActive) where.account_status = 'active';
-    } else {
-      if (!Array.isArray(userIds) || userIds.length === 0) {
-        return badRequest(res, 'Select at least one recipient, or choose "send to all".');
-      }
-      where.id = { [Op.in]: userIds };
+    if (userIds.length > 100) {
+      return badRequest(res, 'Batch too large (max 100 recipients per request).');
     }
 
     const recipients = await User.findAll({
-      where,
-      attributes: ['id', 'first_name', 'last_name', 'email'],
+      where: { id: { [Op.in]: userIds }, email: { [Op.ne]: null } },
+      attributes: ['id', 'first_name', 'email'],
     });
 
-    // Guard against a huge accidental blast.
-    if (recipients.length === 0) {
-      return badRequest(res, 'No matching users with an email address were found.');
-    }
-    if (recipients.length > 5000) {
-      return badRequest(res, 'Recipient list is too large (max 5000 per send).');
-    }
-
+    const mailAttachments = resolveEmailAttachments(attachments);
     const cleanSubject = String(subject).trim();
     const cleanBody = String(body);
 
-    // ── Dispatch sequentially — the transporter is pooled + rate-limited, so a
-    // simple await loop keeps us within Brevo's throughput without hammering it.
+    // Dispatch sequentially — the transporter is pooled + rate-limited.
     let sent = 0;
     const failed = [];
     for (const u of recipients) {
@@ -1492,6 +1579,7 @@ exports.sendManualEmail = async (req, res) => {
           body: cleanBody,
           name: u.first_name || null,
           greet,
+          attachments: mailAttachments,
         });
         if (result && result.success) sent += 1;
         else failed.push(u.email);
@@ -1501,24 +1589,57 @@ exports.sendManualEmail = async (req, res) => {
       }
     }
 
-    await createAuditLog({
-      adminId: req.admin.id,
-      action: 'ADMIN_MANUAL_EMAIL_SENT',
-      entityType: 'User',
-      ipAddress: req.ip,
-      status: failed.length === 0 ? 'success' : 'failure',
-      newValues: { subject: cleanSubject, recipients: recipients.length, sent, failed: failed.length, sendToAll: Boolean(sendToAll) },
-      description: `Admin sent a manual email "${cleanSubject}" to ${recipients.length} recipient(s): ${sent} delivered, ${failed.length} failed.`,
-    });
+    // Advance campaign progress + auto-finalize status when the last batch lands.
+    let campaign = null;
+    if (campaignId) {
+      campaign = await EmailCampaign.findByPk(campaignId);
+      if (campaign) {
+        campaign.sent_count += sent;
+        campaign.failed_count += failed.length;
+        const processed = campaign.sent_count + campaign.failed_count;
+        if (processed >= campaign.total_recipients) {
+          campaign.status = campaign.failed_count === 0
+            ? 'completed'
+            : (campaign.sent_count === 0 ? 'failed' : 'partial');
+        }
+        await campaign.save();
+      }
+    }
 
     return success(res, {
-      total: recipients.length,
       sent,
       failed: failed.length,
       failedEmails: failed,
-    }, `Email sent to ${sent} of ${recipients.length} recipient(s).`);
+      campaign: campaign ? {
+        sentCount: campaign.sent_count,
+        failedCount: campaign.failed_count,
+        total: campaign.total_recipients,
+        status: campaign.status,
+      } : null,
+    }, `Batch complete: ${sent} delivered, ${failed.length} failed.`);
   } catch (err) {
     logger.error(`Manual email error: ${err.message}`);
-    return error(res, 'Failed to send the email.');
+    return error(res, 'Failed to send the email batch.');
+  }
+};
+
+// ─── Mail history ─────────────────────────────────────────────────────────────
+// GET /api/admin/email-campaigns?page=&limit=
+exports.getEmailCampaigns = async (req, res) => {
+  try {
+    const { page = 1, limit = 20 } = req.query;
+    const { limit: lim, offset } = paginate(page, limit);
+    const { count, rows } = await EmailCampaign.findAndCountAll({
+      order: [['created_at', 'DESC']],
+      limit: lim,
+      offset,
+    });
+    return success(res, {
+      campaigns: rows,
+      pagination: { total: count, page: parseInt(page), limit: lim, totalPages: Math.ceil(count / lim) },
+    });
+  } catch (err) {
+    logger.error(`Get email campaigns error: ${err.message}`);
+    return error(res, 'Failed to fetch mail history.');
   }
 };
