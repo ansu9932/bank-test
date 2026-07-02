@@ -935,7 +935,7 @@ exports.swiftTransfer = async (req, res) => {
     createAuditLog({
       userId: req.user.id, action: 'SWIFT_INITIATED', entityType: 'Transaction',
       entityId: referenceNumber, ipAddress: req.ip, status: 'success',
-      description: `SWIFT ${fmtINR(parsedAmount)} to ${beneLabel} (${countryInfo.name}) initiated (simulated).`,
+      description: `SWIFT ${fmtINR(parsedAmount)} to ${beneLabel} (${countryInfo.name}) initiated.`,
     }).catch(() => {});
 
     const snapshot = req.transferLimitSnapshot;

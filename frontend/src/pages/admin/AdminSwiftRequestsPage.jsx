@@ -8,10 +8,9 @@ import {
 import api from '../../services/api';
 
 /* ──────────────────────────────────────────────────────────────────────────
-   ALISTER BANK · ADMIN · SWIFT (INTERNATIONAL) REQUESTS  — DEMO / SIMULATED
+   ALISTER BANK · ADMIN · SWIFT (INTERNATIONAL) REQUESTS
    Lists SWIFT wires held for approval. Approve → completed (+ user email);
-   Reject → the debit is refunded to the user (+ failure email). These are
-   simulated transfers — no real international payment is made.
+   Reject → the debit is refunded to the user (+ failure email).
    ────────────────────────────────────────────────────────────────────────── */
 
 const adminHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('adminToken') || ''}` });
