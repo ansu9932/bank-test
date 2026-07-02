@@ -581,15 +581,10 @@ const sendNeftFailedEmail = async (email, name, { amount, reference, beneficiary
 };
 
 // ─── SWIFT (international) transfer emails ─────────────────────────────────────
-// A small demo/simulation banner reused across all three SWIFT emails so the
-// recipient always understands this is a simulated transfer.
-const swiftDemoNotice = (disclaimer) => infoBox(
-  `&#8505;&#65039; <strong>Simulated transfer:</strong> ${disclaimer || 'This is a demo. No real international payment is processed.'}`
-);
 
 /**
  * SWIFT transfer INITIATED — sent when an international wire is requested.
- * Mentions the realistic per-country delivery window and that it's simulated.
+ * Mentions the realistic per-country delivery window.
  */
 const sendSwiftInitiatedEmail = async (email, name, { amount, reference, beneficiary, bank, swiftCode, country, eta, balance, time, disclaimer }) => {
   const html = baseTemplate(bodyShell(`
@@ -608,7 +603,6 @@ const sendSwiftInitiatedEmail = async (email, name, { amount, reference, benefic
       ${detailRow('Expected delivery', eta || '—')}
       ${detailRow('Date &amp; Time', time)}
     </table>
-    ${swiftDemoNotice(disclaimer)}
     ${para('No action is needed from you. We\'ll email you again as soon as the transfer is completed or if anything changes.')}
   `));
   return sendEmail({ to: email, subject: `Alister Bank — SWIFT Transfer Initiated: $${amount}`, html });
@@ -634,7 +628,6 @@ const sendSwiftCompletedEmail = async (email, name, { amount, reference, benefic
       ${balance != null ? detailRow('Account Balance', `$${balance}`) : ''}
       ${detailRow('Date &amp; Time', time)}
     </table>
-    ${swiftDemoNotice(disclaimer)}
     ${para('Thank you for banking with Alister Bank.')}
   `));
   return sendEmail({ to: email, subject: `Alister Bank — SWIFT Transfer Completed: $${amount}`, html });
@@ -659,7 +652,6 @@ const sendSwiftFailedEmail = async (email, name, { amount, reference, beneficiar
       ${balance != null ? detailRow('Account Balance', `$${balance}`) : ''}
       ${detailRow('Date &amp; Time', time)}
     </table>
-    ${swiftDemoNotice(disclaimer)}
     ${para('The full amount has been refunded to your Alister Bank account. You\'re welcome to try again later, or contact support if the issue continues.')}
   `));
   return sendEmail({ to: email, subject: `Alister Bank — SWIFT Transfer Failed (Refunded): $${amount}`, html });
