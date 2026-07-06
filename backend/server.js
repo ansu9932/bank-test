@@ -188,7 +188,7 @@ app.get('/api/version', (req, res) => {
   const { sha256, sizeBytes } = getApkChecksum();
   res.json({
     latestVersion: process.env.APP_LATEST_VERSION || '1.0.0',
-    apkUrl: process.env.APP_APK_URL || 'https://alisterbank.online/downloads/AlisterBank.apk',
+    apkUrl: process.env.APP_APK_URL || 'https://api.alisterbank.online/downloads/AlisterBank.apk',
     forceUpdate: process.env.APP_FORCE_UPDATE === 'true',
     sha256,
     sizeBytes,
@@ -693,7 +693,7 @@ const start = async () => {
       logger.info(`   URL:  http://localhost:${PORT}`);
       logger.info(`══════════════════════════════════════════════\n`);
 
-      console.log('\n🏦 ══════════════════════════════════════════════');
+      console.log('\n🏦 ═════════════════════════════════════��════════');
       console.log('   ALISTER BANK API SERVER RUNNING');
       console.log(`   Port: ${PORT} | Env: ${process.env.NODE_ENV || 'development'}`);
       console.log(`   Live: ${process.env.FRONTEND_URL || 'https://alisterbank.online'}`);
