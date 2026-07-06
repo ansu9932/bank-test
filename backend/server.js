@@ -517,6 +517,8 @@ async function ensureSessionColumns() {
     refresh_token_hash: { type: DataTypes.STRING(255), allowNull: true },
     refresh_expires_at: { type: DataTypes.DATE, allowNull: true },
     device_id: { type: DataTypes.STRING(100), allowNull: true },
+    // 'web' | 'app' — which channel created the session (mutual exclusion).
+    channel: { type: DataTypes.STRING(10), allowNull: true, defaultValue: 'web' },
   };
 
   for (const [name, def] of Object.entries(columns)) {

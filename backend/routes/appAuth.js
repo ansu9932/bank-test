@@ -22,6 +22,12 @@ router.post('/verify-customer', loginLimiter, [
   body('dob').notEmpty().withMessage('Date of birth is required'),
 ], validate, appAuth.verifyCustomer);
 
+// Step 1b — confirm identity + accept terms → OTP is sent.
+router.post('/confirm-identity', otpLimiter, [
+  body('onboardingToken').notEmpty().withMessage('Token is required'),
+  body('acceptTerms').isBoolean().withMessage('Terms acceptance is required'),
+], validate, appAuth.confirmIdentity);
+
 // Step 2 — email OTP.
 router.post('/verify-otp', otpLimiter, [
   body('otp').notEmpty().withMessage('Code is required'),
@@ -51,6 +57,10 @@ router.post('/mpin-login', loginLimiter, [
   body('deviceId').notEmpty().withMessage('Device ID is required'),
   body('deviceToken').notEmpty().withMessage('Device token is required'),
 ], validate, appAuth.mpinLogin);
+
+// Normal logout — ends the session but keeps the device registered (MPIN
+// login still works). Unblocks website sign-in immediately.
+router.post('/logout-session', protect, appAuth.logoutSession);
 
 // Forget this device (requires an active session).
 router.post('/logout-device', protect, appAuth.logoutDevice);

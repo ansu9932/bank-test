@@ -112,6 +112,18 @@ exports.login = async (req, res) => {
     if (user.account_status === 'frozen') return unauthorized(res, 'Account is frozen. Contact support.');
     if (user.account_status === 'closed') return unauthorized(res, 'Account is closed.');
 
+    // ── CHANNEL MUTUAL EXCLUSION ───────────────────────────────────────────
+    // An active mobile-app session blocks website sign-in: the user must log
+    // out of the app first (sessions idle >15 min don't block).
+    const { findActiveChannelSession } = require('./appAuthController');
+    if (await findActiveChannelSession(user.id, 'app')) {
+      return res.status(409).json({
+        success: false,
+        code: 'APP_SESSION_ACTIVE',
+        message: 'You are signed in on the Alister Bank mobile app. Please log out of the app first, then sign in here.',
+      });
+    }
+
     // Reset login attempts
     await user.update({ login_attempts: 0, locked_until: null, last_login: new Date() });
 
@@ -346,7 +358,7 @@ exports.getMe = async (req, res) => {
   }
 };
 
-// ─── Send OTP ──────────────────────────────────────────────────────────────────
+// ─── Send OTP ────────────────────────────────────────────────────────────���─────
 exports.sendOTP = async (req, res) => {
   try {
     const { email, purpose } = req.body;

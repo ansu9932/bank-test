@@ -43,6 +43,10 @@ const PERSISTED_KEYS = [
   // Digit count of the user's MPIN (4-6) so the lock screen shows the right
   // number of dots and auto-submits at the correct length.
   'appMpinLength',
+  // Last moment the app was in the foreground. On reopen (including cold
+  // start after being swiped away), >10 min of inactivity forces the MPIN
+  // lock screen even though the session token itself is still valid.
+  'appLastActiveAt',
 ];
 
 const cache = new Map();

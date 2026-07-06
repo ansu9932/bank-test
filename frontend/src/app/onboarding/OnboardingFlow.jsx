@@ -6,23 +6,25 @@
  */
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, Lock, Mail, KeyRound, PartyPopper, Eye, EyeOff } from 'lucide-react';
+import { ShieldCheck, Lock, Mail, KeyRound, PartyPopper, Eye, EyeOff, UserCheck } from 'lucide-react';
 import { secureFieldProps } from '../../services/biometric';
 import {
-  verifyCustomer, verifyOtp, resendOtp, verifyPassword, setupMpin,
+  verifyCustomer, confirmIdentity, verifyOtp, resendOtp, verifyPassword, setupMpin,
 } from '../services/appAuth';
 import {
   Screen, AppHeader, Card, PrimaryButton, Field, TextInput,
   OTPBoxes, PinDots, NumberPad, BrandMark, useSubmit,
 } from '../components/AppUI';
 
-const STEPS = ['welcome', 'identify', 'otp', 'password', 'mpin', 'confirm-mpin', 'done'];
+const STEPS = ['welcome', 'identify', 'confirm', 'otp', 'password', 'mpin', 'confirm-mpin', 'done'];
 
 export default function OnboardingFlow() {
   const navigate = useNavigate();
   const [step, setStep] = useState('welcome');
   const [stepToken, setStepToken] = useState('');
   const [maskedEmail, setMaskedEmail] = useState('');
+  const [accountPreview, setAccountPreview] = useState(null); // { name, last6 }
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   // form state
   const [customerId, setCustomerId] = useState('');
@@ -44,6 +46,16 @@ export default function OnboardingFlow() {
       const data = await verifyCustomer(customerId.trim().toUpperCase(), dob);
       setStepToken(data.onboardingToken);
       setMaskedEmail(data.maskedEmail);
+      setAccountPreview({ name: data.accountName, last6: data.accountLast6 });
+      setTermsAccepted(false);
+      setStep('confirm');
+    }).catch(() => {});
+
+  const submitConfirm = () =>
+    run(async () => {
+      const data = await confirmIdentity(stepToken);
+      setStepToken(data.onboardingToken);
+      if (data.maskedEmail) setMaskedEmail(data.maskedEmail);
       setOtp('');
       setStep('otp');
     }).catch(() => {});

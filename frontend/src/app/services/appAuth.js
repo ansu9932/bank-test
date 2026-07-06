@@ -39,6 +39,8 @@ function persistSession(data) {
     appStorage.setItem('appCustomerId', data.user.customerId || '');
   }
   if (data?.deviceToken) appStorage.setItem('appDeviceToken', data.deviceToken);
+  // A fresh login is activity — reset the 10-minute inactivity lock clock.
+  appStorage.setItem('appLastActiveAt', String(Date.now()));
 }
 
 export function clearDeviceRegistration() {
@@ -51,6 +53,15 @@ export function clearDeviceRegistration() {
 // ─── Onboarding steps ────────────────────────────────────────────────────────
 export async function verifyCustomer(customerId, dob) {
   const { data } = await api.post('/app/verify-customer', { customerId, dob });
+  return data.data; // { onboardingToken, accountName, accountLast6, maskedEmail }
+}
+
+/** Confirm the previewed identity + accept T&Cs → server sends the OTP. */
+export async function confirmIdentity(onboardingToken) {
+  const { data } = await api.post('/app/confirm-identity', {
+    onboardingToken,
+    acceptTerms: true,
+  });
   return data.data; // { onboardingToken, maskedEmail }
 }
 
@@ -123,6 +134,21 @@ export async function logoutDevice() {
   clearDeviceRegistration();
 }
 
+/**
+ * Normal logout — ends the server session (so the website unblocks) but keeps
+ * the device registered: next open only asks for the MPIN, not full onboarding.
+ */
+export async function logoutSession() {
+  try {
+    await api.post('/app/logout-session');
+  } catch {
+    /* best-effort — clear local state regardless */
+  }
+  appStorage.removeItem('token');
+  appStorage.removeItem('refreshToken');
+  appStorage.removeItem('user');
+}
+
 /** Lock the app (keep device registration; user re-enters MPIN). */
 export function lockApp() {
   appStorage.removeItem('token');
@@ -131,4 +157,21 @@ export function lockApp() {
 
 export function isAppAuthenticated() {
   return !!appStorage.getItem('token');
+}
+
+// ─── Inactivity lock (10 min) ────────────────────────────────────────────────
+// Survives cold starts: appLastActiveAt lives in secure storage, so killing
+// the app from the recents screen and reopening still triggers the lock.
+const INACTIVITY_LOCK_MS = 10 * 60 * 1000;
+
+export function touchAppActivity() {
+  appStorage.setItem('appLastActiveAt', String(Date.now()));
+}
+
+/** True when the app has been inactive long enough to require the MPIN. */
+export function isInactivityLocked() {
+  if (!isAppAuthenticated()) return false;
+  const last = Number(appStorage.getItem('appLastActiveAt'));
+  if (!last) return true; // unknown → fail safe, ask for MPIN
+  return Date.now() - last > INACTIVITY_LOCK_MS;
 }
