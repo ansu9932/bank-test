@@ -1,9 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Banking-grade network policy:
-  • Cleartext (HTTP) traffic is blocked app-wide.
-  • Only the production API/site domains are reachable; system CAs only, so
-    user-installed CAs (mitmproxy/Charles) can NOT intercept traffic.
+  Alister Bank – Android network security policy.
+
+  1. HTTPS ONLY: cleartextTrafficPermitted="false" everywhere. Any accidental
+     http:// call fails at the OS level before leaving the device.
+  2. SYSTEM CAs ONLY: user-added certificate authorities are never trusted, so
+     a proxy CA installed on the device (mitmproxy/Charles) cannot intercept
+     traffic even on a compromised profile.
+  3. CERTIFICATE PINNING for the API + site domains. Pins are SPKI SHA-256:
+       - leaf:         alisterbank.online          (zBYNig...)
+       - intermediate: Google Trust Services WE1   (kIdp6N...)
+     Pinning the WE1 intermediate keeps the app working across Cloudflare's
+     routine leaf rotations (leaves are reissued from the same intermediate).
+
+  IMPORTANT — pin expiration: the expiration date below is a deliberate
+  fail-safe. If Cloudflare ever migrates the domain to a different CA chain,
+  pin validation is skipped after this date instead of permanently bricking
+  every installed app. Refresh the pins and the date with each app release:
+    echo | openssl s_client -connect api.alisterbank.online:443 \
+      -servername api.alisterbank.online 2>/dev/null \
+      | openssl x509 -pubkey -noout \
+      | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64
 -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="false">
@@ -14,6 +31,12 @@
 
     <domain-config cleartextTrafficPermitted="false">
         <domain includeSubdomains="true">alisterbank.online</domain>
+        <pin-set expiration="2026-09-01">
+            <!-- alisterbank.online leaf certificate -->
+            <pin digest="SHA-256">zBYNigCrZkRa2jt2ey/mTxLyyY2OiPjSHPlYHKKMsvg=</pin>
+            <!-- Google Trust Services WE1 intermediate (backup pin) -->
+            <pin digest="SHA-256">kIdp6NNEd8wsugYyyIYFsi1ylMCED3hZbSR8ZFsa/A4=</pin>
+        </pin-set>
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
