@@ -14,7 +14,13 @@ import { initAppStorage } from './services/appStorage';
  */
 async function boot() {
   try {
-    await initAppStorage();
+    // HARD TIMEOUT: Android Keystore reads can HANG (not fail) on some
+    // devices. Never let storage hydration block first paint — after 4s we
+    // render regardless; worst case the user logs in again.
+    await Promise.race([
+      initAppStorage(),
+      new Promise((resolve) => setTimeout(resolve, 4000)),
+    ]);
   } catch {
     /* storage init failure → user simply logs in again */
   }
@@ -34,4 +40,16 @@ async function boot() {
   );
 }
 
-boot();
+boot().catch((err) => {
+  // A crash during boot previously left a permanent blank screen with no
+  // clue. Surface the error so it can be reported and offer a retry.
+  const root = document.getElementById('root');
+  if (root) {
+    root.innerHTML = `
+      <div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#0A0A0A;color:#fff;font-family:sans-serif;padding:24px;text-align:center;">
+        <p style="font-size:18px;font-weight:600;">Something went wrong while starting the app</p>
+        <p style="font-size:13px;color:#999;max-width:320px;word-break:break-word;">${String(err?.message || err).replace(/</g, '&lt;')}</p>
+        <button onclick="location.reload()" style="background:#CC0000;color:#fff;border:0;border-radius:10px;padding:12px 28px;font-size:15px;font-weight:600;">Try Again</button>
+      </div>`;
+  }
+});
