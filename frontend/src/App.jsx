@@ -7,6 +7,9 @@ import { getMe } from './store/slices/authSlice';
 import PageLoader from './components/common/PageLoader';
 // AVA — floating bank chatbot, available on every page (hidden on /admin)
 import AvaChatWidget from './components/chatbot/AvaChatWidget';
+// Native APK only: on-launch version check + update dialog (renders null on web)
+import UpdateCheck from './components/native/UpdateCheck';
+import appStorage from './services/appStorage';
 
 // Auth pages
 import LoginPage from './pages/auth/LoginPage';
@@ -27,6 +30,7 @@ const CareersPage = lazy(() => import('./pages/public/CareersPage'));
 const PressPage = lazy(() => import('./pages/public/PressPage'));
 const PrivacyPolicyPage = lazy(() => import('./pages/public/PrivacyPolicyPage'));
 const TermsOfServicePage = lazy(() => import('./pages/public/TermsOfServicePage'));
+const DownloadAppPage = lazy(() => import('./pages/public/DownloadAppPage'));
 
 // Account opening flow (lazy-loaded — only fetched when these routes are hit)
 import DashboardLayout from './components/layout/DashboardLayout';
@@ -81,7 +85,7 @@ const PrivateRoute = ({ children }) => {
 };
 
 const AdminRoute = ({ children }) => {
-  const adminToken = localStorage.getItem('adminToken');
+  const adminToken = appStorage.getItem('adminToken');
   if (!adminToken) return <Navigate to="/admin/login" replace />;
   return children;
 };
@@ -102,6 +106,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <UpdateCheck />
       <Toaster
         position="top-right"
         toastOptions={{
@@ -129,6 +134,8 @@ export default function App() {
           <Route path="/payments" element={<PaymentsPage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/contact" element={<ContactPage />} />
+          {/* Android app download — additive public page, no impact on web flows */}
+          <Route path="/download" element={<DownloadAppPage />} />
           <Route path="/careers" element={<CareersPage />} />
           <Route path="/press" element={<PressPage />} />
           <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />

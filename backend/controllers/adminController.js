@@ -6,7 +6,7 @@ const { User, Account, Transaction, KYCDocument, AdminUser, AuditLog, Notificati
 const { generateAdminToken } = require('../middleware/auth');
 const {
   generateAccountNumber, generateIFSC, generateSecureToken, getSecureLinkExpiry, getOnboardingLinkExpiry,
-  isLuhnValid, detectCardNetwork, hashValue, minimumBalanceForType,
+  isLuhnValid, detectCardNetwork, hashValue, hashOTP, minimumBalanceForType,
   generateOTP, getOTPExpiry,
 } = require('../utils/helpers');
 const { sendAccountApprovedEmail, sendVideoKYCEmail, sendTransferAlertEmail, sendKYCRejectedEmail, sendActivationDepositEmail, sendKYCUnderReviewEmail, sendOTPEmail, sendAdminBroadcastEmail } = require('../services/emailService');
@@ -575,7 +575,7 @@ exports.reviewKYC = async (req, res) => {
   }
 };
 
-// ─── Freeze / Unfreeze Account ────────────────────────────────────────────────
+// ─── Freeze / Unfreeze Account ─────────────────────────────���──────────────────
 exports.toggleFreezeAccount = async (req, res) => {
   try {
     const { action, reason } = req.body;
@@ -1188,7 +1188,7 @@ exports.resendOnboardingStep = async (req, res) => {
         const otp = generateOTP();
         await OTP.create({
           email: user.email,
-          otp_hash: hashValue(otp),
+          otp_hash: hashOTP(otp),
           purpose: 'email_verification',
           expires_at: getOTPExpiry(10),
           ip_address: req.ip,

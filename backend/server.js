@@ -6,11 +6,51 @@ const morgan = require('morgan');
 const compression = require('compression');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 const sequelize = require('./config/database');
 const logger = require('./utils/logger');
 const { securityHeaders, sanitizeRequest, securityResponseHeaders, apiLimiter, hpp } = require('./middleware/security');
 const { runKYCWorkflow } = require('./jobs/kycWorkflow');
+
+// ─── Boot-time secret validation (fail fast, fail loud) ──────────────────────
+// The server refuses to start with missing/weak security-critical config so a
+// misconfigured deploy can never silently run with (for example) an undefined
+// JWT secret. Checked BEFORE any middleware or route is wired up.
+function validateRequiredSecrets() {
+  const problems = [];
+
+  const required = {
+    JWT_SECRET: process.env.JWT_SECRET,
+    DB_NAME: process.env.DB_NAME,
+    DB_USER: process.env.DB_USER,
+    DB_PASS: process.env.DB_PASS,
+    SMTP_USER: process.env.SMTP_USER,
+    SMTP_PASS: process.env.SMTP_PASS,
+  };
+
+  for (const [key, value] of Object.entries(required)) {
+    if (!value || String(value).trim().length === 0) {
+      problems.push(`${key} is not set`);
+    }
+  }
+
+  if (process.env.JWT_SECRET && process.env.JWT_SECRET.length < 32) {
+    problems.push(`JWT_SECRET is too short (${process.env.JWT_SECRET.length} chars) — must be at least 32 characters`);
+  }
+
+  if (problems.length > 0) {
+    const banner = [
+      '❌ FATAL: refusing to start — security configuration is invalid:',
+      ...problems.map((p) => `   • ${p}`),
+      '   Fix the environment (.env / PM2 env) and restart.',
+    ].join('\n');
+    logger.error(banner);
+    console.error(banner);
+    process.exit(1);
+  }
+}
+validateRequiredSecrets();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -32,6 +72,11 @@ const STATIC_ALLOWED_ORIGINS = [
   process.env.FRONTEND_URL || 'https://alisterbank.online',
   'https://alisterbank.online',
   'https://www.alisterbank.online',
+  // Capacitor native app WebView origins. 'https://localhost' is the Android
+  // WebView origin (androidScheme: 'https' in capacitor.config.ts) and
+  // 'capacitor://localhost' covers the capacitor scheme (iOS/custom builds).
+  'capacitor://localhost',
+  'https://localhost',
   ...(process.env.CORS_EXTRA_ORIGINS
     ? process.env.CORS_EXTRA_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean)
     : []),
@@ -80,11 +125,14 @@ if (process.env.NODE_ENV !== 'test') {
 // ─── Sanitize Input ───────────────────────────────────────────────────────────
 app.use(sanitizeRequest);
 
-// ─── Static Files (uploaded docs) ────────────────────────────────────────────
-// Absolute path to the uploads root. ensureUploadDirs() (run at boot, below)
-// guarantees this tree + its KYC sub-folders exist so fetches never 404.
-const UPLOADS_ROOT = path.join(__dirname, 'uploads');
-app.use('/uploads', express.static(UPLOADS_ROOT));
+// ─── Uploaded docs (AUTHENTICATED — no public static exposure) ───────────────
+// KYC documents contain government IDs, selfies, and KYC videos. They are now
+// served ONLY through an authenticated route that verifies the requester owns
+// the file (via the KYCDocument DB record) or is an active admin. The public
+// express.static mount was removed deliberately — do not re-add it.
+// ensureUploadDirs() (run at boot, below) guarantees the tree exists.
+const { serveUpload, UPLOADS_ROOT } = require('./middleware/secureUploads');
+app.use('/uploads', serveUpload);
 
 // ─── Rate Limiting ────────────────────────────────────────────────────────────
 app.use('/api/', apiLimiter);
@@ -113,6 +161,57 @@ app.use('/api/payouts', require('./routes/payouts'));
 app.use('/api/admin', require('./routes/admin'));
 // AVA chatbot — public intent engine + in-chat email OTP identity verification.
 app.use('/api/chat', require('./routes/chat'));
+
+// ─── Mobile App: version check + APK download ─────────────────────────────────
+// GET /api/version — the Android app calls this on launch and compares the
+// installed version. Override values via env without redeploying code:
+//   APP_LATEST_VERSION=1.0.0  APP_APK_URL=...  APP_FORCE_UPDATE=true
+// Also returns the APK's SHA-256 checksum + byte size (computed once and
+// cached until the file's mtime changes) so the download page can display
+// integrity-verification info alongside the download button.
+let apkChecksumCache = { mtime: 0, sha256: null, size: 0 };
+function getApkChecksum() {
+  const apkPath = path.join(__dirname, 'downloads', 'AlisterBank.apk');
+  try {
+    const stat = fs.statSync(apkPath);
+    if (stat.mtimeMs !== apkChecksumCache.mtime) {
+      const hash = crypto.createHash('sha256').update(fs.readFileSync(apkPath)).digest('hex');
+      apkChecksumCache = { mtime: stat.mtimeMs, sha256: hash, size: stat.size };
+    }
+    return { sha256: apkChecksumCache.sha256, sizeBytes: apkChecksumCache.size };
+  } catch {
+    return { sha256: null, sizeBytes: 0 }; // APK not uploaded yet
+  }
+}
+
+app.get('/api/version', (req, res) => {
+  const { sha256, sizeBytes } = getApkChecksum();
+  res.json({
+    latestVersion: process.env.APP_LATEST_VERSION || '1.0.0',
+    apkUrl: process.env.APP_APK_URL || 'https://alisterbank.online/downloads/AlisterBank.apk',
+    forceUpdate: process.env.APP_FORCE_UPDATE === 'true',
+    sha256,
+    sizeBytes,
+  });
+});
+
+// GET /downloads/AlisterBank.apk — serves the signed release APK with the
+// correct Android package MIME type so browsers download (never render) it.
+// Place the APK at backend/downloads/AlisterBank.apk on the server.
+const DOWNLOADS_ROOT = path.join(__dirname, 'downloads');
+app.get('/downloads/:file', (req, res) => {
+  // Only ever serve the known APK name — no directory traversal surface.
+  if (req.params.file !== 'AlisterBank.apk') {
+    return res.status(404).json({ success: false, message: 'Not found.' });
+  }
+  const apkPath = path.join(DOWNLOADS_ROOT, 'AlisterBank.apk');
+  if (!fs.existsSync(apkPath)) {
+    return res.status(404).json({ success: false, message: 'APK not uploaded yet.' });
+  }
+  res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+  res.setHeader('Content-Disposition', 'attachment; filename="AlisterBank.apk"');
+  res.sendFile(apkPath);
+});
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
@@ -373,6 +472,52 @@ async function ensureTransactionColumns() {
   } catch (e) {
     logger.warn(`transactions: category widen skipped: ${e.message}`);
   }
+
+  // Idempotency key for duplicate-transfer prevention (native app retries).
+  // Deliberately NO unique index (64-index overflow risk) — uniqueness is
+  // enforced in application code with a pre-insert lookup.
+  if (!table.idempotency_key) {
+    try {
+      await qi.addColumn('transactions', 'idempotency_key', { type: DataTypes.STRING(100), allowNull: true });
+      logger.info("transactions: added column 'idempotency_key'.");
+    } catch (e) {
+      logger.error(`transactions: could not add column 'idempotency_key': ${e.message}`);
+    }
+  }
+}
+
+/**
+ * Idempotently add the refresh-token-rotation and device-binding columns to an
+ * EXISTING sessions table. Mirrors ensureCardRequestColumns(): named columns
+ * only, added when absent, zero index changes.
+ */
+async function ensureSessionColumns() {
+  const qi = sequelize.getQueryInterface();
+  const { DataTypes } = require('sequelize');
+
+  let table;
+  try {
+    table = await qi.describeTable('sessions');
+  } catch {
+    return; // table absent; plain sync creates it complete from the model.
+  }
+
+  const columns = {
+    refresh_token_hash: { type: DataTypes.STRING(255), allowNull: true },
+    refresh_expires_at: { type: DataTypes.DATE, allowNull: true },
+    device_id: { type: DataTypes.STRING(100), allowNull: true },
+  };
+
+  for (const [name, def] of Object.entries(columns)) {
+    if (!table[name]) {
+      try {
+        await qi.addColumn('sessions', name, def);
+        logger.info(`sessions: added column '${name}'.`);
+      } catch (e) {
+        logger.error(`sessions: could not add column '${name}': ${e.message}`);
+      }
+    }
+  }
 }
 
 /**
@@ -491,6 +636,14 @@ const start = async () => {
     } catch (colErr) {
       logger.error(`transactions column backfill failed (non-fatal): ${colErr.message}`);
       console.error(`transactions column backfill failed (non-fatal): ${colErr.message}`);
+    }
+
+    // Refresh-token rotation + device binding columns for the native app.
+    try {
+      await ensureSessionColumns();
+    } catch (colErr) {
+      logger.error(`sessions column backfill failed (non-fatal): ${colErr.message}`);
+      console.error(`sessions column backfill failed (non-fatal): ${colErr.message}`);
     }
 
     // ─── Background jobs — SINGLE INSTANCE ONLY ────────────────────────────────

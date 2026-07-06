@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Alister Bank</string>
+    <string name="title_activity_main">Alister Bank</string>
+    <string name="package_name">online.alisterbank.app</string>
+    <string name="custom_url_scheme">online.alisterbank.app</string>
+</resources>

@@ -11,6 +11,7 @@ import api from '../../services/api';
 import { fetchAccount } from '../../store/slices/accountSlice';
 import { fetchBeneficiaries } from '../../store/slices/transactionSlice';
 import toast from 'react-hot-toast';
+import { secureFieldProps } from '../../services/biometric';
 
 const CRIMSON = '#c8102e';
 
@@ -57,6 +58,35 @@ export default function TransferPage() {
   const [selectedBeneficiary, setSelectedBeneficiary] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
+
+  // ── Idempotency key: one per confirmed transfer ATTEMPT ────────────────────
+  // Generated when the user reaches the confirm step; the SAME key is reused
+  // across retries of that attempt (network drop → resubmit returns the
+  // original result instead of double-debiting). Reset for a new transfer.
+  const idemKeyRef = useRef('');
+  const newIdemKey = () => {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    idemKeyRef.current = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    return idemKeyRef.current;
+  };
+
+  // ── Large-transfer OTP step (server responds 428 otpRequired) ─────────────
+  const [otpNeeded, setOtpNeeded] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [otpSending, setOtpSending] = useState(false);
+
+  const requestTransferOtp = async () => {
+    setOtpSending(true);
+    try {
+      const { data } = await api.post('/transactions/transfer-otp');
+      toast.success(data.message || 'OTP sent to your email');
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Could not send OTP');
+    } finally {
+      setOtpSending(false);
+    }
+  };
 
   // ── Daily transfer-limit state (matte-black header chip) ──────────────────
   const [limitInfo, setLimitInfo] = useState(null); // { dailyTransferLimit, usedDailyLimit, remaining }
@@ -280,6 +310,9 @@ export default function TransferPage() {
 
   const handleReview = () => {
     if (!validateForm()) return;
+    newIdemKey(); // fresh key for this attempt; reused across its retries
+    setOtpNeeded(false);
+    setOtpCode('');
     setStep('confirm');
   };
 
@@ -336,13 +369,28 @@ export default function TransferPage() {
         };
       }
 
+      // Idempotency key (same across retries of this attempt) + OTP when the
+      // server demanded one for a large transfer.
+      payload.idempotencyKey = idemKeyRef.current;
+      if (otpNeeded && otpCode) payload.otp = otpCode.trim();
+
       const { data } = await api.post(endpoint, payload);
       setResult(data.data);
       setStep('success');
+      setOtpNeeded(false);
+      setOtpCode('');
       dispatch(fetchAccount());
       loadLimit();
       toast.success(data.message || 'Transfer submitted');
     } catch (err) {
+      // 428 + otpRequired → large transfer: show the OTP field on the confirm
+      // step and auto-send the first code. NOT a failure — stay on confirm.
+      if (err?.response?.status === 428 && err?.response?.data?.otpRequired) {
+        setOtpNeeded(true);
+        requestTransferOtp();
+        toast(err.response.data.message || 'OTP verification required for this amount.');
+        return;
+      }
       toast.error(err?.response?.data?.message || 'Transfer failed. Please try again.');
       setStep('form');
     } finally {
@@ -694,11 +742,32 @@ export default function TransferPage() {
               <div className="bg-dark-700/50 rounded-xl p-4 my-5">
                 <label className="form-label">Security PIN</label>
                 <input type="password" inputMode="numeric" maxLength={4} value={form.securityPin}
-                  onChange={set('securityPin')} placeholder="Enter 4-digit PIN" className="input-field" />
+                  onChange={set('securityPin')} placeholder="Enter 4-digit PIN" className="input-field"
+                  {...secureFieldProps()} />
                 <p className="text-dark-400 text-xs mt-1.5 flex items-center gap-1">
                   <RiShieldCheckLine /> Your PIN authorizes this transfer
                 </p>
               </div>
+
+              {/* Large-transfer email OTP (shown only when the server demands it) */}
+              {otpNeeded && (
+                <div className="bg-dark-700/50 rounded-xl p-4 my-5 border border-primary-500/30">
+                  <label className="form-label">Email OTP</label>
+                  <input type="password" inputMode="numeric" maxLength={6} value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
+                    placeholder="Enter 6-digit OTP" className="input-field"
+                    {...secureFieldProps()} />
+                  <div className="flex items-center justify-between mt-1.5">
+                    <p className="text-dark-400 text-xs flex items-center gap-1">
+                      <RiShieldCheckLine /> Large transfer — code sent to your email
+                    </p>
+                    <button type="button" onClick={requestTransferOtp} disabled={otpSending}
+                      className="text-primary-400 text-xs font-medium hover:underline disabled:opacity-50">
+                      {otpSending ? 'Sending…' : 'Resend OTP'}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div className="flex gap-3">
                 <button onClick={() => setStep('form')} disabled={submitting}

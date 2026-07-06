@@ -1,17 +1,74 @@
-import React, { useState } from 'react';
-import { useDispatch } from 'react-redux';
-import { RiLockLine, RiShieldLine, RiEyeLine, RiEyeOffLine, RiLogoutBoxLine } from 'react-icons/ri';
+import React, { useState, useEffect } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { RiLockLine, RiShieldLine, RiEyeLine, RiEyeOffLine, RiLogoutBoxLine, RiFingerprintLine } from 'react-icons/ri';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import { logout } from '../../store/slices/authSlice';
 import { useNavigate } from 'react-router-dom';
+import {
+  isNativeApp,
+  isBiometricAvailable,
+  isBiometricEnabled,
+  enableBiometricLogin,
+  disableBiometricLogin,
+} from '../../services/biometric';
 
 export default function SecurityPage() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const { user } = useSelector(s => s.auth);
   const [pwd, setPwd] = useState({ current: '', new: '', confirm: '' });
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // ── Biometric login toggle (native Android app only) ─────────────────────
+  const [bioSupported, setBioSupported] = useState(false);
+  const [bioEnabled, setBioEnabled] = useState(isBiometricEnabled());
+  const [bioPwd, setBioPwd] = useState('');       // password confirm when enabling
+  const [bioPrompt, setBioPrompt] = useState(false);
+  const [bioBusy, setBioBusy] = useState(false);
+
+  useEffect(() => {
+    if (!isNativeApp()) return;
+    isBiometricAvailable().then(setBioSupported);
+  }, []);
+
+  const handleBioToggle = async () => {
+    if (bioBusy) return;
+    if (bioEnabled) {
+      await disableBiometricLogin();
+      setBioEnabled(false);
+      toast.success('Biometric login disabled');
+      return;
+    }
+    // Enabling requires the account password (to store securely) — show the
+    // inline confirm field instead of flipping the switch immediately.
+    setBioPrompt(true);
+  };
+
+  const confirmEnableBio = async (e) => {
+    e.preventDefault();
+    if (!bioPwd) { toast.error('Enter your password to enable biometric login'); return; }
+    setBioBusy(true);
+    try {
+      // Verify the password against the server BEFORE storing it, so a typo
+      // can't poison the stored credentials (read-only check — nothing changes).
+      await api.post('/auth/verify-password', { password: bioPwd });
+      const enabled = await enableBiometricLogin({ username: user?.email, password: bioPwd });
+      if (enabled) {
+        setBioEnabled(true);
+        setBioPrompt(false);
+        toast.success('Biometric login enabled');
+      } else {
+        toast.error('Biometric confirmation failed');
+      }
+    } catch {
+      toast.error('Password is incorrect');
+    } finally {
+      setBioPwd('');
+      setBioBusy(false);
+    }
+  };
 
   const changePassword = async (e) => {
     e.preventDefault();
@@ -60,6 +117,60 @@ export default function SecurityPage() {
         <SecurityItem icon={RiShieldLine} title="Session Management" desc="Auto-logout after inactivity" action={<span className="badge badge-success">Active</span>} />
         <SecurityItem icon={RiShieldLine} title="Transfer PIN" desc="4-digit PIN required for every transfer" action={<span className="badge badge-success">Active</span>} />
       </div>
+
+      {/* Biometric login (native Android app only) */}
+      {isNativeApp() && bioSupported && (
+        <div className="glass-card p-5">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <RiFingerprintLine className="text-brand-400 text-xl flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-white font-semibold">Biometric Login</p>
+                <p className="text-dark-300 text-sm">
+                  Sign in with your fingerprint or face. Credentials are stored in your
+                  device&apos;s hardware-backed secure storage.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={bioEnabled}
+              aria-label="Toggle biometric login"
+              onClick={handleBioToggle}
+              disabled={bioBusy}
+              className={`relative w-12 h-7 rounded-full transition-colors flex-shrink-0 ${bioEnabled ? 'bg-brand-500' : 'bg-dark-500'}`}
+            >
+              <span className={`absolute top-1 w-5 h-5 rounded-full bg-white transition-all ${bioEnabled ? 'left-6' : 'left-1'}`} />
+            </button>
+          </div>
+
+          {bioPrompt && !bioEnabled && (
+            <form onSubmit={confirmEnableBio} className="mt-4 space-y-3">
+              <label className="form-label">Confirm your password to enable</label>
+              <div className="relative">
+                <RiLockLine className="absolute left-3.5 top-1/2 -translate-y-1/2 text-dark-300" />
+                <input
+                  type="password"
+                  value={bioPwd}
+                  onChange={e => setBioPwd(e.target.value)}
+                  className="input-field pl-10"
+                  autoComplete="current-password"
+                  required
+                />
+              </div>
+              <div className="flex gap-2">
+                <button type="submit" disabled={bioBusy} className="btn-primary">
+                  {bioBusy ? <><div className="spinner w-4 h-4" /> Enabling...</> : 'Enable Biometric Login'}
+                </button>
+                <button type="button" onClick={() => { setBioPrompt(false); setBioPwd(''); }} className="btn-secondary">
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      )}
 
       {/* Change password */}
       <div className="glass-card p-5">

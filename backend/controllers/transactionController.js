@@ -2,10 +2,10 @@ const bcrypt = require('bcryptjs');
 const PDFDocument = require('pdfkit');
 const { Op } = require('sequelize');
 const sequelize = require('../config/database');
-const { Account, Transaction, Beneficiary, User, Notification } = require('../models');
-const { generateReferenceNumber, maskAccountNumber, formatCurrency, paginate } = require('../utils/helpers');
+const { Account, Transaction, Beneficiary, User, Notification, OTP } = require('../models');
+const { generateReferenceNumber, maskAccountNumber, formatCurrency, paginate, generateOTP, hashOTP, getOTPExpiry } = require('../utils/helpers');
 const { isMethodEnabled, methodBlockedMessage } = require('../utils/transferMethods');
-const { sendTransferAlertEmail } = require('../services/emailService');
+const { sendTransferAlertEmail, sendOTPEmail } = require('../services/emailService');
 const { createAuditLog } = require('../middleware/auditLogger');
 const { success, error, badRequest, notFound, forbidden } = require('../utils/apiResponse');
 const logger = require('../utils/logger');
@@ -57,12 +57,18 @@ exports.getTransactions = async (req, res) => {
   }
 };
 
+// ─── Large-transfer OTP threshold ─────────────────────────────────────────────
+// Transfers at or above this amount require a fresh email OTP in addition to
+// the security PIN. Tunable via env without a deploy.
+const LARGE_TRANSFER_OTP_THRESHOLD = parseFloat(process.env.TRANSFER_OTP_THRESHOLD || '10000');
+
 // ─── Initiate Transfer ────────────────────────────────────────────────────────
 exports.initiateTransfer = async (req, res) => {
   try {
     const {
       toAccountNumber, toAccountName, toBankName, toIfsc,
       amount, transferMode, description, securityPin, scheduledAt,
+      idempotencyKey, otp,
     } = req.body;
 
     const parsedAmount = parseFloat(amount);
@@ -73,10 +79,66 @@ exports.initiateTransfer = async (req, res) => {
     if (!account) return notFound(res, 'Account not found.');
     if (account.status === 'frozen') return forbidden(res, 'Your account is frozen. Contact support.');
 
+    // ── IDEMPOTENCY ──────────────────────────────────────────────────────────
+    // If this exact key was already processed for THIS account, return the
+    // original result instead of executing a duplicate debit (covers native
+    // app retries after network drops). Scoped per-account so one user's key
+    // can never collide with another's.
+    const cleanIdemKey = typeof idempotencyKey === 'string' && idempotencyKey.length <= 100
+      ? idempotencyKey : null;
+    if (cleanIdemKey) {
+      const existing = await Transaction.findOne({
+        where: { account_id: account.id, idempotency_key: cleanIdemKey },
+      });
+      if (existing) {
+        return success(res, {
+          referenceNumber: existing.reference_number,
+          transactionId: existing.id,
+          balanceAfter: parseFloat(existing.balance_after),
+          status: existing.status,
+          duplicate: true,
+        }, 'Transfer already processed (idempotent replay).');
+      }
+    }
+
     // Verify PIN
     const user = await User.findByPk(req.user.id);
     const isPinValid = await bcrypt.compare(String(securityPin), user.security_pin);
     if (!isPinValid) return badRequest(res, 'Incorrect security PIN.');
+
+    // ── LARGE-TRANSFER OTP (server-enforced; never trust the client) ─────────
+    // At/above the threshold a fresh 'transaction' email OTP is REQUIRED. The
+    // client can request one via POST /transactions/transfer-otp. Missing OTP
+    // returns otpRequired:true so the app knows to start the OTP step.
+    if (parsedAmount >= LARGE_TRANSFER_OTP_THRESHOLD && !scheduledAt) {
+      if (!otp) {
+        return res.status(428).json({
+          success: false,
+          otpRequired: true,
+          threshold: LARGE_TRANSFER_OTP_THRESHOLD,
+          message: `Transfers of $${LARGE_TRANSFER_OTP_THRESHOLD.toLocaleString()} or more require email OTP verification.`,
+        });
+      }
+      const otpRecord = await OTP.findOne({
+        where: {
+          email: user.email,
+          purpose: 'transaction',
+          used: false,
+          expires_at: { [Op.gt]: new Date() },
+        },
+        order: [['created_at', 'DESC']],
+      });
+      if (!otpRecord) return badRequest(res, 'No valid OTP found. Please request a new one.');
+      if (otpRecord.attempts >= 5) {
+        await otpRecord.update({ used: true });
+        return badRequest(res, 'Too many OTP attempts. Please request a new one.');
+      }
+      if (otpRecord.otp_hash !== hashOTP(String(otp))) {
+        await otpRecord.increment('attempts');
+        return badRequest(res, 'Incorrect OTP.');
+      }
+      await otpRecord.update({ used: true });
+    }
 
     // RTGS minimum check
     if (transferMode === 'RTGS' && parsedAmount < 200000)
@@ -138,6 +200,7 @@ exports.initiateTransfer = async (req, res) => {
       referenceNumber,
       userId: req.user.id,
       ip: req.ip,
+      idempotencyKey: cleanIdemKey,
     });
 
     if (!result.success) return badRequest(res, result.message);
@@ -174,10 +237,49 @@ exports.initiateTransfer = async (req, res) => {
   }
 };
 
+// ─── Request Transfer OTP (large transfers) ───────────────────────────────────
+// POST /api/transactions/transfer-otp — emails a fresh 5-minute 'transaction'
+// OTP to the authenticated user. Route is rate-limited (otpLimiter); prior
+// unused transaction OTPs are invalidated so only the newest code works.
+exports.requestTransferOTP = async (req, res) => {
+  try {
+    const user = await User.findByPk(req.user.id);
+    if (!user) return notFound(res, 'User not found.');
+
+    await OTP.update(
+      { used: true },
+      { where: { email: user.email, purpose: 'transaction', used: false } }
+    );
+
+    const code = generateOTP();
+    await OTP.create({
+      email: user.email,
+      otp_hash: hashOTP(code),
+      purpose: 'transaction',
+      expires_at: getOTPExpiry(5),
+      ip_address: req.ip,
+    });
+
+    await sendOTPEmail(user.email, code, 'transaction');
+
+    await createAuditLog({
+      userId: req.user.id,
+      action: 'TRANSFER_OTP_SENT',
+      ipAddress: req.ip,
+      status: 'success',
+    });
+
+    return success(res, { expiresInMinutes: 5 }, 'OTP sent to your registered email.');
+  } catch (err) {
+    logger.error(`Transfer OTP error: ${err.message}`);
+    return error(res, 'Could not send OTP. Please try again.');
+  }
+};
+
 // ─── Execute Transfer (internal helper) ──────────────────────────────────────
 const executeTransfer = async ({
   fromAccount, toAccountNumber, toAccountName, toBankName, toIfsc,
-  amount, mode, description, referenceNumber, userId, ip,
+  amount, mode, description, referenceNumber, userId, ip, idempotencyKey = null,
 }) => {
   const t = await sequelize.transaction();
   try {
@@ -210,6 +312,7 @@ const executeTransfer = async ({
       to_ifsc: toIfsc,
       processed_at: new Date(),
       ip_address: ip,
+      idempotency_key: idempotencyKey,
     }, { transaction: t });
 
     // Credit receiver (if internal)

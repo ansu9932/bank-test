@@ -17,6 +17,15 @@ import toast from 'react-hot-toast';
 const BACKEND_ORIGIN = (import.meta.env.VITE_API_BASE_URL || 'https://api.alisterbank.online/api').replace(/\/api\/?$/, '');
 const IMG_ORIGIN = BACKEND_ORIGIN;
 
+// /uploads is now an AUTHENTICATED route on the backend. Plain links and
+// <img> tags cannot send Authorization headers, so the admin token is appended
+// as a query param (the httpOnly cookie also covers same-site loads).
+const authedUploadUrl = (docUrl) => {
+  if (!docUrl) return null;
+  const token = localStorage.getItem('adminToken');
+  return `${IMG_ORIGIN}${docUrl}${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+};
+
 // Tolerant JSON parse for the account.transfer_methods value (object or string).
 const safeParse = (v) => { try { return JSON.parse(v); } catch { return null; } };
 
@@ -210,7 +219,7 @@ export default function AdminUserDetailPage() {
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {user.documents.map((doc) => {
                   const hasFile = doc.has_file ?? Boolean(doc.document_url || doc.file_path);
-                  const href = doc.document_url ? `${IMG_ORIGIN}${doc.document_url}` : null;
+                  const href = doc.document_url ? authedUploadUrl(doc.document_url) : null;
                   const badgeClass = doc.status === 'approved' ? 'badge-success'
                     : doc.status === 'rejected' ? 'badge-danger' : 'badge-warning';
                   const label = String(doc.document_type || 'document').replace(/_/g, ' ');

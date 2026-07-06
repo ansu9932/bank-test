@@ -20,6 +20,12 @@ router.post('/login', loginLimiter, [
 // Client fetches this first, appends it to the URL, and echoes it on submit.
 router.get('/login-handshake', authController.loginHandshake);
 
+// Rotating refresh-token exchange: new 15-min access JWT + new single-use
+// refresh token. Rate-limited so a stolen token can't be brute-force replayed.
+router.post('/refresh', authLimiter, [
+  body('refreshToken').notEmpty().withMessage('Refresh token is required'),
+], validate, authController.refreshToken);
+
 router.post('/logout', protect, authController.logout);
 router.get('/me', protect, authController.getMe);
 
@@ -37,6 +43,12 @@ router.post('/verify-otp', [
   body('otp').isLength({ min: 6, max: 6 }).isNumeric(),
   body('purpose').notEmpty(),
 ], validate, authController.verifyOTP);
+
+// Read-only password re-check (native app: pre-biometric-enable confirmation).
+// Rate-limited with authLimiter so it can't be used as a password oracle.
+router.post('/verify-password', protect, authLimiter, [
+  body('password').notEmpty().withMessage('Password is required'),
+], validate, authController.verifyPassword);
 
 router.post('/change-password', protect, [
   body('currentPassword').notEmpty(),

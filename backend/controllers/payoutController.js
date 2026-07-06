@@ -4,7 +4,9 @@ const sequelize = require('../config/database');
 const { Account, Transaction, User, Notification } = require('../models');
 const opfin = require('../utils/opfin');
 const { resolveUpiProvider, isValidVpa } = require('../utils/upiProviders');
-const { generateReferenceNumber } = require('../utils/helpers');
+const { generateReferenceNumber, generateOTP, hashOTP, getOTPExpiry } = require('../utils/helpers');
+const { OTP } = require('../models');
+const { Op } = require('sequelize');
 const { isMethodEnabled, methodBlockedMessage, normalizeTransferMethods } = require('../utils/transferMethods');
 const { SWIFT_COUNTRY_CODES, SWIFT_DEMO_DISCLAIMER, isValidBic, getSwiftCountry, swiftEtaLabel } = require('../utils/swiftCountries');
 const {
@@ -31,6 +33,85 @@ const INSTANT_MODES = ['IMPS', 'UPI'];
 const NEFT_ETA_LABEL = process.env.NEFT_ETA_LABEL || 'within 2 hours (NEFT is processed in batches)';
 
 const fmtINR = (n) => `$${Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+
+// ─── Shared transfer-security helpers (idempotency + large-transfer OTP) ─────
+// Applied to ALL immediate-debit rails (disburse-payout, internal-transfer,
+// swift-transfer) so retries can never double-spend and big amounts always
+// require a second factor beyond the PIN.
+
+// Transfers at/above this require a fresh email OTP (env-tunable, no deploy).
+const LARGE_TRANSFER_OTP_THRESHOLD = parseFloat(process.env.TRANSFER_OTP_THRESHOLD || '10000');
+
+/**
+ * Idempotency guard. If this key was already processed for this account,
+ * returns the ORIGINAL transaction (caller replies with it instead of
+ * executing a duplicate debit). Returns { key, existing }.
+ */
+async function checkIdempotency(accountId, idempotencyKey) {
+  const key = typeof idempotencyKey === 'string' && idempotencyKey.length <= 100
+    ? idempotencyKey : null;
+  if (!key) return { key: null, existing: null };
+  const existing = await Transaction.findOne({
+    where: { account_id: accountId, idempotency_key: key },
+  });
+  return { key, existing };
+}
+
+/** Standard idempotent-replay response built from the original transaction. */
+function idempotentReplay(res, txn) {
+  return success(res, {
+    referenceNumber: txn.reference_number,
+    transactionId: txn.id,
+    balanceAfter: parseFloat(txn.balance_after),
+    status: txn.status,
+    duplicate: true,
+  }, 'Transfer already processed (idempotent replay).');
+}
+
+/**
+ * Large-transfer OTP gate. Returns null when the transfer may proceed, or a
+ * response (already sent) when it must stop. HTTP 428 + otpRequired:true tells
+ * the client to run the OTP step first (POST /transactions/transfer-otp).
+ */
+async function enforceLargeTransferOTP(res, user, parsedAmount, otp, ip) {
+  if (parsedAmount < LARGE_TRANSFER_OTP_THRESHOLD) return null;
+
+  if (!otp) {
+    res.status(428).json({
+      success: false,
+      otpRequired: true,
+      threshold: LARGE_TRANSFER_OTP_THRESHOLD,
+      message: `Transfers of ${fmtINR(LARGE_TRANSFER_OTP_THRESHOLD)} or more require email OTP verification.`,
+    });
+    return true;
+  }
+
+  const otpRecord = await OTP.findOne({
+    where: {
+      email: user.email,
+      purpose: 'transaction',
+      used: false,
+      expires_at: { [Op.gt]: new Date() },
+    },
+    order: [['created_at', 'DESC']],
+  });
+  if (!otpRecord) {
+    badRequest(res, 'No valid OTP found. Please request a new one.');
+    return true;
+  }
+  if (otpRecord.attempts >= 5) {
+    await otpRecord.update({ used: true });
+    badRequest(res, 'Too many OTP attempts. Please request a new one.');
+    return true;
+  }
+  if (otpRecord.otp_hash !== hashOTP(String(otp))) {
+    await otpRecord.increment('attempts');
+    badRequest(res, 'Incorrect OTP.');
+    return true;
+  }
+  await otpRecord.update({ used: true });
+  return null;
+}
 
 /**
  * Boot hook (kept for server.js compatibility). NEFT transfers are now held in
@@ -125,7 +206,7 @@ exports.disbursePayout = async (req, res) => {
   try {
     const {
       mode, amount, beneficiaryName, accountNumber, confirmAccountNumber,
-      ifsc, vpa, email, description, securityPin,
+      ifsc, vpa, email, description, securityPin, idempotencyKey, otp,
     } = req.body;
 
     const upperMode = String(mode || '').toUpperCase();
@@ -166,11 +247,18 @@ exports.disbursePayout = async (req, res) => {
       return error(res, methodBlockedMessage(upperMode), 403);
     }
 
+    // ── Idempotency: replay returns the ORIGINAL result, never a re-debit ────
+    const { key: idemKey, existing: idemHit } = await checkIdempotency(account.id, idempotencyKey);
+    if (idemHit) return idempotentReplay(res, idemHit);
+
     // ── Security PIN verification ─────────────────────────────────────────────
     const user = await User.findByPk(req.user.id);
     if (!user?.security_pin) return badRequest(res, 'No security PIN set. Please contact support.');
     const pinValid = await bcrypt.compare(String(securityPin || ''), user.security_pin);
     if (!pinValid) return badRequest(res, 'Incorrect security PIN.');
+
+    // ── Large-transfer OTP (server-enforced second factor) ───────────────────
+    if (await enforceLargeTransferOTP(res, user, parsedAmount, otp, req.ip)) return;
 
     // ── Sufficient balance ────────────────────────────────────────────────────
     if (parseFloat(account.available_balance) < parsedAmount) {
@@ -252,6 +340,7 @@ exports.disbursePayout = async (req, res) => {
         to_ifsc: isUpi ? null : String(ifsc).toUpperCase(),
         processed_at: isInstant ? new Date() : null,
         ip_address: req.ip,
+        idempotency_key: idemKey,
         tags: {
           provider: 'opfin',
           railMode: upperMode,                 // preserves true UPI vs IMPS
@@ -385,7 +474,7 @@ exports.internalTransfer = async (req, res) => {
   try {
     const {
       amount, accountNumber, confirmAccountNumber, beneficiaryName,
-      description, securityPin,
+      description, securityPin, idempotencyKey, otp,
     } = req.body;
 
     const parsedAmount = parseFloat(amount);
@@ -426,11 +515,18 @@ exports.internalTransfer = async (req, res) => {
       return badRequest(res, 'Recipient account is not active and cannot receive funds.');
     }
 
+    // ── Idempotency: replay returns the ORIGINAL result, never a re-debit ────
+    const { key: idemKey, existing: idemHit } = await checkIdempotency(senderAccount.id, idempotencyKey);
+    if (idemHit) return idempotentReplay(res, idemHit);
+
     // ── Security PIN verification ─────────────────────────────────────────────
     const user = await User.findByPk(req.user.id);
     if (!user?.security_pin) return badRequest(res, 'No security PIN set. Please contact support.');
     const pinValid = await bcrypt.compare(String(securityPin || ''), user.security_pin);
     if (!pinValid) return badRequest(res, 'Incorrect security PIN.');
+
+    // ── Large-transfer OTP (server-enforced second factor) ───────────────────
+    if (await enforceLargeTransferOTP(res, user, parsedAmount, otp, req.ip)) return;
 
     // ── Sufficient balance ────────────────────────────────────────────────────
     if (parseFloat(senderAccount.available_balance) < parsedAmount) {
@@ -494,6 +590,7 @@ exports.internalTransfer = async (req, res) => {
         from_account_name: senderName,
         processed_at: new Date(),
         ip_address: req.ip,
+        idempotency_key: idemKey,
         tags: { provider: 'internal', railMode: 'ALISTER', counterpartyAccountId: lockedRecipient.id },
       }, { transaction: t });
 
@@ -820,6 +917,7 @@ exports.swiftTransfer = async (req, res) => {
     const {
       amount, beneficiaryName, accountNumber, confirmAccountNumber,
       swiftCode, beneficiaryBank, country, description, securityPin,
+      idempotencyKey, otp,
     } = req.body;
 
     const parsedAmount = parseFloat(amount);
@@ -848,10 +946,17 @@ exports.swiftTransfer = async (req, res) => {
       return error(res, methodBlockedMessage('SWIFT'), 403);
     }
 
+    // ── Idempotency: replay returns the ORIGINAL result, never a re-debit ────
+    const { key: idemKey, existing: idemHit } = await checkIdempotency(account.id, idempotencyKey);
+    if (idemHit) return idempotentReplay(res, idemHit);
+
     const user = await User.findByPk(req.user.id);
     if (!user?.security_pin) return badRequest(res, 'No security PIN set. Please contact support.');
     const pinValid = await bcrypt.compare(String(securityPin || ''), user.security_pin);
     if (!pinValid) return badRequest(res, 'Incorrect security PIN.');
+
+    // ── Large-transfer OTP (server-enforced second factor) ───────────────────
+    if (await enforceLargeTransferOTP(res, user, parsedAmount, otp, req.ip)) return;
 
     if (parseFloat(account.available_balance) < parsedAmount) {
       return badRequest(res, 'Insufficient balance for this transfer.');
@@ -892,6 +997,7 @@ exports.swiftTransfer = async (req, res) => {
         to_bank_name: beneficiaryBank || null,
         processed_at: null,
         ip_address: req.ip,
+        idempotency_key: idemKey,
         tags: {
           railMode: 'SWIFT',
           swiftCode: bic,

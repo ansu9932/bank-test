@@ -2,7 +2,7 @@ const router = require('express').Router();
 const { body } = require('express-validator');
 const txController = require('../controllers/transactionController');
 const { protect, requireActiveAccount } = require('../middleware/auth');
-const { transferLimiter } = require('../middleware/security');
+const { transferLimiter, otpLimiter } = require('../middleware/security');
 
 router.use(protect);
 
@@ -16,6 +16,10 @@ router.post('/transfer', requireActiveAccount, transferLimiter, [
   body('transferMode').isIn(['NEFT', 'RTGS', 'IMPS', 'INTERNAL']).withMessage('Invalid transfer mode'),
   body('securityPin').isLength({ min: 4, max: 4 }).isNumeric().withMessage('Valid 4-digit PIN required'),
 ], txController.initiateTransfer);
+
+// Email OTP for large transfers (server enforces the threshold in
+// initiateTransfer — this endpoint just mints and mails the code).
+router.post('/transfer-otp', requireActiveAccount, otpLimiter, txController.requestTransferOTP);
 
 router.get('/beneficiaries', txController.getBeneficiaries);
 router.post('/beneficiaries', requireActiveAccount, txController.addBeneficiary);

@@ -1,0 +1,4 @@
+
+# Android signing (never commit)
+*.keystore
+android/keystore.properties
