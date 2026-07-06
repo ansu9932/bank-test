@@ -19,7 +19,9 @@ import { staggerContainer, fadeUp, fadeLeft, fadeRight, inView } from '../../com
 // Direct APK download served by the AWS backend. Must use the API domain —
 // the main domain is the Cloudflare-hosted SPA, which has no /downloads file
 // and its 404 catch-all would redirect the click to the app instead.
-const APK_URL = 'https://api.alisterbank.online/downloads/AlisterBank.apk';
+// The ?v= timestamp busts Cloudflare's edge cache so users always get the
+// most recently uploaded APK, never a stale cached build.
+const APK_URL = `https://api.alisterbank.online/downloads/AlisterBank.apk?v=${Date.now()}`;
 
 const STATS = [
   { value: 50000, prefix: '$', suffix: '+ Cr', label: 'Transactions Processed' },

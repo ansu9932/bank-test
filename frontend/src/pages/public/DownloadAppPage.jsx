@@ -14,7 +14,9 @@ import api from '../../services/api';
 
 // Served by the AWS backend — must be the API domain (the main domain is the
 // Cloudflare SPA which has no /downloads file and would redirect to the app).
-const APK_URL = 'https://api.alisterbank.online/downloads/AlisterBank.apk';
+// The ?v= timestamp busts Cloudflare's edge cache so users always get the
+// most recently uploaded APK, never a stale cached build.
+const APK_URL = `https://api.alisterbank.online/downloads/AlisterBank.apk?v=${Date.now()}`;
 
 // Live APK metadata (version, SHA-256 checksum, size) from the AWS backend —
 // the page always reflects the CURRENT published build with no redeploy.
