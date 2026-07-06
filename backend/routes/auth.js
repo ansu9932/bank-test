@@ -38,6 +38,12 @@ router.post('/verify-otp', [
   body('purpose').notEmpty(),
 ], validate, authController.verifyOTP);
 
+// Read-only password re-check (native app: pre-biometric-enable confirmation).
+// Rate-limited with authLimiter so it can't be used as a password oracle.
+router.post('/verify-password', protect, authLimiter, [
+  body('password').notEmpty().withMessage('Password is required'),
+], validate, authController.verifyPassword);
+
 router.post('/change-password', protect, [
   body('currentPassword').notEmpty(),
   body('newPassword').isLength({ min: 8 }),

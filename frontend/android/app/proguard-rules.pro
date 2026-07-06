@@ -19,3 +19,22 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# ── Capacitor: keep the JS↔native bridge and all plugin entry points ─────────
+# Minification must never strip/rename @PluginMethod-annotated methods or the
+# bridge classes, or every plugin call fails at runtime in release builds.
+-keep class com.getcapacitor.** { *; }
+-keep @com.getcapacitor.annotation.CapacitorPlugin public class * { *; }
+-keepclassmembers class * extends com.getcapacitor.Plugin {
+    @com.getcapacitor.PluginMethod public *;
+}
+-keep class online.alisterbank.app.** { *; }
+
+# RootBeer native root-detection library
+-keep class com.scottyab.rootbeer.** { *; }
+
+# Capacitor WebView JS interface
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
+-keepattributes JavascriptInterface, *Annotation*
