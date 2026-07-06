@@ -10,6 +10,30 @@ Cloudflare. **Nothing about the website changes** — the APK is built from a se
 - Node 20+, Java 17 (JDK), Android Studio (or just the Android SDK + `ANDROID_HOME`)
 - One-time: clone the repo and `cd frontend && npm install`
 
+### macOS one-time setup (copy-paste)
+
+```bash
+# 1. Homebrew (skip if installed)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# 2. Node 20 + Java 17
+brew install node@20 openjdk@17
+sudo ln -sfn "$(brew --prefix openjdk@17)/libexec/openjdk.jdk" \
+  /Library/Java/JavaVirtualMachines/openjdk-17.jdk
+
+# 3. Android SDK via Android Studio (easiest): https://developer.android.com/studio
+#    Install it, open once, let it download the SDK. Then:
+echo 'export ANDROID_HOME="$HOME/Library/Android/sdk"' >> ~/.zshrc
+echo 'export PATH="$ANDROID_HOME/platform-tools:$PATH"' >> ~/.zshrc
+echo 'export JAVA_HOME="$(/usr/libexec/java_home -v 17)"' >> ~/.zshrc
+source ~/.zshrc
+
+# 4. Project deps
+git clone <your-repo-url> && cd bank-test/frontend && npm install
+```
+
+Verify: `java -version` prints 17.x, `echo $ANDROID_HOME` prints the SDK path.
+
 ## 1. Build the web assets for the mobile app
 
 ```bash
@@ -110,3 +134,27 @@ when the installed version is older.
 | HTTPS-only, system CAs only | `res/xml/network_security_config.xml` |
 | No adb/cloud backup of app data | `AndroidManifest.xml` (`allowBackup=false`) |
 | Code shrinking + obfuscation | `build.gradle` (`minifyEnabled true`) |
+| Certificate pinning (SPKI pins for api.alisterbank.online) | `res/xml/network_security_config.xml` |
+| Emulator detection — login blocked in emulators | `RootCheckPlugin.java` (`isEmulator`) |
+| Copy/paste blocked on password/PIN/OTP fields | `secureFieldProps()` in `src/services/biometric.js` |
+| Memory wipe on logout (token, refresh token, session markers) | `src/store/slices/authSlice.js` |
+| 15-min access JWT + rotating refresh tokens | backend `/api/auth/refresh` + `src/services/api.js` |
+| Device binding — email alert on new-device login | backend login (`deviceId`) |
+| Idempotency keys — retries can never double-debit | all transfer rails + `TransferPage.jsx` |
+| Email OTP required for transfers ≥ $10,000 (`TRANSFER_OTP_THRESHOLD`) | backend transfer controllers |
+
+## Certificate pinning — IMPORTANT maintenance note
+
+`network_security_config.xml` pins the **Let's Encrypt intermediate + ISRG root**
+public keys (not the leaf), so normal 90-day certificate renewals do NOT break
+the app. The pin set has an `expiration` date ~1 year out — before it lapses,
+re-check the pins and ship an app update:
+
+```bash
+echo | openssl s_client -connect api.alisterbank.online:443 -showcerts 2>/dev/null \
+  | openssl x509 -pubkey -noout | openssl pkey -pubin -outform der \
+  | openssl dgst -sha256 -binary | base64
+```
+
+If you ever switch away from Let's Encrypt, update the pins BEFORE deploying the
+new certificate, or the app will refuse to connect (that's the pin doing its job).

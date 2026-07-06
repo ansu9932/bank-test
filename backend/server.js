@@ -6,6 +6,7 @@ const morgan = require('morgan');
 const compression = require('compression');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 const sequelize = require('./config/database');
 const logger = require('./utils/logger');
@@ -165,11 +166,32 @@ app.use('/api/chat', require('./routes/chat'));
 // GET /api/version — the Android app calls this on launch and compares the
 // installed version. Override values via env without redeploying code:
 //   APP_LATEST_VERSION=1.0.0  APP_APK_URL=...  APP_FORCE_UPDATE=true
+// Also returns the APK's SHA-256 checksum + byte size (computed once and
+// cached until the file's mtime changes) so the download page can display
+// integrity-verification info alongside the download button.
+let apkChecksumCache = { mtime: 0, sha256: null, size: 0 };
+function getApkChecksum() {
+  const apkPath = path.join(__dirname, 'downloads', 'AlisterBank.apk');
+  try {
+    const stat = fs.statSync(apkPath);
+    if (stat.mtimeMs !== apkChecksumCache.mtime) {
+      const hash = crypto.createHash('sha256').update(fs.readFileSync(apkPath)).digest('hex');
+      apkChecksumCache = { mtime: stat.mtimeMs, sha256: hash, size: stat.size };
+    }
+    return { sha256: apkChecksumCache.sha256, sizeBytes: apkChecksumCache.size };
+  } catch {
+    return { sha256: null, sizeBytes: 0 }; // APK not uploaded yet
+  }
+}
+
 app.get('/api/version', (req, res) => {
+  const { sha256, sizeBytes } = getApkChecksum();
   res.json({
     latestVersion: process.env.APP_LATEST_VERSION || '1.0.0',
     apkUrl: process.env.APP_APK_URL || 'https://alisterbank.online/downloads/AlisterBank.apk',
     forceUpdate: process.env.APP_FORCE_UPDATE === 'true',
+    sha256,
+    sizeBytes,
   });
 });
 

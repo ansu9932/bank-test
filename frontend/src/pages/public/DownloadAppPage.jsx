@@ -1,16 +1,24 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import QRCode from 'react-qr-code';
+import useSWR from 'swr';
 import {
   Smartphone, ShieldCheck, Fingerprint, EyeOff, BellRing, Download,
-  Settings, FolderDown, PackageCheck, LockKeyhole,
+  Settings, FolderDown, PackageCheck, LockKeyhole, Copy, Check,
 } from 'lucide-react';
 
 import PageTransition from '../../components/public/PageTransition';
 import { Section, SectionTitle, PageHero } from '../../components/public/sections';
 import { staggerContainer, fadeUp, inView } from '../../components/public/ui';
+import api from '../../services/api';
 
 const APK_URL = 'https://alisterbank.online/downloads/AlisterBank.apk';
+
+// Live APK metadata (version, SHA-256 checksum, size) from the AWS backend —
+// the page always reflects the CURRENT published build with no redeploy.
+const fetchVersion = () => api.get('/version').then((r) => r.data);
+
+const formatMB = (bytes) => (bytes ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : null);
 
 const FEATURES = [
   { icon: Fingerprint, title: 'Biometric Login', desc: 'Sign in with your fingerprint or face — credentials live in your device\u2019s hardware-backed secure storage, never on our servers.' },
@@ -29,6 +37,25 @@ const STEPS = [
 ];
 
 export default function DownloadAppPage() {
+  const { data: meta } = useSWR('app-version', fetchVersion, {
+    revalidateOnFocus: false,
+    shouldRetryOnError: false,
+  });
+  const [copied, setCopied] = useState(false);
+
+  const version = meta?.latestVersion || '1.0.0';
+  const sha256 = meta?.sha256 || null;
+  const size = formatMB(meta?.sizeBytes) || '~6 MB';
+
+  const copyChecksum = async () => {
+    if (!sha256) return;
+    try {
+      await navigator.clipboard.writeText(sha256);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* clipboard unavailable — no-op */ }
+  };
+
   return (
     <PageTransition
       title="Download the App — Alister Bank"
@@ -53,7 +80,7 @@ export default function DownloadAppPage() {
           <motion.div variants={fadeUp} className="rounded-2xl al-glass border border-white/[0.08] p-8">
             <h3 className="text-white text-2xl font-bold mb-3 text-balance">Download for Android</h3>
             <p className="text-white/60 leading-relaxed mb-6">
-              Version 1.0.0 &middot; Android 6.0+ &middot; ~6 MB. Distributed directly by
+              Version {version} &middot; Android 6.0+ &middot; {size}. Distributed directly by
               Alister Bank — always download from this page, never from third-party stores.
             </p>
             <a
@@ -63,6 +90,34 @@ export default function DownloadAppPage() {
               <Download className="w-5 h-5" aria-hidden="true" />
               Download AlisterBank.apk
             </a>
+
+            {/* SHA-256 integrity checksum — verify the download wasn't tampered with */}
+            {sha256 && (
+              <div className="mt-5 rounded-xl bg-black/40 border border-white/[0.08] p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <ShieldCheck className="w-4 h-4 text-[#FF3333]" aria-hidden="true" />
+                  <span className="text-white/80 text-sm font-semibold">SHA-256 checksum</span>
+                </div>
+                <div className="flex items-start justify-between gap-2">
+                  <code className="text-white/60 text-xs break-all font-mono leading-relaxed">{sha256}</code>
+                  <button
+                    type="button"
+                    onClick={copyChecksum}
+                    className="flex-shrink-0 text-white/50 hover:text-white transition-colors p-1"
+                    aria-label="Copy checksum to clipboard"
+                  >
+                    {copied
+                      ? <Check className="w-4 h-4 text-green-400" aria-hidden="true" />
+                      : <Copy className="w-4 h-4" aria-hidden="true" />}
+                  </button>
+                </div>
+                <p className="text-white/40 text-xs mt-2 leading-relaxed">
+                  Verify after download: <code className="font-mono">shasum -a 256 AlisterBank.apk</code> (Mac/Linux)
+                  or <code className="font-mono">certutil -hashfile AlisterBank.apk SHA256</code> (Windows).
+                </p>
+              </div>
+            )}
+
             <p className="text-white/40 text-xs mt-4">
               SHA-256 signed release build. Your browser may warn about direct APK
               downloads — that&apos;s standard for apps outside the Play Store.
