@@ -132,6 +132,8 @@ export default function AvaChatWidget() {
     '/cyber-kyc',
     '/account-setup',
     '/activate-deposit',
+    // Mobile app surface has its own support entry — no floating widget.
+    '/app',
   ];
   const isHiddenRoute = HIDDEN_PREFIXES.some((p) => location.pathname.startsWith(p));
 

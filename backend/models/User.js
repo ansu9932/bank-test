@@ -50,6 +50,13 @@ const User = sequelize.define('User', {
   video_kyc_completed: { type: DataTypes.BOOLEAN, defaultValue: false },
   setup_completed: { type: DataTypes.BOOLEAN, defaultValue: false },
   referral_code: { type: DataTypes.STRING(20) },
+  // ── Mobile app MPIN ────────────────────────────────────────────────────────
+  // bcrypt hash of the 4-6 digit MPIN used by the native app's quick login.
+  // NEVER store the raw MPIN. Attempts/lock mirror the password lockout policy.
+  mpin_hash: { type: DataTypes.STRING(255) },
+  mpin_set_at: { type: DataTypes.DATE },
+  mpin_attempts: { type: DataTypes.INTEGER, defaultValue: 0 },
+  mpin_locked_until: { type: DataTypes.DATE },
 }, {
   tableName: 'users',
   // NOTE: No explicit `indexes` array.

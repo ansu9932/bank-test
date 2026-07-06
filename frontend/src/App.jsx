@@ -32,6 +32,9 @@ const PrivacyPolicyPage = lazy(() => import('./pages/public/PrivacyPolicyPage'))
 const TermsOfServicePage = lazy(() => import('./pages/public/TermsOfServicePage'));
 const DownloadAppPage = lazy(() => import('./pages/public/DownloadAppPage'));
 
+// Mobile app UI (/app/*) — the native APK's dedicated surface (lazy-loaded)
+const MobileApp = lazy(() => import('./app/MobileApp'));
+
 // Account opening flow (lazy-loaded — only fetched when these routes are hit)
 import DashboardLayout from './components/layout/DashboardLayout';
 import AdminLayout from './components/layout/AdminLayout';
@@ -141,6 +144,10 @@ export default function App() {
           <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
           <Route path="/terms-of-service" element={<TermsOfServicePage />} />
         </Route>
+
+        {/* Mobile app — completely separate UI surface (native APK boots here).
+            Lazy-loaded: web visitors never download this bundle. */}
+        <Route path="/app/*" element={withSuspense(<MobileApp />)} />
 
         {/* Auth */}
         <Route path="/login" element={<GuestRoute><LoginPage /></GuestRoute>} />

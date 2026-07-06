@@ -25,6 +25,17 @@ async function boot() {
     /* storage init failure → user simply logs in again */
   }
 
+  // NATIVE APK ONLY: boot straight into the dedicated mobile app surface.
+  // Web browsers are untouched — they land on the marketing site as always.
+  try {
+    const { Capacitor } = await import('@capacitor/core');
+    if (Capacitor.isNativePlatform() && window.location.pathname === '/') {
+      window.history.replaceState(null, '', '/app');
+    }
+  } catch {
+    /* capacitor unavailable (plain web build) — ignore */
+  }
+
   const [{ Provider }, { store }, { default: App }] = await Promise.all([
     import('react-redux'),
     import('./store'),

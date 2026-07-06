@@ -30,6 +30,13 @@ const PERSISTED_KEYS = [
   'adminInfo',
   'adminDeviceId',
   'biometricEnabled',
+  'refreshToken',
+  // Mobile app (/app) MPIN quick-login: 30-day device registration + the
+  // lock-screen greeting. Stored in Android Keystore-backed secure storage.
+  'appDeviceToken',
+  'appDeviceId',
+  'appUserFirstName',
+  'appCustomerId',
 ];
 
 const cache = new Map();
