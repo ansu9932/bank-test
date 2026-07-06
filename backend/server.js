@@ -111,6 +111,8 @@ app.use('/api/payments', require('./routes/payment'));
 app.use('/api/requests', require('./routes/requests'));
 app.use('/api/payouts', require('./routes/payouts'));
 app.use('/api/admin', require('./routes/admin'));
+// AVA chatbot — public intent engine + in-chat email OTP identity verification.
+app.use('/api/chat', require('./routes/chat'));
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {

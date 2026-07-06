@@ -5,6 +5,8 @@ import { useSelector, useDispatch } from 'react-redux';
 import { getMe } from './store/slices/authSlice';
 
 import PageLoader from './components/common/PageLoader';
+// AVA — floating bank chatbot, available on every page (hidden on /admin)
+import AvaChatWidget from './components/chatbot/AvaChatWidget';
 
 // Auth pages
 import LoginPage from './pages/auth/LoginPage';
@@ -193,6 +195,9 @@ export default function App() {
         {/* 404 */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
+
+      {/* AVA chatbot — floating widget on every page (self-hides on /admin) */}
+      <AvaChatWidget />
     </BrowserRouter>
   );
 }

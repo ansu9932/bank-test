@@ -16,6 +16,7 @@ const CardRequest = require('./CardRequest');
 const ApprovedCard = require('./ApprovedCard');
 const AdminDevice = require('./AdminDevice');
 const EmailCampaign = require('./EmailCampaign');
+const ChatOTP = require('./ChatOTP');
 
 // Associations
 User.hasOne(Account, { foreignKey: 'user_id', as: 'account' });
@@ -61,4 +62,5 @@ module.exports = {
   ApprovedCard,
   AdminDevice,
   EmailCampaign,
+  ChatOTP,
 };
