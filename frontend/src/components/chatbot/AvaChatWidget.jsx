@@ -118,8 +118,20 @@ export default function AvaChatWidget() {
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
 
-  // Hidden on all admin routes.
-  const isAdminRoute = location.pathname.startsWith('/admin');
+  // Hidden on admin routes and all auth/onboarding pages (login, open account,
+  // forgot/reset password, KYC, account setup, deposit activation).
+  const HIDDEN_PREFIXES = [
+    '/admin',
+    '/login',
+    '/forgot-password',
+    '/reset-password',
+    '/open-account',
+    '/video-kyc',
+    '/cyber-kyc',
+    '/account-setup',
+    '/activate-deposit',
+  ];
+  const isHiddenRoute = HIDDEN_PREFIXES.some((p) => location.pathname.startsWith(p));
 
   // Auto-scroll on new messages.
   useEffect(() => {
@@ -285,7 +297,7 @@ export default function AvaChatWidget() {
     }
   };
 
-  if (isAdminRoute) return null;
+  if (isHiddenRoute) return null;
 
   return (
     <>
