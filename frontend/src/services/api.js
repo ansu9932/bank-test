@@ -125,13 +125,22 @@ api.interceptors.response.use(
         currentPath === '/login' ||
         currentPath === '/admin/login' ||
         currentPath.startsWith('/login') ||
-        currentPath.startsWith('/admin/login');
+        currentPath.startsWith('/admin/login') ||
+        // Mobile app auth surfaces (lock screen + onboarding) handle their
+        // own errors — never yank the user out mid-flow.
+        currentPath === '/app' ||
+        currentPath.startsWith('/app/onboarding') ||
+        currentPath.startsWith('/app/lock');
 
       if (!isOnAnyLoginPage) {
-        // Determine destination: if the user was on an /admin/* route, send
-        // them to the admin login; otherwise send to the customer login.
+        // Determine destination: admin routes → admin login; mobile app
+        // routes → the app's MPIN lock screen (device token survives, the
+        // user just re-enters their MPIN); everything else → customer login.
         const isAdminRoute = currentPath.startsWith('/admin');
-        window.location.href = isAdminRoute ? '/admin/login' : '/login';
+        const isAppRoute = currentPath.startsWith('/app');
+        window.location.href = isAdminRoute
+          ? '/admin/login'
+          : isAppRoute ? '/app/lock' : '/login';
       }
 
     } else if (status === 403) {

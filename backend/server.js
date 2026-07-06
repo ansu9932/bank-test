@@ -152,6 +152,7 @@ app.use((req, res, next) => {
 
 // ─── API Routes ───────────────────────────────────────────────────────────────
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/app', require('./routes/appAuth'));
 app.use('/api/account', require('./routes/account'));
 app.use('/api/kyc', require('./routes/kyc'));
 app.use('/api/transactions', require('./routes/transactions'));
@@ -399,6 +400,11 @@ async function ensureUserColumns() {
     cid_number: { type: DataTypes.STRING(20), allowNull: true },
     national_id_number: { type: DataTypes.STRING(20), allowNull: true },
     tin_number: { type: DataTypes.STRING(20), allowNull: true },
+    // Mobile app MPIN quick-login (native app onboarding).
+    mpin_hash: { type: DataTypes.STRING(255), allowNull: true },
+    mpin_set_at: { type: DataTypes.DATE, allowNull: true },
+    mpin_attempts: { type: DataTypes.INTEGER, allowNull: true, defaultValue: 0 },
+    mpin_locked_until: { type: DataTypes.DATE, allowNull: true },
   };
 
   for (const [name, def] of Object.entries(columns)) {
@@ -693,7 +699,7 @@ const start = async () => {
       logger.info(`   URL:  http://localhost:${PORT}`);
       logger.info(`══════════════════════════════════════════════\n`);
 
-      console.log('\n🏦 ═════════════════════════════════════��════════');
+      console.log('\n🏦 ════════════════════════════════════�����════════');
       console.log('   ALISTER BANK API SERVER RUNNING');
       console.log(`   Port: ${PORT} | Env: ${process.env.NODE_ENV || 'development'}`);
       console.log(`   Live: ${process.env.FRONTEND_URL || 'https://alisterbank.online'}`);
