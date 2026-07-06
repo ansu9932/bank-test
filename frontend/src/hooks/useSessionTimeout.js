@@ -31,6 +31,7 @@ const ACTIVITY_EVENTS = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'
 // Wipe every client-side auth artifact (token + cached user + session markers).
 function wipeSession() {
   appStorage.removeItem('token');
+  appStorage.removeItem('refreshToken');
   appStorage.removeItem('adminToken');
   appStorage.removeItem('user');
   appStorage.removeItem('loginTime');

@@ -15,6 +15,9 @@ import {
   enableBiometricLogin,
   biometricLogin,
   isDeviceRooted,
+  isEmulatorDevice,
+  getDeviceId,
+  secureFieldProps,
 } from '../../services/biometric';
 
 // Absolute lifespan of the login screen, mirroring the backend login handshake
@@ -62,9 +65,12 @@ export default function LoginPage() {
   useEffect(() => {
     if (!isNativeApp()) return;
     (async () => {
-      if (await isDeviceRooted()) {
+      // Rooted devices AND emulators get the same hard block: neither offers
+      // the Keystore/FLAG_SECURE guarantees a banking session depends on.
+      const [isRooted, isEmu] = await Promise.all([isDeviceRooted(), isEmulatorDevice()]);
+      if (isRooted || isEmu) {
         setRooted(true);
-        return; // rooted → do not even offer biometric login
+        return; // compromised environment → do not even offer biometric login
       }
       if (isBiometricEnabled() && (await isBiometricAvailable())) {
         setCanBiometric(true);
@@ -82,7 +88,7 @@ export default function LoginPage() {
       const tokenFromUrl = new URLSearchParams(window.location.search).get('h');
       let hToken = handshakeToken || tokenFromUrl || '';
       if (!hToken) hToken = await initHandshake();
-      const result = await dispatch(login({ ...creds, handshakeToken: hToken, biometric: true }));
+      const result = await dispatch(login({ ...creds, handshakeToken: hToken, biometric: true, deviceId: getDeviceId() }));
       if (login.fulfilled.match(result)) {
         allowNavigation();
         toast.success('Welcome back!');
@@ -188,6 +194,7 @@ export default function LoginPage() {
     const result = await dispatch(login({
       ...form,
       handshakeToken: hToken,
+      deviceId: getDeviceId(),
       captchaToken: captcha.token,
       captchaAnswer,
     }));
@@ -344,6 +351,7 @@ export default function LoginPage() {
                     placeholder="Enter your password"
                     className={`${INPUT_CLASS} pl-10 pr-10`}
                     autoComplete="current-password"
+                    {...secureFieldProps()}
                   />
                   <button type="button" onClick={() => setShowPwd(!showPwd)}
                     className="absolute right-3.5 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/90 transition-colors">
@@ -397,8 +405,8 @@ export default function LoginPage() {
                   <RiErrorWarningLine className="text-[#FF3333] text-xl flex-shrink-0 mt-0.5" />
                   <p className="text-white/80 text-[13px] leading-relaxed">
                     <span className="font-semibold text-white">Security warning:</span> this
-                    device appears to be rooted. For your protection, Alister Bank login is
-                    disabled on rooted devices.
+                    device appears to be rooted or running in an emulator. For your
+                    protection, Alister Bank login is disabled in this environment.
                   </p>
                 </div>
               )}

@@ -48,6 +48,37 @@ api.interceptors.request.use(
   }
 );
 
+// ─── Silent token refresh (rotating refresh tokens) ───────────────────────────
+// On a 401 for a CUSTOMER session that holds a refresh token, transparently
+// exchange it for a new 15-min access JWT + new refresh token and replay the
+// original request once. Concurrent 401s share one in-flight refresh promise.
+// Admin sessions and requests to /auth/* never attempt a refresh.
+let refreshInFlight = null;
+
+async function tryRefreshToken() {
+  const refreshToken = appStorage.getItem('refreshToken');
+  if (!refreshToken) return null;
+  if (!refreshInFlight) {
+    refreshInFlight = axios
+      .post(`${api.defaults.baseURL}/auth/refresh`, { refreshToken }, { withCredentials: true })
+      .then(({ data }) => {
+        const next = data?.data;
+        if (!next?.token) return null;
+        appStorage.setItem('token', next.token);
+        if (next.refreshToken) appStorage.setItem('refreshToken', next.refreshToken);
+        return next.token;
+      })
+      .catch(() => {
+        // Refresh failed (expired/revoked/replayed) — drop the dead token so
+        // we never loop on it.
+        appStorage.removeItem('refreshToken');
+        return null;
+      })
+      .finally(() => { refreshInFlight = null; });
+  }
+  return refreshInFlight;
+}
+
 // ─── Response Interceptor ─────────────────────────────────────────────────────
 // Handles every successful response transparently (pass-through).
 // On error, inspects the HTTP status code and reacts accordingly.
@@ -56,11 +87,26 @@ api.interceptors.response.use(
   (response) => response,
 
   // ── Error handler ─────────────────────────────────────────────────────────
-  (error) => {
+  async (error) => {
     const status  = error.response?.status;
     const message = error.response?.data?.message;
 
     if (status === 401) {
+      const original = error.config || {};
+      const url = original.url || '';
+      const isAuthEndpoint = url.includes('/auth/');
+      const isCustomerSession = !!appStorage.getItem('token') && !appStorage.getItem('adminToken');
+
+      // One silent refresh attempt per request (guard against loops).
+      if (isCustomerSession && !isAuthEndpoint && !original._retried) {
+        const newToken = await tryRefreshToken();
+        if (newToken) {
+          original._retried = true;
+          original.headers = original.headers || {};
+          original.headers['Authorization'] = `Bearer ${newToken}`;
+          return api(original);
+        }
+      }
       // ── Wipe all session storage keys completely ───────────────────────────
       // 'token'      — customer JWT
       // 'adminToken' — admin JWT
@@ -68,6 +114,7 @@ api.interceptors.response.use(
       appStorage.removeItem('token');
       appStorage.removeItem('adminToken');
       appStorage.removeItem('user');
+      appStorage.removeItem('refreshToken');
 
       // ── Redirect to the appropriate login page only when not already there ─
       // We check both '/login' and '/admin/login' to avoid infinite redirect

@@ -13,6 +13,10 @@ export const login = createAsyncThunk('auth/login', async (credentials, { reject
     const { data } = await api.post('/auth/login', credentials);
     appStorage.setItem('token', data.data.token);
     appStorage.setItem('user', JSON.stringify(data.data.user));
+    // Rotating refresh token — silently exchanged for new 15-min access JWTs
+    // by the api.js response interceptor. Lives in Keystore-encrypted storage
+    // on the native app; wiped on logout and on any auth failure.
+    if (data.data.refreshToken) appStorage.setItem('refreshToken', data.data.refreshToken);
     // Absolute-session marker: the precise ms the current session began. The
     // customer-side session engine enforces a hard 1-hour lifespan from here.
     appStorage.setItem('loginTime', String(Date.now()));
@@ -24,7 +28,10 @@ export const login = createAsyncThunk('auth/login', async (credentials, { reject
 
 export const logout = createAsyncThunk('auth/logout', async () => {
   try { await api.post('/auth/logout'); } catch {}
+  // Full memory wipe: every session artifact goes, including the refresh
+  // token (also revoked server-side by the logout endpoint above).
   appStorage.removeItem('token');
+  appStorage.removeItem('refreshToken');
   appStorage.removeItem('user');
   appStorage.removeItem('loginTime');
 });

@@ -126,3 +126,50 @@ export async function isDeviceRooted() {
     return false;
   }
 }
+
+/**
+ * Emulator detection — banking sessions must not run inside emulators
+ * (Frida/instrumentation risk). Treated exactly like a rooted device by the
+ * login page. Same fail-open-on-error policy as isDeviceRooted().
+ */
+export async function isEmulatorDevice() {
+  if (!isNativeApp()) return false;
+  try {
+    const { registerPlugin } = await import('@capacitor/core');
+    const RootCheck = registerPlugin('RootCheck');
+    const { emulator } = await RootCheck.isEmulator();
+    return !!emulator;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Stable per-install device identifier for device binding. Generated once
+ * with the Web Crypto CSPRNG and persisted; sent with every login so the
+ * backend can email an alert when a NEW device signs in. Not PII — a random
+ * opaque token, reset by app reinstall.
+ */
+/**
+ * Copy/cut/context-menu blocking props for sensitive inputs (passwords, PINs,
+ * OTPs) in the NATIVE app. Spread onto an <input>: prevents the field's value
+ * from ever reaching the Android clipboard (where any app could read it).
+ * Returns {} on web so browser autofill/password managers keep working.
+ */
+export function secureFieldProps() {
+  if (!isNativeApp()) return {};
+  const block = (e) => e.preventDefault();
+  return { onCopy: block, onCut: block, onContextMenu: block, autoComplete: 'off' };
+}
+
+export function getDeviceId() {
+  if (!isNativeApp()) return null;
+  let id = appStorage.getItem('deviceId');
+  if (!id) {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    id = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    appStorage.setItem('deviceId', id);
+  }
+  return id;
+}
