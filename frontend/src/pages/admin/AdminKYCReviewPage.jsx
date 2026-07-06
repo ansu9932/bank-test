@@ -27,6 +27,15 @@ const NEON = { green: '#10b981', cyan: '#06b6d4', red: '#ef4444', amber: '#f59e0
 const BACKEND_ORIGIN = (import.meta.env.VITE_API_BASE_URL || 'https://api.alisterbank.online/api').replace(/\/api\/?$/, '');
 const IMG_ORIGIN = BACKEND_ORIGIN;
 
+// /uploads is now an AUTHENTICATED route on the backend. <img>/<video> tags
+// cannot send Authorization headers, so the admin token is appended as a
+// query param (the httpOnly cookie also covers same-site loads as a fallback).
+const authedUploadUrl = (docUrl) => {
+  if (!docUrl) return null;
+  const token = localStorage.getItem('adminToken');
+  return `${IMG_ORIGIN}${docUrl}${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+};
+
 // Safe date formatter — never throws on null/invalid timestamps.
 const safeDate = (value, pattern = 'dd MMM yyyy, HH:mm', fallback = 'Recent') => {
   if (!value) return fallback;
@@ -86,7 +95,7 @@ function SnapshotViewer({ documents, onExpand }) {
     );
   }
 
-  const src = `${IMG_ORIGIN}${snapshot.document_url}`;
+  const src = authedUploadUrl(snapshot.document_url);
 
   return (
     <button
@@ -335,7 +344,7 @@ export default function AdminKYCReviewPage() {
     () => (selected ? resolveSnapshot(selected.documents) : null),
     [selected]
   );
-  const lightboxSrc = selectedSnapshot?.document_url ? `${IMG_ORIGIN}${selectedSnapshot.document_url}` : null;
+  const lightboxSrc = selectedSnapshot?.document_url ? authedUploadUrl(selectedSnapshot.document_url) : null;
 
   return (
     <div className="text-white">

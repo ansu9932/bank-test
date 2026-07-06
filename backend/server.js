@@ -12,6 +12,45 @@ const logger = require('./utils/logger');
 const { securityHeaders, sanitizeRequest, securityResponseHeaders, apiLimiter, hpp } = require('./middleware/security');
 const { runKYCWorkflow } = require('./jobs/kycWorkflow');
 
+// ─── Boot-time secret validation (fail fast, fail loud) ──────────────────────
+// The server refuses to start with missing/weak security-critical config so a
+// misconfigured deploy can never silently run with (for example) an undefined
+// JWT secret. Checked BEFORE any middleware or route is wired up.
+function validateRequiredSecrets() {
+  const problems = [];
+
+  const required = {
+    JWT_SECRET: process.env.JWT_SECRET,
+    DB_NAME: process.env.DB_NAME,
+    DB_USER: process.env.DB_USER,
+    DB_PASS: process.env.DB_PASS,
+    SMTP_USER: process.env.SMTP_USER,
+    SMTP_PASS: process.env.SMTP_PASS,
+  };
+
+  for (const [key, value] of Object.entries(required)) {
+    if (!value || String(value).trim().length === 0) {
+      problems.push(`${key} is not set`);
+    }
+  }
+
+  if (process.env.JWT_SECRET && process.env.JWT_SECRET.length < 32) {
+    problems.push(`JWT_SECRET is too short (${process.env.JWT_SECRET.length} chars) — must be at least 32 characters`);
+  }
+
+  if (problems.length > 0) {
+    const banner = [
+      '❌ FATAL: refusing to start — security configuration is invalid:',
+      ...problems.map((p) => `   • ${p}`),
+      '   Fix the environment (.env / PM2 env) and restart.',
+    ].join('\n');
+    logger.error(banner);
+    console.error(banner);
+    process.exit(1);
+  }
+}
+validateRequiredSecrets();
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -80,11 +119,14 @@ if (process.env.NODE_ENV !== 'test') {
 // ─── Sanitize Input ───────────────────────────────────────────────────────────
 app.use(sanitizeRequest);
 
-// ─── Static Files (uploaded docs) ────────────────────────────────────────────
-// Absolute path to the uploads root. ensureUploadDirs() (run at boot, below)
-// guarantees this tree + its KYC sub-folders exist so fetches never 404.
-const UPLOADS_ROOT = path.join(__dirname, 'uploads');
-app.use('/uploads', express.static(UPLOADS_ROOT));
+// ─── Uploaded docs (AUTHENTICATED — no public static exposure) ───────────────
+// KYC documents contain government IDs, selfies, and KYC videos. They are now
+// served ONLY through an authenticated route that verifies the requester owns
+// the file (via the KYCDocument DB record) or is an active admin. The public
+// express.static mount was removed deliberately — do not re-add it.
+// ensureUploadDirs() (run at boot, below) guarantees the tree exists.
+const { serveUpload, UPLOADS_ROOT } = require('./middleware/secureUploads');
+app.use('/uploads', serveUpload);
 
 // ─── Rate Limiting ────────────────────────────────────────────────────────────
 app.use('/api/', apiLimiter);

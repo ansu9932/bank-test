@@ -3,10 +3,11 @@ const { v4: uuidv4 } = require('uuid');
 
 /**
  * Generate unique Customer ID: ALB + year + 6 digits
+ * Uses crypto.randomInt (CSPRNG) — Math.random is not safe for identifiers.
  */
 const generateCustomerID = () => {
   const year = new Date().getFullYear().toString().slice(-2);
-  const random = Math.floor(100000 + Math.random() * 900000);
+  const random = crypto.randomInt(100000, 1000000);
   return `ALB${year}${random}`;
 };
 
@@ -18,8 +19,8 @@ const generateCustomerID = () => {
  */
 const generateAccountNumber = () => {
   const prefix = '4141'; // Alister Bank prefix
-  const middle = Math.floor(100000000 + Math.random() * 900000000).toString();
-  const suffix = Math.floor(1000 + Math.random() * 9000).toString();
+  const middle = crypto.randomInt(100000000, 1000000000).toString();
+  const suffix = crypto.randomInt(1000, 10000).toString();
   return prefix + middle + suffix;
 };
 
@@ -35,7 +36,7 @@ const generateIFSC = (branchCode = '000001') => {
  */
 const generateReferenceNumber = (mode = 'IMPS') => {
   const timestamp = Date.now().toString();
-  const random = Math.floor(1000 + Math.random() * 9000);
+  const random = crypto.randomInt(1000, 10000);
   return `${mode}${timestamp.slice(-10)}${random}`;
 };
 
@@ -48,10 +49,10 @@ const generateTicketNumber = () => {
 };
 
 /**
- * Generate 6-digit OTP
+ * Generate 6-digit OTP (cryptographically secure)
  */
 const generateOTP = () => {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return crypto.randomInt(100000, 1000000).toString();
 };
 
 /**
@@ -63,9 +64,24 @@ const generateSecureToken = (length = 64) => {
 
 /**
  * Hash a value using SHA-256
+ * NOTE: kept for non-OTP uses (session-token hashes, card-number hashes) so
+ * existing stored hashes remain valid. For OTPs use hashOTP() below.
  */
 const hashValue = (value) => {
   return crypto.createHash('sha256').update(value).digest('hex');
+};
+
+/**
+ * Hash an OTP using HMAC-SHA256 keyed with a server-side secret.
+ * Unlike a plain (unsalted) SHA-256, an HMAC cannot be brute-forced offline
+ * from a leaked hash without also possessing the server secret, which is
+ * critical for low-entropy 6-digit codes. The key derives from
+ * OTP_HMAC_SECRET (preferred) or falls back to JWT_SECRET.
+ */
+const hashOTP = (otp) => {
+  const secret = process.env.OTP_HMAC_SECRET || process.env.JWT_SECRET;
+  if (!secret) throw new Error('OTP_HMAC_SECRET / JWT_SECRET is not configured');
+  return crypto.createHmac('sha256', secret).update(String(otp)).digest('hex');
 };
 
 /**
@@ -131,7 +147,7 @@ const sanitizeInput = (input) => {
  */
 const generateReferralCode = (name) => {
   const prefix = name.slice(0, 3).toUpperCase();
-  const random = Math.floor(10000 + Math.random() * 90000);
+  const random = crypto.randomInt(10000, 100000);
   return `${prefix}${random}`;
 };
 
@@ -191,10 +207,10 @@ const isLuhnValid = (cardNumber) => {
  * @returns {string} a leading BIN fragment ('51'..'55' or '2221'..'2720')
  */
 const mastercardTestPrefix = () => {
-  if (Math.random() < 0.5) {
-    return String(51 + Math.floor(Math.random() * 5)); // '51'..'55'
+  if (crypto.randomInt(0, 2) === 0) {
+    return String(crypto.randomInt(51, 56)); // '51'..'55'
   }
-  return String(2221 + Math.floor(Math.random() * (2720 - 2221 + 1))); // '2221'..'2720'
+  return String(crypto.randomInt(2221, 2721)); // '2221'..'2720'
 };
 
 /**
@@ -214,7 +230,7 @@ const generateCardNumber = (network) => {
   // Build the first 15 digits (prefix + random fill), then append check digit.
   let body = prefix;
   while (body.length < 15) {
-    body += Math.floor(Math.random() * 10).toString();
+    body += crypto.randomInt(0, 10).toString();
   }
   body = body.slice(0, 15);
   return body + String(luhnCheckDigit(body));
@@ -238,7 +254,7 @@ const detectCardNetwork = (cardNumber) => {
  * Generate a 3-digit CVV.
  * @returns {string}
  */
-const generateCVV = () => String(Math.floor(100 + Math.random() * 900));
+const generateCVV = () => String(crypto.randomInt(100, 1000));
 
 /**
  * Generate a card expiry 'MM/YY' a fixed number of years in the future.
@@ -300,6 +316,7 @@ module.exports = {
   generateOTP,
   generateSecureToken,
   hashValue,
+  hashOTP,
   maskAccountNumber,
   formatCurrency,
   getOTPExpiry,

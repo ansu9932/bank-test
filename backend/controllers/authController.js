@@ -6,7 +6,7 @@ const { generateToken } = require('../middleware/auth');
 const { sendOTPEmail, sendPasswordResetEmail, sendVideoKYCEmail, sendAccountApprovedEmail } = require('../services/emailService');
 const { createAuditLog } = require('../middleware/auditLogger');
 const {
-  generateOTP, hashValue, getOTPExpiry, generateSecureToken,
+  generateOTP, hashValue, hashOTP, getOTPExpiry, generateSecureToken,
   getSecureLinkExpiry, getOnboardingLinkExpiry, detectDevice, isExpired,
 } = require('../utils/helpers');
 const { success, error, badRequest, unauthorized, notFound, linkError } = require('../utils/apiResponse');
@@ -122,7 +122,9 @@ exports.login = async (req, res) => {
       device_type: detectDevice(req.headers['user-agent']),
       is_active: true,
       last_activity: new Date(),
-      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      // Match the 30-minute JWT lifetime — the token is unusable past this
+      // point anyway, and a tight server-side window limits stolen-token risk.
+      expires_at: new Date(Date.now() + 30 * 60 * 1000),
     });
 
     const token = generateToken(user.id, session.id);
@@ -142,7 +144,7 @@ exports.login = async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      maxAge: 30 * 60 * 1000, // 30 min — matches the JWT lifetime
     });
 
     return success(res, {
@@ -245,7 +247,7 @@ exports.sendOTP = async (req, res) => {
     await OTP.update({ used: true }, { where: { email, purpose, used: false } });
 
     const otp = generateOTP();
-    const otpHash = hashValue(otp);
+    const otpHash = hashOTP(otp);
     const expiresAt = getOTPExpiry(5);
 
     await OTP.create({
@@ -288,7 +290,7 @@ exports.verifyOTP = async (req, res) => {
       return badRequest(res, 'OTP has expired. Please request a new one.');
     }
 
-    const otpHash = hashValue(otp);
+    const otpHash = hashOTP(otp);
     if (record.otp_hash !== otpHash) {
       await record.increment('attempts');
       return badRequest(res, `Invalid OTP. ${4 - record.attempts} attempts remaining.`);

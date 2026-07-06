@@ -4,7 +4,7 @@ const {
   User, Account, Transaction, CardRequest, SupportTicket, ChatOTP,
 } = require('../models');
 const { success, badRequest, unauthorized } = require('../utils/apiResponse');
-const { generateOTP, hashValue, maskAccountNumber } = require('../utils/helpers');
+const { generateOTP, hashOTP, maskAccountNumber } = require('../utils/helpers');
 const { sendOTPEmail } = require('../services/emailService');
 const logger = require('../utils/logger');
 
@@ -377,7 +377,7 @@ const sendChatOtp = async (req, res) => {
       const otp = generateOTP();
       await ChatOTP.create({
         email: cleanEmail,
-        otp_hash: hashValue(otp),
+        otp_hash: hashOTP(otp),
         expires_at: new Date(Date.now() + OTP_TTL_MS),
         ip_address: req.ip,
       });
@@ -426,7 +426,7 @@ const verifyChatOtp = async (req, res) => {
       return unauthorized(res, genericFail);
     }
 
-    if (record.otp_hash !== hashValue(cleanOtp)) {
+    if (record.otp_hash !== hashOTP(cleanOtp)) {
       const attempts = record.attempts + 1;
       const locked = attempts >= MAX_OTP_ATTEMPTS;
       await record.update({ attempts, locked });

@@ -136,13 +136,16 @@ const requireRole = (...roles) => (req, res, next) => {
 };
 
 /**
- * Generate JWT access token
+ * Generate JWT access token.
+ * Short-lived (30 min) by design — the server-side Session table remains the
+ * source of truth and is checked on every request, so a stolen token has a
+ * tight validity window. Override via JWT_EXPIRE only if explicitly needed.
  */
 const generateToken = (userId, sessionId) => {
   return jwt.sign(
     { userId, sessionId, type: 'user' },
     process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRE || '7d' }
+    { expiresIn: process.env.JWT_EXPIRE || '30m' }
   );
 };
 
