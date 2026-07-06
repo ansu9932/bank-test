@@ -45,6 +45,7 @@ export function clearDeviceRegistration() {
   appStorage.removeItem('appDeviceToken');
   appStorage.removeItem('appUserFirstName');
   appStorage.removeItem('appCustomerId');
+  appStorage.removeItem('appBiometricMpin');
 }
 
 // ─── Onboarding steps ────────────────────────────────────────────────────────

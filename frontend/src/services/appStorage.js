@@ -37,6 +37,9 @@ const PERSISTED_KEYS = [
   'appDeviceId',
   'appUserFirstName',
   'appCustomerId',
+  // MPIN replay copy for biometric unlock — only ever lives in the native
+  // Keystore-backed store; wiped on logout/device de-registration.
+  'appBiometricMpin',
 ];
 
 const cache = new Map();

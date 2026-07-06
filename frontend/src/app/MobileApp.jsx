@@ -101,7 +101,7 @@ export default function MobileApp() {
             <Route path="home" element={<RequireAppAuth><MainLayout><HomeScreen /></MainLayout></RequireAppAuth>} />
             <Route path="pay" element={<RequireAppAuth><MainLayout><PayScreen /></MainLayout></RequireAppAuth>} />
             <Route path="history" element={<RequireAppAuth><MainLayout><HistoryScreen /></MainLayout></RequireAppAuth>} />
-            <Route path="menu" element={<RequireAppAuth><MainLayout><MenuScreen /></MainLayout></RequireAppAuth>} />
+            <Route path="menu/*" element={<RequireAppAuth><MainLayout><MenuScreen /></MainLayout></RequireAppAuth>} />
             <Route path="*" element={<Navigate to="/app" replace />} />
           </Routes>
         </div>

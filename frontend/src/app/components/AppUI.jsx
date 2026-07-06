@@ -16,13 +16,15 @@ export function Screen({ children, className = '' }) {
 }
 
 // ─── Top header with optional back button ────────────────────────────────────
-export function AppHeader({ title, onBack, right }) {
+export function AppHeader({ title, onBack, backTo, right }) {
+  const navigate = useNavigate();
+  const handleBack = onBack || (backTo ? () => navigate(backTo) : null);
   return (
     <header className="safe-top flex items-center gap-3 px-4 pb-3" style={{ background: 'var(--app-bg)' }}>
-      {onBack && (
+      {handleBack && (
         <button
           type="button"
-          onClick={onBack}
+          onClick={handleBack}
           aria-label="Go back"
           className="flex items-center justify-center w-9 h-9 rounded-full"
           style={{ background: 'var(--app-surface)', border: '1px solid var(--app-border)' }}

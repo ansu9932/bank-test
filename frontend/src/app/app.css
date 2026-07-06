@@ -107,3 +107,157 @@
 /* Hide scrollbars inside the app frame (mobile feel) */
 .mobile-app ::-webkit-scrollbar { display: none; }
 .mobile-app * { scrollbar-width: none; }
+
+/* ── Utility classes used across screens ─────────────────────────────────── */
+.mobile-app .app-dim { color: var(--app-text-dim); }
+.mobile-app .app-accent { color: var(--app-primary); }
+.mobile-app .app-credit-text { color: var(--app-success); }
+
+.mobile-app .app-icon-btn,
+.mobile-app .app-icon-btn-sm {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  color: var(--app-text);
+}
+.mobile-app .app-icon-btn { width: 40px; height: 40px; }
+.mobile-app .app-icon-btn-sm { width: 30px; height: 30px; background: rgba(255, 255, 255, 0.15); border: none; color: inherit; }
+
+.mobile-app .app-badge-dot {
+  position: absolute;
+  top: 8px;
+  right: 9px;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--app-primary);
+}
+
+/* Balance / card hero — always brand red with white text in both themes */
+.mobile-app .app-balance-card {
+  background: linear-gradient(135deg, #cc0000, #8f0000);
+  border: none;
+  color: #ffffff;
+}
+
+.mobile-app .app-action-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 6px;
+  border-radius: 16px;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  color: var(--app-text);
+  transition: background 120ms ease, transform 80ms ease;
+}
+.mobile-app .app-action-tile:active { background: var(--app-surface-2); transform: scale(0.97); }
+.mobile-app .app-action-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--app-primary) 14%, transparent);
+  color: var(--app-primary);
+}
+
+.mobile-app .app-tx-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+.mobile-app .app-tx-credit { background: color-mix(in srgb, var(--app-success) 15%, transparent); color: var(--app-success); }
+.mobile-app .app-tx-debit { background: color-mix(in srgb, var(--app-text-dim) 15%, transparent); color: var(--app-text-dim); }
+
+.mobile-app .app-rail-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--app-surface);
+  border: 1.5px solid var(--app-border);
+  color: var(--app-text);
+  text-align: left;
+}
+.mobile-app .app-rail-active {
+  border-color: var(--app-primary);
+  background: color-mix(in srgb, var(--app-primary) 8%, var(--app-surface));
+}
+.mobile-app .app-rail-active svg { color: var(--app-primary); }
+
+.mobile-app .app-chip {
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 500;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  color: var(--app-text-dim);
+}
+.mobile-app .app-chip-active {
+  background: var(--app-primary);
+  border-color: var(--app-primary);
+  color: var(--app-on-primary);
+}
+
+.mobile-app .app-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 9999px;
+  flex-shrink: 0;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--app-primary) 14%, transparent);
+  color: var(--app-primary);
+  text-transform: uppercase;
+}
+
+.mobile-app .app-toggle {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  border-radius: 9999px;
+  background: var(--app-surface-2);
+  border: 1px solid var(--app-border);
+  transition: background 150ms ease;
+  flex-shrink: 0;
+}
+.mobile-app .app-toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: var(--app-text-dim);
+  transition: transform 150ms ease, background 150ms ease;
+}
+.mobile-app .app-toggle-on { background: var(--app-primary); border-color: var(--app-primary); }
+.mobile-app .app-toggle-on::after { transform: translateX(18px); background: #ffffff; }
+
+.mobile-app .app-input {
+  width: 100%;
+  border-radius: 12px;
+  padding: 12px 16px;
+  font-size: 15px;
+  background: var(--app-surface-2);
+  border: 1px solid var(--app-border);
+  color: var(--app-text);
+  outline: none;
+}
+.mobile-app .app-input:focus { border-color: var(--app-primary); }
