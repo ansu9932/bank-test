@@ -14,13 +14,15 @@ import {
 } from '../../services/biometric';
 import {
   hasDeviceRegistration, getLockScreenIdentity, mpinLogin, clearDeviceRegistration,
+  getMpinLength,
 } from '../services/appAuth';
 import { Screen, PinDots, NumberPad, BrandMark } from '../components/AppUI';
 
-const MPIN_LENGTH = 6;
-
 export default function LockScreen() {
   const navigate = useNavigate();
+  // The user chose a 4-6 digit MPIN at setup — use THEIR length, never a
+  // hardcoded one (a 4-digit user could otherwise never submit 6 dots).
+  const MPIN_LENGTH = getMpinLength();
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);

@@ -134,6 +134,8 @@ function CardPage() {
   const [busy, setBusy] = useState(false);
   const [revealed, setRevealed] = useState(null);
   const [error, setError] = useState('');
+  const [askPin, setAskPin] = useState(false);
+  const [securityPin, setSecurityPin] = useState('');
   const card = data?.card || data;
 
   const requestCard = async () => {
@@ -149,13 +151,22 @@ function CardPage() {
     }
   };
 
+  // The reveal endpoint requires the user's 4-digit transaction security PIN
+  // and returns { number, formattedNumber, cvv, expiry } — map those exactly.
   const reveal = async () => {
-    if (!card?.id) return;
+    if (!card?.id || securityPin.length < 4) return;
     setBusy(true);
     setError('');
     try {
-      const { data: res } = await api.post(`/requests/card/${card.id}/reveal`);
-      setRevealed(res.data || res);
+      const { data: res } = await api.post(`/requests/card/${card.id}/reveal`, { securityPin });
+      const details = res.data || res;
+      setRevealed({
+        cardNumber: details.formattedNumber || details.number || '',
+        expiry: details.expiry || '',
+        cvv: details.cvv || '',
+      });
+      setAskPin(false);
+      setSecurityPin('');
       // Auto-hide after 30s, same policy as the website.
       setTimeout(() => setRevealed(null), 30000);
     } catch (err) {
@@ -182,8 +193,8 @@ function CardPage() {
               <p className="text-xs uppercase tracking-wide opacity-80">Alister Bank Debit</p>
               <p className="text-xl font-bold tracking-widest mt-4 tabular-nums">
                 {revealed?.cardNumber
-                  ? revealed.cardNumber.replace(/(\d{4})(?=\d)/g, '$1 ')
-                  : `•••• •••• •••• ${String(card.card_last4 || card.last4 || '····')}`}
+                  ? revealed.cardNumber
+                  : `•••• •••• •••• ${String(card.card_last4 || card.last4 || String(card.card_number || '').slice(-4) || '····')}`}
               </p>
               <div className="flex justify-between mt-4 text-xs opacity-90">
                 <span>{revealed?.expiry || '••/••'}</span>
@@ -191,8 +202,27 @@ function CardPage() {
               </div>
             </Card>
             <p className="app-dim text-xs text-center capitalize">Status: {(card.status || 'active').toLowerCase()}</p>
-            {!revealed && (
-              <PrimaryButton onClick={reveal} loading={busy}>Reveal card details (30s)</PrimaryButton>
+            {!revealed && !askPin && (
+              <PrimaryButton onClick={() => { setAskPin(true); setError(''); }}>
+                Reveal card details (30s)
+              </PrimaryButton>
+            )}
+            {!revealed && askPin && (
+              <Card className="flex flex-col gap-3">
+                <Field label="Transaction security PIN" hint="The 4-digit PIN you use for transfers.">
+                  <TextInput
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="••••"
+                    value={securityPin}
+                    onChange={(e) => setSecurityPin(e.target.value.replace(/\D/g, ''))}
+                  />
+                </Field>
+                <PrimaryButton onClick={reveal} loading={busy} disabled={securityPin.length < 4}>
+                  Confirm &amp; reveal
+                </PrimaryButton>
+              </Card>
             )}
           </>
         )}

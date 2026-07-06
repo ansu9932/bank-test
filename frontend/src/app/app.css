@@ -136,11 +136,14 @@
   background: var(--app-primary);
 }
 
-/* Balance / card hero — always brand red with white text in both themes */
+/* Balance / card hero — always brand red with white text in both themes.
+   !important is required: the Card component sets background/border inline
+   (var(--app-surface)), which otherwise wins over this class. In light mode
+   that produced white text on a white surface — invisible balance/card. */
 .mobile-app .app-balance-card {
-  background: linear-gradient(135deg, #cc0000, #8f0000);
-  border: none;
-  color: #ffffff;
+  background: linear-gradient(135deg, #cc0000, #8f0000) !important;
+  border: none !important;
+  color: #ffffff !important;
 }
 
 .mobile-app .app-action-tile {

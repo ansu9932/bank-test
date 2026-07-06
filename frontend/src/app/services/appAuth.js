@@ -75,8 +75,17 @@ export async function setupMpin(mpin, onboardingToken) {
     deviceId: getDeviceId(),
     onboardingToken,
   });
+  // Remember the digit count (4-6) so the lock screen shows the right number
+  // of dots and auto-submits at the correct length.
+  appStorage.setItem('appMpinLength', String(String(mpin).length));
   persistSession(data.data);
   return data.data;
+}
+
+/** Digit count of the user's MPIN (4-6); defaults to 4 if unknown. */
+export function getMpinLength() {
+  const n = Number(appStorage.getItem('appMpinLength'));
+  return n >= 4 && n <= 6 ? n : 4;
 }
 
 // ─── Returning-user quick login ──────────────────────────────────────────────

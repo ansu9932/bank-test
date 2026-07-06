@@ -40,24 +40,32 @@ const PERSISTED_KEYS = [
   // MPIN replay copy for biometric unlock — only ever lives in the native
   // Keystore-backed store; wiped on logout/device de-registration.
   'appBiometricMpin',
+  // Digit count of the user's MPIN (4-6) so the lock screen shows the right
+  // number of dots and auto-submits at the correct length.
+  'appMpinLength',
 ];
 
 const cache = new Map();
-let SecureStorage = null;
+
+// CRITICAL: never resolve a Promise directly with a Capacitor plugin proxy.
+// Resolving probes `.then` on the value, and the proxy forwards that as a
+// native call — crashing with "SecureStorage.then() is not implemented on
+// android". Wrap the proxy in a plain object so `.then` is never probed.
+let pluginWrapper = null;
 
 async function loadPlugin() {
-  if (!SecureStorage) {
+  if (!pluginWrapper) {
     const mod = await import('@aparajita/capacitor-secure-storage');
-    SecureStorage = mod.SecureStorage;
+    pluginWrapper = { ss: mod.SecureStorage };
   }
-  return SecureStorage;
+  return pluginWrapper;
 }
 
 /** Hydrate the memory cache from Android Keystore-backed storage. */
 export async function initAppStorage() {
   if (!isNative) return;
   try {
-    const ss = await loadPlugin();
+    const { ss } = await loadPlugin();
     for (const key of PERSISTED_KEYS) {
       try {
         const value = await ss.getItem(key);
@@ -84,7 +92,7 @@ const appStorage = {
     cache.set(key, String(value));
     if (PERSISTED_KEYS.includes(key)) {
       loadPlugin()
-        .then((ss) => ss.setItem(key, String(value)))
+        .then(({ ss }) => ss.setItem(key, String(value)))
         .catch(() => {});
     }
   },
@@ -94,7 +102,7 @@ const appStorage = {
     cache.delete(key);
     if (PERSISTED_KEYS.includes(key)) {
       loadPlugin()
-        .then((ss) => ss.removeItem(key))
+        .then(({ ss }) => ss.removeItem(key))
         .catch(() => {});
     }
   },

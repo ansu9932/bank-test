@@ -211,6 +211,11 @@ app.get('/downloads/:file', (req, res) => {
   }
   res.setHeader('Content-Type', 'application/vnd.android.package-archive');
   res.setHeader('Content-Disposition', 'attachment; filename="AlisterBank.apk"');
+  // CRITICAL: never let Cloudflare (or browsers) cache the APK. Without this,
+  // the edge kept serving stale builds after new uploads and users installed
+  // an outdated app.
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('CDN-Cache-Control', 'no-store');
   res.sendFile(apkPath);
 });
 
