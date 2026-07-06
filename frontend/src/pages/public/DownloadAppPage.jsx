@@ -12,7 +12,9 @@ import { Section, SectionTitle, PageHero } from '../../components/public/section
 import { staggerContainer, fadeUp, inView } from '../../components/public/ui';
 import api from '../../services/api';
 
-const APK_URL = 'https://alisterbank.online/downloads/AlisterBank.apk';
+// Served by the AWS backend — must be the API domain (the main domain is the
+// Cloudflare SPA which has no /downloads file and would redirect to the app).
+const APK_URL = 'https://api.alisterbank.online/downloads/AlisterBank.apk';
 
 // Live APK metadata (version, SHA-256 checksum, size) from the AWS backend —
 // the page always reflects the CURRENT published build with no redeploy.

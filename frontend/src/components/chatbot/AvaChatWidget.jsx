@@ -123,6 +123,7 @@ export default function AvaChatWidget() {
   // forgot/reset password, KYC, account setup, deposit activation).
   const HIDDEN_PREFIXES = [
     '/admin',
+    '/dashboard',
     '/login',
     '/forgot-password',
     '/reset-password',
