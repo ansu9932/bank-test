@@ -450,6 +450,52 @@ async function ensureTransactionColumns() {
   } catch (e) {
     logger.warn(`transactions: category widen skipped: ${e.message}`);
   }
+
+  // Idempotency key for duplicate-transfer prevention (native app retries).
+  // Deliberately NO unique index (64-index overflow risk) — uniqueness is
+  // enforced in application code with a pre-insert lookup.
+  if (!table.idempotency_key) {
+    try {
+      await qi.addColumn('transactions', 'idempotency_key', { type: DataTypes.STRING(100), allowNull: true });
+      logger.info("transactions: added column 'idempotency_key'.");
+    } catch (e) {
+      logger.error(`transactions: could not add column 'idempotency_key': ${e.message}`);
+    }
+  }
+}
+
+/**
+ * Idempotently add the refresh-token-rotation and device-binding columns to an
+ * EXISTING sessions table. Mirrors ensureCardRequestColumns(): named columns
+ * only, added when absent, zero index changes.
+ */
+async function ensureSessionColumns() {
+  const qi = sequelize.getQueryInterface();
+  const { DataTypes } = require('sequelize');
+
+  let table;
+  try {
+    table = await qi.describeTable('sessions');
+  } catch {
+    return; // table absent; plain sync creates it complete from the model.
+  }
+
+  const columns = {
+    refresh_token_hash: { type: DataTypes.STRING(255), allowNull: true },
+    refresh_expires_at: { type: DataTypes.DATE, allowNull: true },
+    device_id: { type: DataTypes.STRING(100), allowNull: true },
+  };
+
+  for (const [name, def] of Object.entries(columns)) {
+    if (!table[name]) {
+      try {
+        await qi.addColumn('sessions', name, def);
+        logger.info(`sessions: added column '${name}'.`);
+      } catch (e) {
+        logger.error(`sessions: could not add column '${name}': ${e.message}`);
+      }
+    }
+  }
 }
 
 /**
@@ -568,6 +614,14 @@ const start = async () => {
     } catch (colErr) {
       logger.error(`transactions column backfill failed (non-fatal): ${colErr.message}`);
       console.error(`transactions column backfill failed (non-fatal): ${colErr.message}`);
+    }
+
+    // Refresh-token rotation + device binding columns for the native app.
+    try {
+      await ensureSessionColumns();
+    } catch (colErr) {
+      logger.error(`sessions column backfill failed (non-fatal): ${colErr.message}`);
+      console.error(`sessions column backfill failed (non-fatal): ${colErr.message}`);
     }
 
     // ─── Background jobs — SINGLE INSTANCE ONLY ────────────────────────────────

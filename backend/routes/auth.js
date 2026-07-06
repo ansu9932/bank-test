@@ -20,6 +20,12 @@ router.post('/login', loginLimiter, [
 // Client fetches this first, appends it to the URL, and echoes it on submit.
 router.get('/login-handshake', authController.loginHandshake);
 
+// Rotating refresh-token exchange: new 15-min access JWT + new single-use
+// refresh token. Rate-limited so a stolen token can't be brute-force replayed.
+router.post('/refresh', authLimiter, [
+  body('refreshToken').notEmpty().withMessage('Refresh token is required'),
+], validate, authController.refreshToken);
+
 router.post('/logout', protect, authController.logout);
 router.get('/me', protect, authController.getMe);
 

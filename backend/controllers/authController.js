@@ -3,7 +3,7 @@ const jwt = require('jsonwebtoken');
 const { Op } = require('sequelize');
 const { User, Account, OTP, Session, Notification } = require('../models');
 const { generateToken } = require('../middleware/auth');
-const { sendOTPEmail, sendPasswordResetEmail, sendVideoKYCEmail, sendAccountApprovedEmail } = require('../services/emailService');
+const { sendOTPEmail, sendPasswordResetEmail, sendVideoKYCEmail, sendAccountApprovedEmail, sendLoginAlertEmail } = require('../services/emailService');
 const { createAuditLog } = require('../middleware/auditLogger');
 const {
   generateOTP, hashValue, hashOTP, getOTPExpiry, generateSecureToken,
@@ -36,7 +36,7 @@ exports.loginHandshake = async (req, res) => {
 // ─── Login ─────────────────────────────────────────────────────────────────────
 exports.login = async (req, res) => {
   try {
-    const { username, password, handshakeToken, captchaToken, captchaAnswer, biometric } = req.body;
+    const { username, password, handshakeToken, captchaToken, captchaAnswer, biometric, deviceId } = req.body;
 
     // ── Ephemeral handshake validation (anti-replay) — SOFT / non-blocking ───
     // The handshake is an anti-replay nicety, NOT an authentication factor.
@@ -124,24 +124,51 @@ exports.login = async (req, res) => {
       { where: { user_id: user.id, is_active: true } }
     );
 
-    // Create session
+    // ── DEVICE BINDING (native app) ────────────────────────────────────────
+    // The Android app sends a stable random deviceId. If this user has never
+    // logged in from this device before, alert them by email — an attacker
+    // with stolen credentials on a new phone triggers an immediate warning.
+    const cleanDeviceId = typeof deviceId === 'string' ? deviceId.slice(0, 100) : null;
+    let isNewDevice = false;
+    if (cleanDeviceId) {
+      const priorFromDevice = await Session.findOne({
+        where: { user_id: user.id, device_id: cleanDeviceId },
+      });
+      isNewDevice = !priorFromDevice;
+    }
+
+    // Create session. The refresh token is a 64-char CSPRNG hex string stored
+    // only as a SHA-256 hash; it long-outlives the 15-minute access JWT and is
+    // ROTATED (single-use) on every /auth/refresh call.
+    const refreshToken = generateSecureToken(32);
     const session = await Session.create({
       user_id: user.id,
       token_hash: 'temp',
       ip_address: req.ip,
       user_agent: req.headers['user-agent'],
       device_type: detectDevice(req.headers['user-agent']),
+      device_id: cleanDeviceId,
       is_active: true,
       last_activity: new Date(),
-      // Match the 30-minute JWT lifetime — the token is unusable past this
-      // point anyway, and a tight server-side window limits stolen-token risk.
-      expires_at: new Date(Date.now() + 30 * 60 * 1000),
+      // Session lifetime = refresh window (30 days). The short-lived access
+      // JWT (15 min) is renewed against this session via /auth/refresh.
+      expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      refresh_token_hash: hashValue(refreshToken),
+      refresh_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     });
 
     const token = generateToken(user.id, session.id);
     await session.update({ token_hash: hashValue(token) });
 
-    // Login-detected alert email intentionally disabled (per product decision).
+    // New-device alert (fire-and-forget; never blocks login).
+    if (isNewDevice) {
+      sendLoginAlertEmail(user.email, user.first_name, {
+        time: new Date().toLocaleString(),
+        ip: req.ip,
+        device: detectDevice(req.headers['user-agent']) || 'Unknown device',
+        newDevice: true,
+      }).catch(() => {});
+    }
 
     await createAuditLog({
       userId: user.id,
@@ -155,11 +182,12 @@ exports.login = async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      maxAge: 30 * 60 * 1000, // 30 min — matches the JWT lifetime
+      maxAge: 15 * 60 * 1000, // 15 min — matches the access-JWT lifetime
     });
 
     return success(res, {
       token,
+      refreshToken,
       user: {
         id: user.id,
         customerId: user.customer_id,
@@ -179,11 +207,81 @@ exports.login = async (req, res) => {
   }
 };
 
+// ─── Refresh Access Token (rotating refresh tokens) ──────────────────────────
+// POST /api/auth/refresh { refreshToken }
+// Exchanges a valid single-use refresh token for a NEW 15-minute access JWT
+// plus a NEW refresh token (rotation). Replay of an already-rotated token is
+// treated as theft: the whole session is revoked and the client must log in.
+exports.refreshToken = async (req, res) => {
+  try {
+    const { refreshToken: presented } = req.body;
+    if (!presented || typeof presented !== 'string') {
+      return unauthorized(res, 'Refresh token is required.');
+    }
+
+    const presentedHash = hashValue(presented);
+    const session = await Session.findOne({
+      where: { refresh_token_hash: presentedHash, is_active: true },
+    });
+
+    if (!session) {
+      // Either never existed OR was already rotated (replay). If it matches a
+      // revoked/rotated session's ancestry we can't tell — fail safe.
+      return unauthorized(res, 'Invalid refresh token. Please sign in again.');
+    }
+    if (session.refresh_expires_at && new Date() > new Date(session.refresh_expires_at)) {
+      await session.update({ is_active: false, logout_at: new Date() });
+      return unauthorized(res, 'Refresh token expired. Please sign in again.');
+    }
+
+    const user = await User.findByPk(session.user_id);
+    if (!user || user.account_status !== 'active') {
+      await session.update({ is_active: false, logout_at: new Date() });
+      return unauthorized(res, 'Account is not active.');
+    }
+
+    // ── ROTATE ── new refresh token + new access JWT bound to the session.
+    const nextRefresh = generateSecureToken(32);
+    const nextAccess = generateToken(user.id, session.id);
+    await session.update({
+      refresh_token_hash: hashValue(nextRefresh),
+      token_hash: hashValue(nextAccess),
+      last_activity: new Date(),
+    });
+
+    await createAuditLog({
+      userId: user.id,
+      action: 'TOKEN_REFRESHED',
+      ipAddress: req.ip,
+      status: 'success',
+    });
+
+    res.cookie('accessToken', nextAccess, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 15 * 60 * 1000,
+    });
+
+    return success(res, { token: nextAccess, refreshToken: nextRefresh }, 'Token refreshed.');
+  } catch (err) {
+    logger.error(`Token refresh error: ${err.message}`);
+    return error(res, 'Token refresh failed.');
+  }
+};
+
 // ─── Logout ────────────────────────────────────────────────────────────────────
 exports.logout = async (req, res) => {
   try {
     if (req.session) {
-      await req.session.update({ is_active: false, logout_at: new Date() });
+      // Revoke BOTH the access session and its refresh token in one shot so a
+      // captured refresh token is dead the instant the user logs out.
+      await req.session.update({
+        is_active: false,
+        logout_at: new Date(),
+        refresh_token_hash: null,
+        refresh_expires_at: null,
+      });
     }
     res.clearCookie('accessToken');
     return success(res, {}, 'Logged out successfully.');

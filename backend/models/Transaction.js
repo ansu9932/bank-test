@@ -23,6 +23,10 @@ const Transaction = sequelize.define('Transaction', {
   tags: { type: DataTypes.JSON },
   ip_address: { type: DataTypes.STRING(50) },
   device_info: { type: DataTypes.STRING(200) },
+  // Client-supplied idempotency key: a repeated transfer request with the same
+  // key returns the ORIGINAL result instead of double-spending. Uniqueness is
+  // enforced in application code (no DB index — 64-index overflow guard).
+  idempotency_key: { type: DataTypes.STRING(100) },
   failure_reason: { type: DataTypes.STRING(500) },
   processed_at: { type: DataTypes.DATE },
   reversal_reason: { type: DataTypes.STRING(500) },
