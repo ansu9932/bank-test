@@ -11,7 +11,9 @@
  */
 import { useEffect, useState, createContext, useContext } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { ShieldAlert } from 'lucide-react';
 import appStorage from '../services/appStorage';
+import { isDeveloperModeEnabled } from '../services/biometric';
 import {
   hasDeviceRegistration, isAppAuthenticated, isInactivityLocked,
   touchAppActivity, lockApp,
@@ -104,8 +106,54 @@ function useAutoLock() {
   }, [navigate]);
 }
 
+// ─── Developer-mode blocking screen ──────────────────────────────────────────
+// Standard banking-app hardening: while Android Developer Options (or USB
+// debugging) is on, the app refuses to run. Re-checked on every foreground
+// resume, so turning it off lets the user back in with "Check again".
+function DevModeBlockScreen({ onRecheck }) {
+  return (
+    <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-5 px-8 text-center"
+      style={{ background: 'var(--app-bg)' }}
+      role="alertdialog" aria-modal="true" aria-label="Developer mode detected">
+      <ShieldAlert size={56} style={{ color: 'var(--app-danger)' }} aria-hidden="true" />
+      <h1 className="text-lg font-bold" style={{ color: 'var(--app-text)' }}>
+        Developer Mode detected
+      </h1>
+      <p className="app-dim text-sm leading-relaxed text-pretty max-w-[300px]">
+        For your security, Alister Bank cannot run while Developer Options or
+        USB debugging is enabled on this device. Please turn it off in
+        Settings, then tap the button below.
+      </p>
+      <p className="app-dim text-xs leading-relaxed max-w-[300px]">
+        {'Settings > System > Developer options > Off'}
+      </p>
+      <button type="button" onClick={onRecheck}
+        className="rounded-xl px-6 py-3 text-sm font-semibold"
+        style={{ background: 'var(--app-primary)', color: '#ffffff' }}>
+        I turned it off — check again
+      </button>
+    </div>
+  );
+}
+
+// Polls the native check on mount and every foreground resume.
+function useDevModeGuard() {
+  const [blocked, setBlocked] = useState(false);
+  const check = () => { isDeveloperModeEnabled().then(setBlocked).catch(() => {}); };
+  useEffect(() => {
+    check();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') check();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
+  return [blocked, check];
+}
+
 export default function MobileApp() {
   const [theme, setTheme] = useState(() => appStorage.getItem('appTheme') || 'dark');
+  const [devBlocked, recheckDevMode] = useDevModeGuard();
   useAutoLock();
 
   const toggle = () => {
@@ -122,6 +170,14 @@ export default function MobileApp() {
     document.body.style.background = theme === 'dark' ? '#0a0a0a' : '#f6f6f4';
     return () => { document.body.style.background = prev; };
   }, [theme]);
+
+  if (devBlocked) {
+    return (
+      <div className="mobile-app" data-app-theme={theme}>
+        <DevModeBlockScreen onRecheck={recheckDevMode} />
+      </div>
+    );
+  }
 
   return (
     <ThemeCtx.Provider value={{ theme, toggle }}>
