@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { MessageCircle, X, Send, ShieldCheck, Lock, Bot } from 'lucide-react';
-import { sendChatMessage, sendChatOtp, verifyChatOtp } from './avaApi';
+import { sendChatMessage, sendChatOtp, verifyChatOtp, verifyChatDob } from './avaApi';
 
 // ─── Session security constants ───────────────────────────────────────────────
 const IDLE_DESTROY_MS = 3 * 60 * 1000;   // 3 min inactivity → auto destroy
@@ -33,7 +33,7 @@ function TypingIndicator() {
   );
 }
 
-function MessageBubble({ msg, onAction, onSuggestion }) {
+const MessageBubble = React.memo(function MessageBubble({ msg, onAction, onSuggestion }) {
   const isUser = msg.from === 'user';
   const isSystem = msg.from === 'system';
 
@@ -92,7 +92,7 @@ function MessageBubble({ msg, onAction, onSuggestion }) {
       </div>
     </div>
   );
-}
+});
 
 // ─── Main widget ──────────────────────────────────────────────────────────────
 
@@ -104,12 +104,13 @@ export default function AvaChatWidget() {
   const [messages, setMessages] = useState([mkMsg(WELCOME)]);
   const [input, setInput] = useState('');
   const [typing, setTyping] = useState(false);
-  // 'none' | 'email' | 'otp' — where we are in the in-chat verification flow
+  // 'none' | 'email' | 'otp' | 'dob' — where we are in the in-chat verification flow
   const [authStage, setAuthStage] = useState('none');
   const [verified, setVerified] = useState(false);
 
   // ── Security-sensitive state kept ONLY in memory (refs) ────────────────────
   const chatTokenRef = useRef(null);       // never persisted to storage
+  const pendingTokenRef = useRef(null);    // OTP-passed token awaiting DOB step
   const pendingEmailRef = useRef('');      // email awaiting OTP
   const pendingQuestionRef = useRef('');   // question asked before verification
   const idleTimerRef = useRef(null);
@@ -145,6 +146,7 @@ export default function AvaChatWidget() {
     clearTimeout(idleTimerRef.current);
     clearTimeout(hardTimerRef.current);
     chatTokenRef.current = null;      // discard the token
+    pendingTokenRef.current = null;
     pendingEmailRef.current = '';
     pendingQuestionRef.current = '';
     setVerified(false);
@@ -233,7 +235,31 @@ export default function AvaChatWidget() {
       return;
     }
 
+    // OTP passed — final security step: confirm date of birth.
+    pendingTokenRef.current = res.pendingToken;
+    setAuthStage('dob');
+    pushMsg({ from: 'ava', text: res.reply });
+  }, [pushMsg]);
+
+  const handleDobStep = useCallback(async (dob) => {
+    // DOB masking: the date never appears in the transcript.
+    pushMsg({ from: 'user', text: '••/••/••••' });
+    setTyping(true);
+    const res = await verifyChatDob(dob, pendingTokenRef.current);
+    setTyping(false);
+
+    if (!res.ok) {
+      pushMsg({ from: 'ava', text: res.reply });
+      if (res.restart) {
+        // Locked or expired → back to the email step.
+        pendingTokenRef.current = null;
+        setAuthStage('email');
+      }
+      return;
+    }
+
     setAuthStage('none');
+    pendingTokenRef.current = null;
     startSecureSession(res.chatToken);
     pushMsg({ from: 'ava', text: res.reply });
 
@@ -285,9 +311,25 @@ export default function AvaChatWidget() {
       return;
     }
 
+    if (authStage === 'dob') {
+      if (/^\d{1,4}[/\-.]\d{1,2}[/\-.]\d{1,4}$/.test(text)) {
+        await handleDobStep(text);
+      } else if (/\b(cancel|stop|never\s*mind|back)\b/i.test(text)) {
+        setAuthStage('none');
+        pendingTokenRef.current = null;
+        pendingQuestionRef.current = '';
+        pushMsg({ from: 'user', text });
+        pushMsg({ from: 'ava', text: 'Verification cancelled. I can still help with general questions.' });
+      } else {
+        pushMsg({ from: 'user', text: '••/••/••••' });
+        pushMsg({ from: 'ava', text: 'Please enter your date of birth as DD/MM/YYYY (for example 25/08/1990), or type "cancel" to skip.' });
+      }
+      return;
+    }
+
     pushMsg({ from: 'user', text });
     await askBackend(text);
-  }, [input, typing, authStage, handleEmailStep, handleOtpStep, askBackend, pushMsg]);
+  }, [input, typing, authStage, handleEmailStep, handleOtpStep, handleDobStep, askBackend, pushMsg]);
 
   const onKeyDown = (e) => {
     // CJK IME safety: don't submit while composing (229 = Safari quirk).
@@ -302,25 +344,32 @@ export default function AvaChatWidget() {
   return (
     <>
       {/* ── Floating launcher button ── */}
-      {!open && (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          aria-label="Chat with AVA, your virtual assistant"
-          className="fixed bottom-5 right-5 z-[9990] flex items-center gap-2 rounded-full bg-brand-500 text-white pl-4 pr-5 py-3 shadow-glow hover:bg-brand-600 transition-all hover:scale-105 font-sans"
-        >
-          <MessageCircle size={20} aria-hidden="true" />
-          <span className="text-sm font-semibold">Ask AVA</span>
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label="Chat with AVA, your virtual assistant"
+        aria-hidden={open}
+        tabIndex={open ? -1 : 0}
+        className={`fixed bottom-5 right-5 z-[9990] flex items-center gap-2 rounded-full bg-brand-500 text-white pl-4 pr-5 py-3 shadow-glow hover:bg-brand-600 font-sans touch-manipulation transition-all duration-200 will-change-transform ${
+          open ? 'opacity-0 scale-90 pointer-events-none' : 'opacity-100 scale-100'
+        }`}
+      >
+        <MessageCircle size={20} aria-hidden="true" />
+        <span className="text-sm font-semibold">Ask AVA</span>
+      </button>
 
-      {/* ── Chat panel ── */}
-      {open && (
-        <div
-          role="dialog"
-          aria-label="AVA virtual assistant chat"
-          className="fixed z-[9990] font-sans bottom-0 right-0 w-full h-[100dvh] sm:bottom-5 sm:right-5 sm:w-[380px] sm:h-[600px] sm:max-h-[calc(100dvh-40px)] flex flex-col bg-dark-700 sm:rounded-2xl border border-white/10 shadow-glass overflow-hidden"
-        >
+      {/* ── Chat panel — always mounted, GPU-animated open/close so it appears
+             instantly and smoothly on every device (especially mobile). ── */}
+      <div
+        role="dialog"
+        aria-label="AVA virtual assistant chat"
+        aria-hidden={!open}
+        className={`fixed z-[9991] font-sans bottom-0 right-0 w-full h-[100dvh] sm:bottom-5 sm:right-5 sm:w-[380px] sm:h-[600px] sm:max-h-[calc(100dvh-40px)] flex flex-col bg-dark-700 sm:rounded-2xl border border-white/10 shadow-glass overflow-hidden transition-all duration-200 ease-out will-change-transform ${
+          open
+            ? 'opacity-100 translate-y-0 pointer-events-auto'
+            : 'opacity-0 translate-y-6 pointer-events-none invisible'
+        }`}
+      >
           {/* Header */}
           <div className="flex items-center gap-3 px-4 py-3 bg-dark-600 border-b border-white/10 shrink-0">
             <div className="relative">
@@ -374,11 +423,11 @@ export default function AvaChatWidget() {
           </div>
 
           {/* Input */}
-          <div className="p-3 bg-dark-600 border-t border-white/10 shrink-0">
+          <div className="p-3 bg-dark-600 border-t border-white/10 shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             <div className="flex items-center gap-2">
               <input
                 ref={inputRef}
-                type={authStage === 'otp' ? 'password' : 'text'}
+                type={authStage === 'otp' || authStage === 'dob' ? 'password' : 'text'}
                 inputMode={authStage === 'otp' ? 'numeric' : 'text'}
                 autoComplete="off"
                 value={input}
@@ -389,17 +438,19 @@ export default function AvaChatWidget() {
                     ? 'Enter your registered email…'
                     : authStage === 'otp'
                       ? 'Enter the 6-digit code…'
-                      : 'Type your message…'
+                      : authStage === 'dob'
+                        ? 'Date of birth (DD/MM/YYYY)…'
+                        : 'Type your message…'
                 }
                 aria-label="Message AVA"
-                className="flex-1 bg-dark-700 text-white text-sm rounded-xl border border-white/10 px-4 py-2.5 placeholder:text-dark-300 focus:outline-none focus:border-brand-500/60"
+                className="flex-1 min-w-0 bg-dark-700 text-white text-sm rounded-xl border border-white/10 px-4 py-2.5 placeholder:text-dark-300 focus:outline-none focus:border-brand-500/60"
               />
               <button
                 type="button"
                 onClick={() => submit()}
                 disabled={!input.trim() || typing}
                 aria-label="Send message"
-                className="h-10 w-10 shrink-0 rounded-xl bg-brand-500 text-white flex items-center justify-center hover:bg-brand-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="h-10 w-10 shrink-0 rounded-xl bg-brand-500 text-white flex items-center justify-center hover:bg-brand-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors touch-manipulation"
               >
                 <Send size={16} aria-hidden="true" />
               </button>
@@ -408,8 +459,7 @@ export default function AvaChatWidget() {
               AVA never asks for your password, PIN or full card number.
             </p>
           </div>
-        </div>
-      )}
+      </div>
     </>
   );
 }

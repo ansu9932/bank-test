@@ -45,12 +45,27 @@ export async function sendChatOtp(email) {
   }
 }
 
-/** Verify the OTP. On success returns { chatToken, firstName, reply }. */
+/** Verify the OTP. On success returns { pendingToken, requiresDob, firstName, reply }. */
 export async function verifyChatOtp(email, otp) {
   try {
     const { data } = await avaApi.post('/chat/otp/verify', { email, otp });
     return { ok: true, ...data.data };
   } catch (err) {
     return { ok: false, reply: errMessage(err, 'Verification failed. Please try again.') };
+  }
+}
+
+/** Confirm date of birth (final step). On success returns { chatToken, firstName, reply }. */
+export async function verifyChatDob(dob, pendingToken) {
+  try {
+    const { data } = await avaApi.post('/chat/dob/verify', { dob }, { headers: { 'X-Chat-Token': pendingToken } });
+    return { ok: true, ...data.data };
+  } catch (err) {
+    return {
+      ok: false,
+      // 'restart' → widget sends the user back to the email step
+      restart: /start (verification )?again|expired/i.test(errMessage(err, '')),
+      reply: errMessage(err, 'Verification failed. Please try again.'),
+    };
   }
 }

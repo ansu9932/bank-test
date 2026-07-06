@@ -26,6 +26,29 @@ const issueChatToken = (userId) => jwt.sign(
 );
 
 /**
+ * Issue a PENDING token after OTP success. It is only valid for the DOB
+ * confirmation step (type 'chat_dob') and expires in 5 minutes. It cannot be
+ * used to read any account data.
+ */
+const PENDING_TOKEN_TTL = '5m';
+const MAX_DOB_ATTEMPTS = 3;
+const issuePendingToken = (userId) => jwt.sign(
+  { userId, type: 'chat_dob' },
+  process.env.JWT_SECRET,
+  { expiresIn: PENDING_TOKEN_TTL },
+);
+
+// In-memory DOB attempt tracking: userId → { count, lockedUntil }.
+// After MAX_DOB_ATTEMPTS wrong answers the user must restart from email OTP.
+const dobAttempts = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of dobAttempts) {
+    if (val.expiresAt < now) dobAttempts.delete(key);
+  }
+}, 60 * 1000).unref();
+
+/**
  * Verify a chat token from the X-Chat-Token header. Returns the user or null.
  * STRICTLY requires type === 'chat' so user/admin JWTs can never be replayed
  * here, and chat tokens carry no sessionId so they are rejected by every other
@@ -419,12 +442,15 @@ const verifyChatOtp = async (req, res) => {
     const user = await User.findOne({ where: { email: cleanEmail } });
     if (!user) return unauthorized(res, genericFail);
 
-    const chatToken = issueChatToken(user.id);
+    // OTP passed — but full access still requires the DOB confirmation step.
+    dobAttempts.delete(String(user.id)); // fresh attempt budget for this flow
+    const pendingToken = issuePendingToken(user.id);
+    const fullName = `${user.first_name} ${user.last_name || ''}`.trim();
     return success(res, {
-      chatToken,
-      expiresInSeconds: 15 * 60,
+      pendingToken,
+      requiresDob: true,
       firstName: user.first_name,
-      reply: `You're verified, ${user.first_name}! I can now securely answer questions about your account. This secure session auto-ends after 15 minutes (or 3 minutes of inactivity).`,
+      reply: `Code verified! This account is registered to ${fullName}.\n\nAs a final security step, please confirm your date of birth (DD/MM/YYYY).`,
     });
   } catch (err) {
     logger.error(`Chat OTP verify error: ${err.message}`);
@@ -432,4 +458,75 @@ const verifyChatOtp = async (req, res) => {
   }
 };
 
-module.exports = { handleMessage, sendChatOtp, verifyChatOtp };
+/**
+ * POST /api/chat/dob/verify
+ * Body: { dob } — accepts DD/MM/YYYY, DD-MM-YYYY or YYYY-MM-DD.
+ * Header: X-Chat-Token (the PENDING token from /otp/verify).
+ * On success returns the full 15-minute read-only chat token.
+ * 3 wrong answers → flow is locked; user must restart from email OTP.
+ */
+const verifyChatDob = async (req, res) => {
+  try {
+    const token = req.headers['x-chat-token'];
+    if (!token) return unauthorized(res, 'Your verification session expired. Please start again with your email.');
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch {
+      return unauthorized(res, 'Your verification session expired. Please start again with your email.');
+    }
+    if (decoded.type !== 'chat_dob') {
+      return unauthorized(res, 'Your verification session expired. Please start again with your email.');
+    }
+
+    const key = String(decoded.userId);
+    const tracker = dobAttempts.get(key) || { count: 0, expiresAt: Date.now() + 10 * 60 * 1000 };
+    if (tracker.count >= MAX_DOB_ATTEMPTS) {
+      return unauthorized(res, 'Too many wrong attempts. For your security, please start verification again with your email.');
+    }
+
+    // Parse the DOB from common formats into YYYY-MM-DD.
+    const raw = String(req.body.dob || '').trim();
+    let iso = null;
+    let m = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/); // YYYY-MM-DD
+    if (m) iso = `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+    if (!iso) {
+      m = raw.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/); // DD/MM/YYYY
+      if (m) iso = `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+    }
+    if (!iso) {
+      return badRequest(res, 'Please enter your date of birth as DD/MM/YYYY (for example 25/08/1990).');
+    }
+
+    const user = await User.findByPk(decoded.userId);
+    if (!user) return unauthorized(res, 'Verification failed. Please start again with your email.');
+
+    // user.date_of_birth is DATEONLY → 'YYYY-MM-DD' string.
+    const stored = String(user.date_of_birth).slice(0, 10);
+    if (stored !== iso) {
+      tracker.count += 1;
+      dobAttempts.set(key, tracker);
+      const remaining = MAX_DOB_ATTEMPTS - tracker.count;
+      if (remaining <= 0) {
+        return unauthorized(res, 'Too many wrong attempts. For your security, please start verification again with your email.');
+      }
+      return unauthorized(res, `That date of birth does not match our records. Please try again (${remaining} attempt${remaining > 1 ? 's' : ''} remaining).`);
+    }
+
+    // Success — full read-only session granted.
+    dobAttempts.delete(key);
+    const chatToken = issueChatToken(user.id);
+    return success(res, {
+      chatToken,
+      expiresInSeconds: 15 * 60,
+      firstName: user.first_name,
+      reply: `You're fully verified, ${user.first_name}! I can now securely answer questions about your account. This secure session auto-ends after 15 minutes (or 3 minutes of inactivity).`,
+    });
+  } catch (err) {
+    logger.error(`Chat DOB verify error: ${err.message}`);
+    return unauthorized(res, 'Verification failed. Please try again.');
+  }
+};
+
+module.exports = { handleMessage, sendChatOtp, verifyChatOtp, verifyChatDob };

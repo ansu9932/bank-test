@@ -41,5 +41,7 @@ const chatOtpVerifyLimiter = rateLimit({
 router.post('/message', chatMessageLimiter, chatController.handleMessage);
 router.post('/otp/send', chatOtpSendLimiter, chatController.sendChatOtp);
 router.post('/otp/verify', chatOtpVerifyLimiter, chatController.verifyChatOtp);
+// DOB confirmation (second factor after OTP) — shares the strict verify limiter.
+router.post('/dob/verify', chatOtpVerifyLimiter, chatController.verifyChatDob);
 
 module.exports = router;
