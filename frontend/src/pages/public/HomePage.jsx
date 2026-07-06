@@ -6,6 +6,7 @@ import {
   FileText, Video, CheckCircle2,
 } from 'lucide-react';
 
+import RealQRCode from 'react-qr-code';
 import PageTransition from '../../components/public/PageTransition';
 import HeroCard3D from '../../components/public/HeroCard3D';
 import StatCounter from '../../components/public/StatCounter';
@@ -14,6 +15,9 @@ import Testimonial from '../../components/public/Testimonial';
 import TiltCard from '../../components/public/TiltCard';
 import { Section, SectionTitle, RedButton, GhostButton } from '../../components/public/sections';
 import { staggerContainer, fadeUp, fadeLeft, fadeRight, inView } from '../../components/public/ui';
+
+// Direct APK download served by the AWS backend (same URL as the /download page).
+const APK_URL = 'https://alisterbank.online/downloads/AlisterBank.apk';
 
 const STATS = [
   { value: 50000, prefix: '$', suffix: '+ Cr', label: 'Transactions Processed' },
@@ -431,14 +435,36 @@ function AppBanner() {
             Manage accounts, transfer instantly, pay bills and invest — all from your pocket.
           </p>
           <div className="mt-7 flex flex-wrap items-center gap-5">
+            {/* Real QR — scanning it on a phone starts the APK download directly */}
             <div className="w-28 h-28 rounded-2xl grid place-items-center bg-white p-2.5">
-              <QRCode />
+              <RealQRCode value={APK_URL} size={92} style={{ width: '100%', height: '100%' }} aria-label="QR code to download the Alister Bank Android app" />
             </div>
             <div className="flex flex-col gap-3">
-              <StoreButton sub="Download on the" main="App Store" />
-              <StoreButton sub="Get it on" main="Google Play" />
+              <a
+                href={APK_URL}
+                className="flex items-center gap-3 px-5 py-2.5 rounded-xl bg-[#CC0000] hover:bg-[#B00000] transition-colors"
+              >
+                <Smartphone size={22} className="text-white" />
+                <div className="leading-tight text-left">
+                  <p className="text-[10px] text-white/70">Direct download</p>
+                  <p className="text-sm font-semibold text-white">Android APK</p>
+                </div>
+              </a>
+              <Link
+                to="/download"
+                className="flex items-center gap-3 px-5 py-2.5 rounded-xl border border-white/15 hover:border-[#CC0000] transition-colors"
+              >
+                <ShieldCheck size={22} className="text-white" />
+                <div className="leading-tight text-left">
+                  <p className="text-[10px]" style={{ color: 'rgba(255,255,255,0.5)' }}>Install guide &amp; checksum</p>
+                  <p className="text-sm font-semibold text-white">Download page</p>
+                </div>
+              </Link>
             </div>
           </div>
+          <p className="mt-4 text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
+            Android 6.0+ &middot; Distributed directly by Alister Bank — scan the QR or tap to download.
+          </p>
         </div>
         <div className="flex justify-center lg:justify-end">
           <div className="w-52 h-96 rounded-[2.5rem] border-4 flex flex-col p-3" style={{ borderColor: '#2D2D2D', background: '#0A0A0A' }}>
@@ -460,28 +486,8 @@ function AppBanner() {
     </Section>
   );
 }
-function StoreButton({ sub, main }) {
-  return (
-    <a href="#" className="flex items-center gap-3 px-5 py-2.5 rounded-xl border border-white/15 hover:border-[#CC0000] transition-colors">
-      <Smartphone size={22} className="text-white" />
-      <div className="leading-tight text-left">
-        <p className="text-[10px]" style={{ color: 'rgba(255,255,255,0.5)' }}>{sub}</p>
-        <p className="text-sm font-semibold text-white">{main}</p>
-      </div>
-    </a>
-  );
-}
-function QRCode() {
-  // Pure-CSS decorative QR grid (no external image).
-  const cells = Array.from({ length: 49 });
-  return (
-    <div className="grid grid-cols-7 gap-0.5 w-full h-full">
-      {cells.map((_, i) => (
-        <div key={i} className="rounded-[1px]" style={{ background: (i * 7 + ((i * 13) % 5)) % 3 === 0 ? '#0A0A0A' : 'transparent' }} />
-      ))}
-    </div>
-  );
-}
+
+
 
 /* ── Section 9: News ─────────────────────────────────────────────────────── */
 function News() {
