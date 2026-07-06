@@ -15,11 +15,15 @@ import {
 
 const fetcher = (url) => api.get(url).then((r) => r.data.data);
 
+// Flag names MUST match the keys the backend's /payments/transfer-limit
+// returns in transferMethods: { internal, imps, neft, upi, swift } — the same
+// source the website's transfer page reads. The bank rail covers both IMPS
+// and NEFT, so it's enabled when either is.
 const RAILS = [
   { id: 'internal', label: 'Alister to Alister', icon: Building2, desc: 'Instant, free' },
-  { id: 'upi', label: 'UPI', icon: Smartphone, desc: 'Pay any UPI ID', flag: 'upi_enabled' },
-  { id: 'bank', label: 'Bank Transfer', icon: Landmark, desc: 'IMPS / NEFT', flag: 'imps_enabled' },
-  { id: 'swift', label: 'International', icon: Globe2, desc: 'SWIFT wire', flag: 'swift_enabled' },
+  { id: 'upi', label: 'UPI', icon: Smartphone, desc: 'Pay any UPI ID', flags: ['upi'] },
+  { id: 'bank', label: 'Bank Transfer', icon: Landmark, desc: 'IMPS / NEFT', flags: ['imps', 'neft'] },
+  { id: 'swift', label: 'International', icon: Globe2, desc: 'SWIFT wire', flags: ['swift'] },
 ];
 
 const newIdemKey = () =>
@@ -37,7 +41,8 @@ export default function PayScreen() {
 
   const { data: limitInfo } = useSWR('/payments/transfer-limit', fetcher);
   const methods = limitInfo?.transferMethods || null;
-  const railEnabled = (r) => !r.flag || !methods || methods[r.flag] === true;
+  // Until flags load, don't lock the UI (backend enforces server-side anyway).
+  const railEnabled = (r) => !r.flags || !methods || r.flags.some((f) => methods[f] === true);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
@@ -64,7 +69,10 @@ export default function PayScreen() {
     }
     if (rail === 'bank') {
       return {
-        ...base, mode: form.mode || 'IMPS', beneficiaryName: form.beneficiaryName,
+        // Default to the first admin-enabled mode, never blindly IMPS.
+        ...base,
+        mode: form.mode || (methods && methods.imps !== true ? 'NEFT' : 'IMPS'),
+        beneficiaryName: form.beneficiaryName,
         accountNumber: form.accountNumber, confirmAccountNumber: form.accountNumber, ifsc: form.ifsc,
       };
     }
@@ -193,14 +201,19 @@ export default function PayScreen() {
             </Field>
             <Field label="Mode">
               <div className="flex gap-2" role="group" aria-label="Bank transfer mode">
-                {['IMPS', 'NEFT'].map((m) => (
-                  <button key={m} type="button"
-                    className={`app-chip ${(form.mode || 'IMPS') === m ? 'app-chip-active' : ''}`}
-                    onClick={() => setForm((f) => ({ ...f, mode: m }))}
-                    aria-pressed={(form.mode || 'IMPS') === m}>
-                    {m}
-                  </button>
-                ))}
+                {['IMPS', 'NEFT'].map((m) => {
+                  // Each mode is individually admin-gated (imps / neft keys).
+                  const modeOn = !methods || methods[m.toLowerCase()] === true;
+                  const active = (form.mode || (methods && methods.imps !== true ? 'NEFT' : 'IMPS')) === m;
+                  return (
+                    <button key={m} type="button" disabled={!modeOn}
+                      className={`app-chip ${active && modeOn ? 'app-chip-active' : ''} ${!modeOn ? 'opacity-40' : ''}`}
+                      onClick={() => setForm((f) => ({ ...f, mode: m }))}
+                      aria-pressed={active}>
+                      {m}
+                    </button>
+                  );
+                })}
               </div>
             </Field>
           </>
