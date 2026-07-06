@@ -97,6 +97,55 @@
   75% { transform: translateX(6px); }
 }
 
+/* ── Lock screen (MPIN entry) ────────────────────────────────────────────── */
+.mobile-app .lock-screen {
+  background:
+    radial-gradient(ellipse 90% 45% at 50% -10%, color-mix(in srgb, var(--app-primary) 22%, transparent), transparent 70%),
+    var(--app-bg);
+}
+.mobile-app .lock-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, #cc0000, #8f0000);
+  color: #ffffff;
+  font-size: 26px;
+  font-weight: 700;
+  text-transform: uppercase;
+  box-shadow:
+    0 0 0 5px color-mix(in srgb, var(--app-primary) 16%, transparent),
+    0 8px 28px color-mix(in srgb, var(--app-primary) 35%, transparent);
+}
+/* Round keypad keys — softer, more premium than the square tiles */
+.mobile-app .lock-pad .pad-key {
+  height: 68px;
+  width: 68px;
+  margin: 0 auto;
+  border-radius: 9999px;
+  font-size: 26px;
+  font-weight: 500;
+  background: color-mix(in srgb, var(--app-surface) 80%, transparent);
+  border: 1px solid var(--app-border);
+  backdrop-filter: blur(6px);
+}
+.mobile-app .lock-pad .pad-key:active {
+  background: color-mix(in srgb, var(--app-primary) 22%, var(--app-surface));
+  border-color: color-mix(in srgb, var(--app-primary) 45%, var(--app-border));
+  transform: scale(0.92);
+}
+/* Larger, glowing PIN dots on the lock screen */
+.mobile-app .lock-dots .pin-dot {
+  width: 16px;
+  height: 16px;
+}
+.mobile-app .lock-dots .pin-dot.filled {
+  box-shadow: 0 0 10px color-mix(in srgb, var(--app-primary) 60%, transparent);
+  transform: scale(1.1);
+}
+
 /* Screen slide-in */
 @keyframes app-screen-in {
   from { opacity: 0; transform: translateY(10px); }

@@ -4,10 +4,14 @@
  * Biometric unlock: after the first successful MPIN entry with biometrics
  * enabled, the MPIN is kept in Keystore-backed secure storage; a fingerprint
  * match replays it. Wrong-MPIN lockout is enforced server-side (5 tries).
+ *
+ * "Forgot MPIN" is double-confirmed: it de-registers the device, so an
+ * accidental tap must never trigger it (step 1: bottom sheet, step 2: hold
+ * separate explicit confirmation).
  */
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, RefreshCcw } from 'lucide-react';
+import { ShieldCheck, KeyRound, AlertTriangle } from 'lucide-react';
 import appStorage from '../../services/appStorage';
 import {
   isBiometricAvailable, isBiometricEnabled, verifyBiometric,
@@ -16,7 +20,7 @@ import {
   hasDeviceRegistration, getLockScreenIdentity, mpinLogin, clearDeviceRegistration,
   getMpinLength,
 } from '../services/appAuth';
-import { Screen, PinDots, NumberPad, BrandMark } from '../components/AppUI';
+import { Screen, PinDots, NumberPad } from '../components/AppUI';
 
 export default function LockScreen() {
   const navigate = useNavigate();
@@ -27,6 +31,8 @@ export default function LockScreen() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [bioReady, setBioReady] = useState(false);
+  // 0 = hidden, 1 = first confirmation sheet, 2 = final warning sheet
+  const [forgotStep, setForgotStep] = useState(0);
   const { firstName } = getLockScreenIdentity();
 
   // No registration on this device → onboarding is the only way in.
@@ -86,24 +92,29 @@ export default function LockScreen() {
     }
   };
 
-  const reverify = () => {
+  // Final, double-confirmed action: forget this device and start over.
+  const confirmForgot = () => {
     clearDeviceRegistration();
     navigate('/app/onboarding?reverify=1', { replace: true });
   };
 
   return (
-    <Screen className="flex flex-col items-center justify-between px-6 py-10">
-      <header className="flex flex-col items-center gap-4 pt-4 text-center">
-        <BrandMark size={52} />
-        <div>
+    <Screen className="lock-screen flex flex-col items-center justify-between px-6 py-10">
+      <header className="flex flex-col items-center gap-4 pt-6 text-center">
+        <div className="lock-avatar" aria-hidden="true">
+          {firstName ? firstName.charAt(0) : 'A'}
+        </div>
+        <div className="flex flex-col gap-0.5">
           <p className="app-dim text-sm">Welcome back{firstName ? ',' : ''}</p>
-          {firstName && <h1 className="text-xl font-bold text-balance">{firstName}</h1>}
+          {firstName && <h1 className="text-2xl font-bold text-balance">{firstName}</h1>}
         </div>
       </header>
 
       <section className="flex flex-col items-center gap-5 w-full" aria-label="Enter MPIN">
-        <p className="app-dim text-sm">Enter your {MPIN_LENGTH}-digit MPIN</p>
-        <PinDots length={MPIN_LENGTH} filled={pin.length} error={!!error} />
+        <p className="app-dim text-sm tracking-wide">Enter your {MPIN_LENGTH}-digit MPIN</p>
+        <div className="lock-dots">
+          <PinDots length={MPIN_LENGTH} filled={pin.length} error={!!error} />
+        </div>
         <p
           className="text-sm text-center min-h-5"
           style={{ color: 'var(--app-danger)' }}
@@ -111,23 +122,101 @@ export default function LockScreen() {
         >
           {error}
         </p>
-        <NumberPad
-          onDigit={onDigit}
-          onDelete={() => setPin((p) => p.slice(0, -1))}
-          onBiometric={bioReady ? onBiometric : undefined}
-        />
+        <div className="lock-pad w-full max-w-xs">
+          <NumberPad
+            onDigit={onDigit}
+            onDelete={() => setPin((p) => p.slice(0, -1))}
+            onBiometric={bioReady ? onBiometric : undefined}
+          />
+        </div>
       </section>
 
       <footer className="flex flex-col items-center gap-4 pt-6">
-        <button type="button" className="flex items-center gap-2 text-sm app-dim" onClick={reverify}>
-          <RefreshCcw size={14} aria-hidden="true" />
-          Forgot MPIN? Re-verify identity
+        <button
+          type="button"
+          className="flex items-center gap-2 text-sm app-dim"
+          onClick={() => setForgotStep(1)}
+        >
+          <KeyRound size={14} aria-hidden="true" />
+          Forgot MPIN?
         </button>
         <p className="flex items-center gap-1.5 text-xs app-dim">
           <ShieldCheck size={13} aria-hidden="true" />
           Secured by Alister Bank
         </p>
       </footer>
+
+      {/* Forgot MPIN — double confirmation (de-registers this device) */}
+      {forgotStep > 0 && (
+        <div
+          className="fixed inset-0 z-[70] flex items-end justify-center"
+          style={{ background: 'rgba(0,0,0,0.65)' }}
+          role="dialog" aria-modal="true" aria-label="Forgot MPIN confirmation"
+        >
+          <div
+            className="w-full max-w-md rounded-t-2xl p-5 pb-10 flex flex-col gap-4"
+            style={{ background: 'var(--app-bg)' }}
+          >
+            {forgotStep === 1 ? (
+              <>
+                <h2 className="text-base font-bold">Reset your MPIN?</h2>
+                <p className="app-dim text-sm leading-relaxed">
+                  To reset your MPIN you must verify your identity again with your
+                  Customer ID, date of birth, email OTP and password.
+                </p>
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setForgotStep(2)}
+                    className="w-full rounded-xl py-3 text-sm font-semibold"
+                    style={{ background: 'var(--app-surface)', color: 'var(--app-text)', border: '1px solid var(--app-border)' }}
+                  >
+                    Continue to reset
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setForgotStep(0)}
+                    className="w-full rounded-xl py-3 text-sm font-semibold"
+                    style={{ background: 'var(--app-primary)', color: 'var(--app-on-primary)' }}
+                  >
+                    Cancel — I remember my MPIN
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <AlertTriangle size={18} style={{ color: 'var(--app-danger)' }} aria-hidden="true" />
+                  <h2 className="text-base font-bold">Are you absolutely sure?</h2>
+                </div>
+                <p className="app-dim text-sm leading-relaxed">
+                  This removes your account from this device right now. You will be
+                  taken to the full verification flow and must complete every step
+                  before you can use the app again.
+                </p>
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={confirmForgot}
+                    className="w-full rounded-xl py-3 text-sm font-semibold"
+                    style={{ background: 'var(--app-danger)', color: '#ffffff' }}
+                  >
+                    Yes, reset my MPIN
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setForgotStep(0)}
+                    className="w-full rounded-xl py-3 text-sm font-semibold"
+                    style={{ background: 'var(--app-surface)', color: 'var(--app-text)', border: '1px solid var(--app-border)' }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </Screen>
   );
 }
