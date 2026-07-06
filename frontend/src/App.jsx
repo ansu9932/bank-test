@@ -134,6 +134,8 @@ export default function App() {
           <Route path="/payments" element={<PaymentsPage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/contact" element={<ContactPage />} />
+          {/* Android app download — additive public page, no impact on web flows */}
+          <Route path="/download" element={<DownloadAppPage />} />
           <Route path="/careers" element={<CareersPage />} />
           <Route path="/press" element={<PressPage />} />
           <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
