@@ -1,5 +1,14 @@
 apply plugin: 'com.android.application'
 
+// Release signing — reads android/keystore.properties (NOT committed to git).
+// Expected keys: storeFile, storePassword, keyAlias, keyPassword.
+// storeFile is resolved relative to the android/ directory.
+def keystorePropsFile = rootProject.file('keystore.properties')
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+}
+
 android {
     namespace = "online.alisterbank.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,12 +25,27 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (keystorePropsFile.exists()) {
+            release {
+                storeFile rootProject.file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
             // Shrink + obfuscate release builds — raises the bar for reverse
             // engineering the banking app's native layer.
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // Sign with the release keystore when keystore.properties exists;
+            // without it Gradle produces app-release-unsigned.apk.
+            if (keystorePropsFile.exists()) {
+                signingConfig signingConfigs.release
+            }
         }
     }
     buildFeatures {
