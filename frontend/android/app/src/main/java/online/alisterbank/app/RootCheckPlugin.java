@@ -8,6 +8,7 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import com.scottyab.rootbeer.RootBeer;
 
 import android.os.Build;
+import android.provider.Settings;
 
 /**
  * Root / jailbreak detection bridge, backed by the RootBeer library.
@@ -54,6 +55,27 @@ public class RootCheckPlugin extends Plugin {
 
         JSObject result = new JSObject();
         result.put("emulator", emulator);
+        call.resolve(result);
+    }
+
+    /**
+     * Developer-options / USB-debugging detection. Like other banking apps,
+     * the app refuses to run while Developer Mode is enabled: ADB access
+     * allows runtime inspection and input injection that undermine the
+     * app's security guarantees. The JS layer shows a blocking screen until
+     * the user turns Developer Options off.
+     */
+    @PluginMethod
+    public void isDeveloperModeEnabled(PluginCall call) {
+        boolean devOptions = Settings.Global.getInt(
+            getContext().getContentResolver(),
+            Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0) == 1;
+        boolean adbEnabled = Settings.Global.getInt(
+            getContext().getContentResolver(),
+            Settings.Global.ADB_ENABLED, 0) == 1;
+
+        JSObject result = new JSObject();
+        result.put("enabled", devOptions || adbEnabled);
         call.resolve(result);
     }
 }

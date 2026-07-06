@@ -145,6 +145,25 @@ export async function isEmulatorDevice() {
 }
 
 /**
+ * Developer-mode detection — like other banking apps, the app refuses to run
+ * while Android Developer Options (or USB debugging) is enabled, since ADB
+ * allows runtime inspection and input injection. Checked on app entry and on
+ * every foreground resume. Same fail-open-on-error policy as above so a
+ * plugin hiccup can't brick the app for everyone.
+ */
+export async function isDeveloperModeEnabled() {
+  if (!isNativeApp()) return false;
+  try {
+    const { registerPlugin } = await import('@capacitor/core');
+    const RootCheck = registerPlugin('RootCheck');
+    const { enabled } = await RootCheck.isDeveloperModeEnabled();
+    return !!enabled;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Stable per-install device identifier for device binding. Generated once
  * with the Web Crypto CSPRNG and persisted; sent with every login so the
  * backend can email an alert when a NEW device signs in. Not PII — a random

@@ -2,11 +2,15 @@
  * Pay — all four REAL transfer rails: internal Alister transfer, UPI payout,
  * bank payout (IMPS/NEFT), and SWIFT international. Reuses the exact backend
  * contracts the website's TransferPage uses (idempotency key + 428 OTP step).
+ *
+ * Flow (matches other bank apps): details form → REVIEW page (all details
+ * shown read-only) → user enters the security PIN on the review page →
+ * transfer completes (with the email-OTP step for large amounts).
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
 import {
-  Building2, Smartphone, Landmark, Globe2, CheckCircle2, ShieldCheck,
+  Building2, Smartphone, Landmark, Globe2, CheckCircle2, ShieldCheck, ArrowLeft,
 } from 'lucide-react';
 import api from '../../services/api';
 import {
@@ -26,11 +30,18 @@ const RAILS = [
   { id: 'swift', label: 'International', icon: Globe2, desc: 'SWIFT wire', flags: ['swift'] },
 ];
 
+const RAIL_LABEL = { internal: 'Alister to Alister', upi: 'UPI', bank: 'Bank Transfer', swift: 'International (SWIFT)' };
+
 const newIdemKey = () =>
   (crypto.randomUUID && crypto.randomUUID()) || `idem-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
+const fmtMoney = (v) =>
+  `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 export default function PayScreen() {
   const [rail, setRail] = useState('internal');
+  // step: 'details' → 'review' (PIN entered here) → success screen
+  const [step, setStep] = useState('details');
   const [form, setForm] = useState({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -38,6 +49,9 @@ export default function PayScreen() {
   const [otp, setOtp] = useState('');
   const [idemKey, setIdemKey] = useState(newIdemKey);
   const [success, setSuccess] = useState(null);
+  // Live lookups: UPI provider + IFSC bank/branch
+  const [upiInfo, setUpiInfo] = useState(null);    // { verifiedProvider } | 'invalid' | null
+  const [ifscInfo, setIfscInfo] = useState(null);  // { bank, branch, city } | 'invalid' | null
 
   const { data: limitInfo } = useSWR('/payments/transfer-limit', fetcher);
   const methods = limitInfo?.transferMethods || null;
@@ -46,12 +60,44 @@ export default function PayScreen() {
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
+  // ── Debounced UPI provider lookup (shows the provider bank under the field) ─
+  useEffect(() => {
+    const vpa = (form.vpa || '').trim();
+    if (rail !== 'upi' || !vpa.includes('@') || vpa.length < 5) { setUpiInfo(null); return undefined; }
+    const t = setTimeout(async () => {
+      try {
+        const { data: res } = await api.post('/payments/lookup-upi-provider', { vpa });
+        setUpiInfo(res.data || res);
+      } catch {
+        setUpiInfo('invalid');
+      }
+    }, 450);
+    return () => clearTimeout(t);
+  }, [form.vpa, rail]);
+
+  // ── Debounced IFSC lookup (shows bank + branch under the field) ─────────────
+  useEffect(() => {
+    const code = (form.ifsc || '').trim().toUpperCase();
+    if (rail !== 'bank' || code.length !== 11) { setIfscInfo(null); return undefined; }
+    const t = setTimeout(async () => {
+      try {
+        const { data: res } = await api.get(`/payments/verify-ifsc/${code}`);
+        setIfscInfo(res.data || res);
+      } catch {
+        setIfscInfo('invalid');
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [form.ifsc, rail]);
+
   const endpoint = useMemo(() => ({
     internal: '/payments/internal-transfer',
     upi: '/payments/disburse-payout',
     bank: '/payments/disburse-payout',
     swift: '/payments/swift-transfer',
   })[rail], [rail]);
+
+  const bankMode = form.mode || (methods && methods.imps !== true ? 'NEFT' : 'IMPS');
 
   const buildPayload = () => {
     const base = {
@@ -69,10 +115,7 @@ export default function PayScreen() {
     }
     if (rail === 'bank') {
       return {
-        // Default to the first admin-enabled mode, never blindly IMPS.
-        ...base,
-        mode: form.mode || (methods && methods.imps !== true ? 'NEFT' : 'IMPS'),
-        beneficiaryName: form.beneficiaryName,
+        ...base, mode: bankMode, beneficiaryName: form.beneficiaryName,
         accountNumber: form.accountNumber, confirmAccountNumber: form.accountNumber, ifsc: form.ifsc,
       };
     }
@@ -82,6 +125,15 @@ export default function PayScreen() {
       beneficiaryBank: form.beneficiaryBank, country: form.country,
     };
   };
+
+  // Details-step completeness — PIN is NOT collected here; it lives on review.
+  const detailsComplete = useMemo(() => {
+    if (!form.amount || Number(form.amount) <= 0 || !form.beneficiaryName) return false;
+    if (rail === 'internal') return !!form.accountNumber;
+    if (rail === 'upi') return !!form.vpa && form.vpa.includes('@') && upiInfo !== 'invalid';
+    if (rail === 'bank') return !!form.accountNumber && (form.ifsc || '').length === 11 && ifscInfo !== 'invalid';
+    return !!form.accountNumber && !!form.swiftCode && !!form.beneficiaryBank && !!form.country;
+  }, [form, rail, upiInfo, ifscInfo]);
 
   const submit = async () => {
     if (busy) return;
@@ -115,9 +167,13 @@ export default function PayScreen() {
     setOtp('');
     setOtpNeeded(false);
     setError('');
+    setStep('details');
+    setUpiInfo(null);
+    setIfscInfo(null);
     setIdemKey(newIdemKey());
   };
 
+  // ─── Success screen ──────────────────────────────────────────────────────────
   if (success) {
     return (
       <Screen className="pb-24 flex flex-col">
@@ -130,7 +186,7 @@ export default function PayScreen() {
               : 'Transfer successful'}
           </h2>
           <p className="app-dim text-sm text-pretty">
-            {success.message || `Your transfer of $${form.amount} has been processed.`}
+            {success.message || `Your transfer of ${fmtMoney(form.amount)} has been processed.`}
           </p>
           <PrimaryButton onClick={reset} className="mt-2">Make another transfer</PrimaryButton>
         </div>
@@ -138,6 +194,93 @@ export default function PayScreen() {
     );
   }
 
+  // ─── Review + PIN step ───────────────────────────────────────────────────────
+  if (step === 'review') {
+    const rows = [
+      ['Transfer type', RAIL_LABEL[rail]],
+      ['Amount', fmtMoney(form.amount)],
+      ['Beneficiary', form.beneficiaryName],
+      ...(rail === 'internal' ? [['Account number', form.accountNumber]] : []),
+      ...(rail === 'upi' ? [
+        ['UPI ID', form.vpa],
+        ...(upiInfo && upiInfo !== 'invalid' && upiInfo.verifiedProvider
+          ? [['Provider', upiInfo.verifiedProvider]] : []),
+      ] : []),
+      ...(rail === 'bank' ? [
+        ['Account number', form.accountNumber],
+        ['IFSC', (form.ifsc || '').toUpperCase()],
+        ...(ifscInfo && ifscInfo !== 'invalid'
+          ? [['Bank', `${ifscInfo.bank} · ${ifscInfo.branch}`]] : []),
+        ['Mode', bankMode],
+      ] : []),
+      ...(rail === 'swift' ? [
+        ['Account / IBAN', form.accountNumber],
+        ['SWIFT / BIC', form.swiftCode],
+        ['Bank', form.beneficiaryBank],
+        ['Country', (form.country || '').toUpperCase()],
+      ] : []),
+      ...(form.description ? [['Description', form.description]] : []),
+    ];
+
+    return (
+      <Screen className="pb-24">
+        <AppHeader title="Confirm Transfer" />
+        <div className="px-5 flex flex-col gap-4">
+          <button type="button" onClick={() => { setStep('details'); setError(''); setOtpNeeded(false); setOtp(''); }}
+            className="flex items-center gap-1.5 text-sm app-dim self-start">
+            <ArrowLeft size={15} aria-hidden="true" /> Edit details
+          </button>
+
+          {/* Amount hero */}
+          <Card className="app-balance-card text-center py-6">
+            <p className="text-xs uppercase tracking-wide opacity-80">You are sending</p>
+            <p className="text-3xl font-bold mt-1 tabular-nums">{fmtMoney(form.amount)}</p>
+            <p className="text-sm mt-1 opacity-90">to {form.beneficiaryName}</p>
+          </Card>
+
+          {/* Read-only detail rows */}
+          <Card className="divide-y p-0" style={{ borderColor: 'var(--app-border)' }}>
+            {rows.map(([label, value]) => (
+              <div key={label} className="flex items-center justify-between gap-3 px-4 py-3">
+                <span className="app-dim text-xs">{label}</span>
+                <span className="text-sm font-medium text-right break-all">{value}</span>
+              </div>
+            ))}
+          </Card>
+
+          {/* PIN entry — the transfer only completes from here */}
+          <Card className="flex flex-col gap-3">
+            <Field label="Security PIN" hint="Enter your transaction PIN to authorize this transfer.">
+              <TextInput type="password" inputMode="numeric" maxLength={6} placeholder="••••"
+                value={form.securityPin || ''} onChange={set('securityPin')} />
+            </Field>
+
+            {otpNeeded && (
+              <Field label="Email OTP" hint="Required for large transfers — check your inbox.">
+                <OTPBoxes length={6} value={otp} onChange={setOtp} />
+              </Field>
+            )}
+
+            {error && (
+              <p className="text-sm" style={{ color: 'var(--app-danger)' }} role="alert">{error}</p>
+            )}
+
+            <PrimaryButton onClick={submit} loading={busy}
+              disabled={!form.securityPin || form.securityPin.length < 4 || (otpNeeded && otp.length < 6)}>
+              {otpNeeded ? 'Confirm with OTP' : `Pay ${fmtMoney(form.amount)}`}
+            </PrimaryButton>
+          </Card>
+
+          <p className="flex items-center justify-center gap-1.5 text-xs app-dim pb-2">
+            <ShieldCheck size={13} aria-hidden="true" />
+            Protected by transaction PIN and OTP verification
+          </p>
+        </div>
+      </Screen>
+    );
+  }
+
+  // ─── Details step ────────────────────────────────────────────────────────────
   return (
     <Screen className="pb-24">
       <AppHeader title="Send Money" />
@@ -152,7 +295,7 @@ export default function PayScreen() {
               key={r.id}
               type="button"
               disabled={!enabled}
-              onClick={() => { setRail(r.id); setError(''); setOtpNeeded(false); }}
+              onClick={() => { setRail(r.id); setError(''); setUpiInfo(null); setIfscInfo(null); }}
               className={`app-rail-tile ${rail === r.id ? 'app-rail-active' : ''} ${!enabled ? 'opacity-40' : ''}`}
               aria-pressed={rail === r.id}
             >
@@ -164,7 +307,7 @@ export default function PayScreen() {
         })}
       </div>
 
-      {/* Form */}
+      {/* Details form — no PIN here; it's collected on the review page */}
       <div className="px-5 mt-5 flex flex-col gap-4">
         <Field label="Amount">
           <TextInput type="number" inputMode="decimal" min="1" placeholder="0.00"
@@ -183,10 +326,22 @@ export default function PayScreen() {
         )}
 
         {rail === 'upi' && (
-          <Field label="UPI ID">
-            <TextInput placeholder="name@bank" autoCapitalize="none"
-              value={form.vpa || ''} onChange={set('vpa')} />
-          </Field>
+          <>
+            <Field label="UPI ID">
+              <TextInput placeholder="name@bank" autoCapitalize="none"
+                value={form.vpa || ''} onChange={set('vpa')} />
+            </Field>
+            {upiInfo === 'invalid' && (
+              <p className="text-sm -mt-2" style={{ color: 'var(--app-danger)' }} role="alert">
+                Enter a valid UPI ID (e.g. username@okaxis).
+              </p>
+            )}
+            {upiInfo && upiInfo !== 'invalid' && upiInfo.verifiedProvider && (
+              <p className="text-sm -mt-2 app-credit-text" role="status">
+                {upiInfo.verifiedProvider}
+              </p>
+            )}
+          </>
         )}
 
         {rail === 'bank' && (
@@ -196,15 +351,26 @@ export default function PayScreen() {
                 value={form.accountNumber || ''} onChange={set('accountNumber')} />
             </Field>
             <Field label="IFSC code">
-              <TextInput placeholder="e.g. HDFC0001234" autoCapitalize="characters"
-                value={form.ifsc || ''} onChange={set('ifsc')} />
+              <TextInput placeholder="e.g. HDFC0001234" autoCapitalize="characters" maxLength={11}
+                value={form.ifsc || ''}
+                onChange={(e) => setForm((f) => ({ ...f, ifsc: e.target.value.toUpperCase() }))} />
             </Field>
+            {ifscInfo === 'invalid' && (
+              <p className="text-sm -mt-2" style={{ color: 'var(--app-danger)' }} role="alert">
+                Invalid IFSC code — no matching bank branch found.
+              </p>
+            )}
+            {ifscInfo && ifscInfo !== 'invalid' && (
+              <p className="text-sm -mt-2 app-credit-text" role="status">
+                {ifscInfo.bank} · {ifscInfo.branch}{ifscInfo.city ? `, ${ifscInfo.city}` : ''}
+              </p>
+            )}
             <Field label="Mode">
               <div className="flex gap-2" role="group" aria-label="Bank transfer mode">
                 {['IMPS', 'NEFT'].map((m) => {
                   // Each mode is individually admin-gated (imps / neft keys).
                   const modeOn = !methods || methods[m.toLowerCase()] === true;
-                  const active = (form.mode || (methods && methods.imps !== true ? 'NEFT' : 'IMPS')) === m;
+                  const active = bankMode === m;
                   return (
                     <button key={m} type="button" disabled={!modeOn}
                       className={`app-chip ${active && modeOn ? 'app-chip-active' : ''} ${!modeOn ? 'opacity-40' : ''}`}
@@ -243,24 +409,12 @@ export default function PayScreen() {
           <TextInput placeholder="What's this for?" value={form.description || ''} onChange={set('description')} />
         </Field>
 
-        <Field label="Security PIN">
-          <TextInput type="password" inputMode="numeric" placeholder="Your transaction PIN"
-            value={form.securityPin || ''} onChange={set('securityPin')} />
-        </Field>
-
-        {otpNeeded && (
-          <Field label="Email OTP" hint="Required for large transfers — check your inbox.">
-            <OTPBoxes length={6} value={otp} onChange={setOtp} />
-          </Field>
-        )}
-
         {error && (
           <p className="text-sm" style={{ color: 'var(--app-danger)' }} role="alert">{error}</p>
         )}
 
-        <PrimaryButton onClick={submit} loading={busy}
-          disabled={!form.amount || !form.securityPin || (otpNeeded && otp.length < 6)}>
-          {otpNeeded ? 'Confirm with OTP' : 'Send Money'}
+        <PrimaryButton onClick={() => { setStep('review'); setError(''); }} disabled={!detailsComplete}>
+          Review transfer
         </PrimaryButton>
 
         <p className="flex items-center justify-center gap-1.5 text-xs app-dim pb-2">

@@ -313,10 +313,27 @@ function CardPage() {
 // ─── Beneficiaries ────────────────────────────────────────────────────────────
 function BeneficiariesPage() {
   const { data, mutate } = useSWR('/transactions/beneficiaries', fetcher);
-  const [form, setForm] = useState({ name: '', accountNumber: '' });
+  const [form, setForm] = useState({ name: '', accountNumber: '', ifsc: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // Live IFSC lookup result: { bank, branch, city, state } | 'invalid' | null
+  const [ifscInfo, setIfscInfo] = useState(null);
   const list = data?.beneficiaries || data || [];
+
+  // Debounced bank/branch lookup as soon as the IFSC looks complete (11 chars).
+  useEffect(() => {
+    const code = (form.ifsc || '').trim().toUpperCase();
+    if (code.length !== 11) { setIfscInfo(null); return undefined; }
+    const t = setTimeout(async () => {
+      try {
+        const { data: res } = await api.get(`/payments/verify-ifsc/${code}`);
+        setIfscInfo(res.data || res);
+      } catch {
+        setIfscInfo('invalid');
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [form.ifsc]);
 
   const add = async () => {
     setBusy(true);
@@ -324,10 +341,14 @@ function BeneficiariesPage() {
     try {
       await api.post('/transactions/beneficiaries', {
         name: form.name,
+        accountName: form.name,
         account_number: form.accountNumber,
         accountNumber: form.accountNumber,
+        ifscCode: (form.ifsc || '').trim().toUpperCase() || undefined,
+        bankName: ifscInfo && ifscInfo !== 'invalid' ? ifscInfo.bank : undefined,
       });
-      setForm({ name: '', accountNumber: '' });
+      setForm({ name: '', accountNumber: '', ifsc: '' });
+      setIfscInfo(null);
       mutate();
     } catch (err) {
       setError(err.response?.data?.message || 'Could not add beneficiary.');
@@ -349,8 +370,24 @@ function BeneficiariesPage() {
             <TextInput inputMode="numeric" placeholder="Account number" value={form.accountNumber}
               onChange={(e) => setForm((f) => ({ ...f, accountNumber: e.target.value }))} />
           </Field>
+          <Field label="IFSC code" hint="Leave empty for Alister Bank accounts.">
+            <TextInput placeholder="e.g. HDFC0001234" autoCapitalize="characters" maxLength={11}
+              value={form.ifsc}
+              onChange={(e) => setForm((f) => ({ ...f, ifsc: e.target.value.toUpperCase() }))} />
+          </Field>
+          {ifscInfo === 'invalid' && (
+            <p className="text-sm" style={{ color: 'var(--app-danger)' }} role="alert">
+              Invalid IFSC code — no matching bank branch found.
+            </p>
+          )}
+          {ifscInfo && ifscInfo !== 'invalid' && (
+            <p className="text-sm app-credit-text" role="status">
+              {ifscInfo.bank} · {ifscInfo.branch}{ifscInfo.city ? `, ${ifscInfo.city}` : ''}
+            </p>
+          )}
           {error && <p className="text-sm" style={{ color: 'var(--app-danger)' }} role="alert">{error}</p>}
-          <PrimaryButton onClick={add} loading={busy} disabled={!form.name || !form.accountNumber}>
+          <PrimaryButton onClick={add} loading={busy}
+            disabled={!form.name || !form.accountNumber || ifscInfo === 'invalid'}>
             Add beneficiary
           </PrimaryButton>
         </Card>
@@ -374,17 +411,25 @@ function BeneficiariesPage() {
 }
 
 // ─── Add Money ────────────────────────────────────────────────────────────────
+// Mirrors the website's DepositFunds: UPI/QR (≤ $100,000) hits /payments/
+// create-qr which returns a scannable qrImage. The old code posted to
+// create-deposit-order without a paymentMethod, which that endpoint rejects
+// with "Select a valid payment method: Card or Net Banking".
+const UPI_QR_CAP = 100000;
+
 function AddMoneyPage() {
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [order, setOrder] = useState(null);
+  const overCap = Number(amount) > UPI_QR_CAP;
 
   const createOrder = async () => {
     setBusy(true);
     setError('');
     try {
-      const { data } = await api.post('/payments/create-deposit-order', { amount });
+      // QR flow for standard amounts; the backend caps UPI/QR at $100,000.
+      const { data } = await api.post('/payments/create-qr', { amount: Number(amount) });
       setOrder(data.data || data);
     } catch (err) {
       setError(err.response?.data?.message || 'Deposits are not enabled for your account yet.');
@@ -399,13 +444,19 @@ function AddMoneyPage() {
       <div className="px-5 flex flex-col gap-4">
         {!order ? (
           <Card className="flex flex-col gap-3">
-            <Field label="Amount to deposit">
+            <Field label="Amount to deposit" hint={`Pay by scanning a UPI QR code (up to $${UPI_QR_CAP.toLocaleString('en-US')}).`}>
               <TextInput type="number" inputMode="decimal" min="1" placeholder="0.00"
                 value={amount} onChange={(e) => setAmount(e.target.value)} />
             </Field>
+            {overCap && (
+              <p className="app-dim text-xs text-pretty">
+                Amounts above ${UPI_QR_CAP.toLocaleString('en-US')} require Card or Net Banking —
+                please use the website&apos;s Deposit Funds page for large deposits.
+              </p>
+            )}
             {error && <p className="text-sm" style={{ color: 'var(--app-danger)' }} role="alert">{error}</p>}
-            <PrimaryButton onClick={createOrder} loading={busy} disabled={!amount}>
-              Create deposit order
+            <PrimaryButton onClick={createOrder} loading={busy} disabled={!amount || overCap}>
+              Generate payment QR
             </PrimaryButton>
           </Card>
         ) : (
@@ -416,8 +467,13 @@ function AddMoneyPage() {
               <p className="text-sm">Order created — reference: {order.orderRef || order.order_ref || '—'}</p>
             )}
             <p className="app-dim text-xs text-pretty">
-              Scan and pay {amount ? fmtMoney(amount) : ''} to complete your deposit. Your balance updates automatically once payment is confirmed.
+              Scan and pay {amount ? fmtMoney(amount) : ''} with any UPI app. Your balance updates
+              automatically once payment is confirmed.
             </p>
+            <button type="button" className="app-dim text-xs underline"
+              onClick={() => { setOrder(null); setAmount(''); }}>
+              Start a new deposit
+            </button>
           </Card>
         )}
       </div>
