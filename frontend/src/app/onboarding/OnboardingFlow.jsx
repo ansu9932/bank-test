@@ -171,6 +171,60 @@ export default function OnboardingFlow() {
     );
   }
 
+  if (step === 'confirm') {
+    return (
+      <Screen>
+        <AppHeader title="Confirm your account" onBack={() => setStep('identify')} />
+        <div className="flex flex-col gap-5 px-5 pt-4">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <div className="flex items-center justify-center w-14 h-14 rounded-full" style={{ background: 'var(--app-surface)' }}>
+              <UserCheck size={24} style={{ color: 'var(--app-success)' }} />
+            </div>
+            <p className="text-sm leading-relaxed" style={{ color: 'var(--app-text-dim)' }}>
+              We found your account. Please confirm this is you.
+            </p>
+          </div>
+
+          <Card className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              <span className="text-xs uppercase tracking-wide" style={{ color: 'var(--app-text-dim)' }}>Account holder</span>
+              <span className="text-base font-semibold" style={{ color: 'var(--app-text)' }}>
+                {accountPreview?.name || '—'}
+              </span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs uppercase tracking-wide" style={{ color: 'var(--app-text-dim)' }}>Account number</span>
+              <span className="text-base font-semibold tabular-nums" style={{ color: 'var(--app-text)' }}>
+                {accountPreview?.last6 ? `•••• ${accountPreview.last6}` : '—'}
+              </span>
+            </div>
+          </Card>
+
+          <label className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              checked={termsAccepted}
+              onChange={(e) => setTermsAccepted(e.target.checked)}
+              className="mt-0.5 w-5 h-5 shrink-0 accent-[var(--app-primary)]"
+            />
+            <span className="text-sm leading-relaxed" style={{ color: 'var(--app-text-dim)' }}>
+              {'I confirm this is my account and I accept the '}
+              <a href="https://alisterbank.online/terms-of-service" target="_blank" rel="noopener noreferrer" className="font-semibold underline" style={{ color: 'var(--app-primary)' }}>Terms of Service</a>
+              {' and '}
+              <a href="https://alisterbank.online/privacy-policy" target="_blank" rel="noopener noreferrer" className="font-semibold underline" style={{ color: 'var(--app-primary)' }}>Privacy Policy</a>
+              {' of Alister Bank.'}
+            </span>
+          </label>
+
+          {error && <p className="text-sm" style={{ color: 'var(--app-danger)' }}>{error}</p>}
+          <PrimaryButton onClick={submitConfirm} loading={loading} disabled={!termsAccepted}>
+            Accept &amp; Continue
+          </PrimaryButton>
+        </div>
+      </Screen>
+    );
+  }
+
   if (step === 'otp') {
     return (
       <Screen>

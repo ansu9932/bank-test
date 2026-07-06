@@ -15,7 +15,7 @@ import appStorage from '../../services/appStorage';
 import {
   isBiometricAvailable, isBiometricEnabled, enableBiometricLogin, disableBiometricLogin,
 } from '../../services/biometric';
-import { getLockScreenIdentity, logoutDevice, lockApp } from '../services/appAuth';
+import { getLockScreenIdentity, logoutDevice, logoutSession, lockApp } from '../services/appAuth';
 import { useAppTheme } from '../MobileApp';
 import {
   Screen, AppHeader, Card, PrimaryButton, Field, TextInput,
@@ -32,6 +32,25 @@ function MenuRoot() {
   const { firstName, customerId } = getLockScreenIdentity();
   const [bioAvailable, setBioAvailable] = useState(false);
   const [bioOn, setBioOn] = useState(isBiometricEnabled());
+  // null | 'session' | 'device' — which logout is awaiting confirmation.
+  const [confirmLogout, setConfirmLogout] = useState(null);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  const doLogout = async () => {
+    setLoggingOut(true);
+    try {
+      if (confirmLogout === 'device') {
+        await logoutDevice();
+        navigate('/app/onboarding', { replace: true });
+      } else {
+        await logoutSession();
+        navigate('/app/lock', { replace: true });
+      }
+    } finally {
+      setLoggingOut(false);
+      setConfirmLogout(null);
+    }
+  };
 
   useEffect(() => {
     isBiometricAvailable().then(setBioAvailable).catch(() => {});
@@ -111,13 +130,51 @@ function MenuRoot() {
             <span className="flex-1 text-left text-sm font-medium">Lock app</span>
           </button>
           <button type="button" className="w-full flex items-center gap-3 px-4 py-3.5"
-            onClick={async () => { await logoutDevice(); navigate('/app/onboarding', { replace: true }); }}>
+            onClick={() => setConfirmLogout('session')}>
+            <LogOut size={18} className="app-accent" aria-hidden="true" />
+            <span className="flex-1 text-left text-sm font-medium">Log out</span>
+          </button>
+          <button type="button" className="w-full flex items-center gap-3 px-4 py-3.5"
+            onClick={() => setConfirmLogout('device')}>
             <LogOut size={18} style={{ color: 'var(--app-danger)' }} aria-hidden="true" />
             <span className="flex-1 text-left text-sm font-medium" style={{ color: 'var(--app-danger)' }}>
               Log out &amp; remove device
             </span>
           </button>
         </Card>
+
+        {/* Logout confirmation sheet — a mis-tap must never log the user out */}
+        {confirmLogout && (
+          <div className="fixed inset-0 z-[70] flex items-end justify-center"
+            style={{ background: 'rgba(0,0,0,0.6)' }}
+            role="dialog" aria-modal="true" aria-label="Confirm logout">
+            {/* pb-24 keeps both buttons clear of the bottom nav bar */}
+            <div className="w-full max-w-md rounded-t-2xl p-5 pb-24 flex flex-col gap-4"
+              style={{ background: 'var(--app-bg)' }}>
+              <h2 className="text-base font-bold" style={{ color: 'var(--app-text)' }}>
+                {confirmLogout === 'device' ? 'Remove this device?' : 'Log out?'}
+              </h2>
+              <p className="app-dim text-sm leading-relaxed">
+                {confirmLogout === 'device'
+                  ? 'This ends your session AND removes your account from this device. You will need your Customer ID, date of birth, OTP and password to set up the app again.'
+                  : 'This ends your session. Your account stays on this device — next time you only need your MPIN to sign in.'}
+              </p>
+              <div className="flex flex-col gap-2">
+                <button type="button" disabled={loggingOut} onClick={doLogout}
+                  className="w-full rounded-xl py-3 text-sm font-semibold"
+                  style={{ background: 'var(--app-danger)', color: '#ffffff' }}>
+                  {loggingOut ? 'Logging out…'
+                    : confirmLogout === 'device' ? 'Yes, remove device' : 'Yes, log out'}
+                </button>
+                <button type="button" disabled={loggingOut} onClick={() => setConfirmLogout(null)}
+                  className="w-full rounded-xl py-3 text-sm font-semibold"
+                  style={{ background: 'var(--app-surface)', color: 'var(--app-text)', border: '1px solid var(--app-border)' }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <p className="flex items-center justify-center gap-1.5 text-xs app-dim pb-2">
           <ShieldCheck size={13} aria-hidden="true" />
@@ -130,19 +187,24 @@ function MenuRoot() {
 
 // ─── My Card ──────────────────────────────────────────────────────────────────
 function CardPage() {
-  const { data, mutate } = useSWR('/requests/my-card', fetcher);
+  const { data, isLoading, mutate } = useSWR('/requests/my-card', fetcher);
   const [busy, setBusy] = useState(false);
   const [revealed, setRevealed] = useState(null);
   const [error, setError] = useState('');
   const [askPin, setAskPin] = useState(false);
   const [securityPin, setSecurityPin] = useState('');
-  const card = data?.card || data;
+  const [requested, setRequested] = useState(false);
+  // A real card must have an id — an empty object or `{ card: null }` payload
+  // means the user has NO card and must see the request option instead.
+  const raw = data?.card !== undefined ? data.card : data;
+  const card = raw && typeof raw === 'object' && raw.id ? raw : null;
 
   const requestCard = async () => {
     setBusy(true);
     setError('');
     try {
       await api.post('/requests/debit-card', {});
+      setRequested(true);
       mutate();
     } catch (err) {
       setError(err.response?.data?.message || 'Request failed.');
@@ -180,11 +242,27 @@ function CardPage() {
     <Screen className="pb-24">
       <AppHeader title="My Card" backTo="/app/menu" />
       <div className="px-5 flex flex-col gap-4">
-        {!card && (
+        {isLoading && (
+          <Card className="text-center py-8">
+            <p className="app-dim text-sm">Checking your card…</p>
+          </Card>
+        )}
+        {!isLoading && !card && (
           <Card className="text-center py-8 flex flex-col items-center gap-3">
             <CreditCard size={36} className="app-dim" aria-hidden="true" />
-            <p className="app-dim text-sm">You don&apos;t have a debit card yet.</p>
-            <PrimaryButton onClick={requestCard} loading={busy}>Request Debit Card</PrimaryButton>
+            {requested ? (
+              <>
+                <p className="text-sm font-medium">Card request submitted</p>
+                <p className="app-dim text-xs max-w-[260px] text-pretty">
+                  Your debit card request is being reviewed. It will appear here once approved.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="app-dim text-sm">You don&apos;t have a debit card yet.</p>
+                <PrimaryButton onClick={requestCard} loading={busy}>Request Debit Card</PrimaryButton>
+              </>
+            )}
           </Card>
         )}
         {card && (
