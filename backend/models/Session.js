@@ -21,6 +21,10 @@ const Session = sequelize.define('Session', {
   refresh_expires_at: { type: DataTypes.DATE },
   // Opaque device identifier sent by the native Android app (device binding).
   device_id: { type: DataTypes.STRING(100) },
+  // Where this session was created: 'web' (browser NetBanking) or 'app'
+  // (native mobile app). Powers mutual exclusion — a user signed in on one
+  // channel must log out before signing in on the other.
+  channel: { type: DataTypes.STRING(10), defaultValue: 'web' },
 }, { tableName: 'sessions' });
 
 module.exports = Session;

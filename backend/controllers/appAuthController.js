@@ -17,7 +17,7 @@
  */
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { User, OTP, Session } = require('../models');
+const { User, OTP, Session, Account } = require('../models');
 const { generateToken } = require('../middleware/auth');
 const { sendOTPEmail, sendLoginAlertEmail } = require('../services/emailService');
 const { createAuditLog } = require('../middleware/auditLogger');
@@ -74,6 +74,25 @@ const WEAK_MPINS = new Set([
   '666666', '777777', '888888', '999999', '123456', '654321', '121212',
 ]);
 
+// ── Channel mutual exclusion ─────────────────────────────────────────────────
+// A user signed in on the website must log out there before signing in on the
+// app, and vice-versa. Sessions inactive for CHANNEL_IDLE_MS don't block —
+// abandoned tabs/apps must never lock a customer out of the other channel.
+const CHANNEL_IDLE_MS = 15 * 60 * 1000; // 15 min of inactivity = stale
+
+async function findActiveChannelSession(userId, channel) {
+  const s = await Session.findOne({
+    where: { user_id: userId, is_active: true, channel },
+    order: [['last_activity', 'DESC']],
+  });
+  if (!s) return null;
+  if (s.expires_at && new Date() > new Date(s.expires_at)) return null;
+  const lastSeen = s.last_activity || s.created_at;
+  if (!lastSeen || Date.now() - new Date(lastSeen).getTime() > CHANNEL_IDLE_MS) return null;
+  return s;
+}
+exports.findActiveChannelSession = findActiveChannelSession;
+
 // Shared session factory — mirrors the website login exactly (single-device
 // enforcement, refresh rotation, device binding) so app sessions get the same
 // guarantees the hardened web login has.
@@ -96,6 +115,7 @@ async function createAppSession(user, req, deviceId) {
     expires_at: new Date(Date.now() + DEVICE_TOKEN_TTL_MS),
     refresh_token_hash: hashValue(refreshToken),
     refresh_expires_at: new Date(Date.now() + DEVICE_TOKEN_TTL_MS),
+    channel: 'app',
   });
 
   const token = generateToken(user.id, session.id);
@@ -146,6 +166,43 @@ exports.verifyCustomer = async (req, res) => {
       return unauthorized(res, 'This account is not active. Please contact support.');
     }
 
+    // Identity preview: account holder name + last 6 digits of the account
+    // number, shown on the confirm screen before any OTP is sent. The user
+    // must accept the Terms & Privacy Policy on that screen to continue.
+    const account = await Account.findOne({ where: { user_id: user.id } });
+    const acctNo = account ? String(account.account_number) : '';
+
+    await createAuditLog({
+      userId: user.id, action: 'APP_ONBOARD_START', ipAddress: req.ip,
+      userAgent: req.headers['user-agent'], status: 'success',
+      description: 'App onboarding: customer identified (pre-confirm)',
+    });
+
+    return success(res, {
+      onboardingToken: signStep(user.id, 'confirm'),
+      accountName: `${user.first_name || ''} ${user.last_name || ''}`.trim(),
+      accountLast6: acctNo ? acctNo.slice(-6) : null,
+      maskedEmail: maskEmail(user.email),
+    }, 'Account found. Please confirm to continue.');
+  } catch (err) {
+    logger.error(`App verify-customer error: ${err.message}`);
+    return error(res, 'Verification could not be completed. Please try again.');
+  }
+};
+
+// ─── 1b. Confirm identity + accept terms → send email OTP ────────────────────
+exports.confirmIdentity = async (req, res) => {
+  try {
+    const { onboardingToken, acceptTerms } = req.body;
+    const step = verifyStep(onboardingToken, 'confirm');
+    if (!step) return unauthorized(res, 'Session expired. Please start again.');
+    if (acceptTerms !== true) {
+      return badRequest(res, 'You must accept the Terms of Service and Privacy Policy to continue.');
+    }
+
+    const user = await User.findByPk(step.userId);
+    if (!user) return unauthorized(res, 'Session expired. Please start again.');
+
     // Issue and email the OTP (reuses the bank's existing OTP infra).
     const otp = generateOTP();
     await OTP.create({
@@ -158,9 +215,9 @@ exports.verifyCustomer = async (req, res) => {
     await sendOTPEmail(user.email, otp, 'mobile app verification');
 
     await createAuditLog({
-      userId: user.id, action: 'APP_ONBOARD_START', ipAddress: req.ip,
+      userId: user.id, action: 'APP_TERMS_ACCEPTED', ipAddress: req.ip,
       userAgent: req.headers['user-agent'], status: 'success',
-      description: 'App onboarding: customer verified, OTP sent',
+      description: 'App onboarding: terms accepted, OTP sent',
     });
 
     return success(res, {
@@ -168,7 +225,7 @@ exports.verifyCustomer = async (req, res) => {
       maskedEmail: maskEmail(user.email),
     }, 'We sent a verification code to your registered email.');
   } catch (err) {
-    logger.error(`App verify-customer error: ${err.message}`);
+    logger.error(`App confirm-identity error: ${err.message}`);
     return error(res, 'Verification could not be completed. Please try again.');
   }
 };
@@ -263,6 +320,15 @@ exports.setupMpin = async (req, res) => {
     const cleanDeviceId = typeof deviceId === 'string' ? deviceId.slice(0, 100) : null;
     if (!cleanDeviceId) return badRequest(res, 'Device identifier missing.');
 
+    // Channel mutual exclusion: an active website session blocks app sign-in.
+    if (await findActiveChannelSession(user.id, 'web')) {
+      return res.status(409).json({
+        success: false,
+        code: 'WEB_SESSION_ACTIVE',
+        message: 'You are signed in on the website. Please log out there first, then try again.',
+      });
+    }
+
     await user.update({
       mpin_hash: await bcrypt.hash(pin, 12),
       mpin_set_at: new Date(),
@@ -351,6 +417,15 @@ exports.mpinLogin = async (req, res) => {
         : `Incorrect MPIN. ${5 - attempts} attempts remaining.`);
     }
 
+    // Channel mutual exclusion: an active website session blocks app sign-in.
+    if (await findActiveChannelSession(user.id, 'web')) {
+      return res.status(409).json({
+        success: false,
+        code: 'WEB_SESSION_ACTIVE',
+        message: 'You are signed in on the website. Please log out there first, then try again.',
+      });
+    }
+
     await user.update({ mpin_attempts: 0, mpin_locked_until: null, last_login: new Date() });
     const { token, refreshToken } = await createAppSession(user, req, cleanDeviceId);
 
@@ -393,6 +468,25 @@ exports.resendOtp = async (req, res) => {
   } catch (err) {
     logger.error(`App resend-otp error: ${err.message}`);
     return error(res, 'Could not resend the code. Please try again.');
+  }
+};
+
+// ─── Logout session only (device stays registered; MPIN still works) ─────────
+exports.logoutSession = async (req, res) => {
+  try {
+    await Session.update(
+      { is_active: false, logout_at: new Date(), refresh_token_hash: null, refresh_expires_at: null },
+      { where: { user_id: req.user.id, is_active: true } }
+    );
+    await createAuditLog({
+      userId: req.user.id, action: 'APP_SESSION_LOGOUT', ipAddress: req.ip,
+      userAgent: req.headers['user-agent'], status: 'success',
+      description: 'App session logout (device registration retained)',
+    });
+    return success(res, {}, 'Logged out.');
+  } catch (err) {
+    logger.error(`App logout-session error: ${err.message}`);
+    return error(res, 'Logout failed. Please try again.');
   }
 };
 

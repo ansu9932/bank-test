@@ -12,7 +12,10 @@
 import { useEffect, useState, createContext, useContext } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import appStorage from '../services/appStorage';
-import { hasDeviceRegistration, isAppAuthenticated } from './services/appAuth';
+import {
+  hasDeviceRegistration, isAppAuthenticated, isInactivityLocked,
+  touchAppActivity, lockApp,
+} from './services/appAuth';
 import './app.css';
 
 import OnboardingFlow from './onboarding/OnboardingFlow';
@@ -29,6 +32,12 @@ export const useAppTheme = () => useContext(ThemeCtx);
 
 // ─── Entry decision ──────────────────────────────────────────────────────────
 function AppEntry() {
+  // Cold-start inactivity check: even with a valid token, >10 min since the
+  // app was last in the foreground forces the MPIN lock screen.
+  if (isAppAuthenticated() && isInactivityLocked()) {
+    lockApp();
+    return <Navigate to="/app/lock" replace />;
+  }
   if (isAppAuthenticated()) return <Navigate to="/app/home" replace />;
   if (hasDeviceRegistration()) return <Navigate to="/app/lock" replace />;
   return <Navigate to="/app/onboarding" replace />;
@@ -36,6 +45,10 @@ function AppEntry() {
 
 // ─── Auth gate for main screens ──────────────────────────────────────────────
 function RequireAppAuth({ children }) {
+  if (isAppAuthenticated() && isInactivityLocked()) {
+    lockApp();
+    return <Navigate to="/app/lock" replace />;
+  }
   if (!isAppAuthenticated()) {
     return <Navigate to={hasDeviceRegistration() ? '/app/lock' : '/app/onboarding'} replace />;
   }
@@ -51,23 +64,43 @@ function MainLayout({ children }) {
   );
 }
 
-// ─── Auto-lock: when the native app goes to background, require MPIN again ───
+// ─── Auto-lock: 10 minutes of inactivity requires the MPIN again ─────────────
+// Activity is stamped to secure storage while the app is visible, so the
+// check works across backgrounding AND full app kills (swipe-from-recents).
 function useAutoLock() {
   const navigate = useNavigate();
   useEffect(() => {
+    const INACTIVITY_MS = 10 * 60 * 1000;
+
+    // Stamp activity now, on any interaction, and every 30s while visible.
+    touchAppActivity();
+    const stamp = () => {
+      if (document.visibilityState === 'visible') touchAppActivity();
+    };
+    const interval = setInterval(stamp, 30 * 1000);
+    document.addEventListener('pointerdown', stamp);
+    document.addEventListener('keydown', stamp);
+
     let hiddenAt = null;
-    const GRACE_MS = 60 * 1000; // 1 min grace so quick app switches don't lock
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') {
         hiddenAt = Date.now();
-      } else if (hiddenAt && Date.now() - hiddenAt > GRACE_MS && isAppAuthenticated()) {
+        touchAppActivity(); // last-seen moment, read again on cold start
+      } else if (hiddenAt && Date.now() - hiddenAt > INACTIVITY_MS && isAppAuthenticated()) {
         appStorage.removeItem('token');
         appStorage.removeItem('refreshToken');
         navigate('/app/lock', { replace: true });
+      } else {
+        touchAppActivity();
       }
     };
     document.addEventListener('visibilitychange', onVisibility);
-    return () => document.removeEventListener('visibilitychange', onVisibility);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('pointerdown', stamp);
+      document.removeEventListener('keydown', stamp);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [navigate]);
 }
 
