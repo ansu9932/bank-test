@@ -2,12 +2,20 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useDispatch, useSelector } from 'react-redux';
-import { RiEyeLine, RiEyeOffLine, RiBankLine, RiLockLine, RiUserLine, RiShieldCheckLine, RiRefreshLine } from 'react-icons/ri';
+import { RiEyeLine, RiEyeOffLine, RiBankLine, RiLockLine, RiUserLine, RiShieldCheckLine, RiRefreshLine, RiFingerprintLine, RiErrorWarningLine } from 'react-icons/ri';
 import { login, clearError } from '../../store/slices/authSlice';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import useEntryPageGuard from '../../hooks/useEntryPageGuard';
 import BackToHome from '../../components/common/BackToHome';
+import {
+  isNativeApp,
+  isBiometricAvailable,
+  isBiometricEnabled,
+  enableBiometricLogin,
+  biometricLogin,
+  isDeviceRooted,
+} from '../../services/biometric';
 
 // Absolute lifespan of the login screen, mirroring the backend login handshake
 // TTL (exactly 10 minutes). If the page sits open/idle past this window, the
@@ -42,6 +50,51 @@ export default function LoginPage() {
   const fetchedRef = useRef(false);
   // Wall-clock moment the handshake initialized; drives the idle-expiry timer.
   const handshakeStartRef = useRef(0);
+
+  // ── Native app security state (Android APK only — all inert on web) ───────
+  // rooted:     device failed the RootBeer integrity check → login is BLOCKED.
+  // canBiometric: sensor available + user previously enabled biometric login →
+  //               show the fingerprint quick-login button.
+  const [rooted, setRooted] = useState(false);
+  const [canBiometric, setCanBiometric] = useState(false);
+  const [bioBusy, setBioBusy] = useState(false);
+
+  useEffect(() => {
+    if (!isNativeApp()) return;
+    (async () => {
+      if (await isDeviceRooted()) {
+        setRooted(true);
+        return; // rooted → do not even offer biometric login
+      }
+      if (isBiometricEnabled() && (await isBiometricAvailable())) {
+        setCanBiometric(true);
+      }
+    })();
+  }, []);
+
+  // Fingerprint quick login: OS biometric prompt → stored credentials →
+  // the exact same Redux login flow as a manual password submit.
+  const handleBiometricLogin = async () => {
+    setBioBusy(true);
+    try {
+      const creds = await biometricLogin();
+      if (!creds) { toast.error('Biometric authentication failed'); return; }
+      const tokenFromUrl = new URLSearchParams(window.location.search).get('h');
+      let hToken = handshakeToken || tokenFromUrl || '';
+      if (!hToken) hToken = await initHandshake();
+      const result = await dispatch(login({ ...creds, handshakeToken: hToken, biometric: true }));
+      if (login.fulfilled.match(result)) {
+        allowNavigation();
+        toast.success('Welcome back!');
+        navigate('/dashboard');
+      } else {
+        initHandshake();
+        loadCaptcha();
+      }
+    } finally {
+      setBioBusy(false);
+    }
+  };
 
   // Navigation guard: wipe credentials/temp state if the user leaves the login
   // page, and redirect to the homepage on a non-whitelisted exit.
@@ -141,6 +194,15 @@ export default function LoginPage() {
     if (login.fulfilled.match(result)) {
       allowNavigation(); // sanctioned success exit → no redirect-home
       toast.success('Welcome back!');
+      // Native app: after the first successful PASSWORD login, offer to turn
+      // on biometric unlock (also toggleable later in Settings → Security).
+      if (isNativeApp() && !isBiometricEnabled() && (await isBiometricAvailable())) {
+        // eslint-disable-next-line no-alert
+        if (window.confirm('Enable fingerprint / face unlock for faster secure logins?')) {
+          const enabled = await enableBiometricLogin({ username: form.username, password: form.password });
+          if (enabled) toast.success('Biometric login enabled');
+        }
+      }
       navigate('/dashboard');
     } else {
       // Handshake + captcha are single-use; on any failure refresh both for the retry.
@@ -326,9 +388,37 @@ export default function LoginPage() {
                 />
               </div>
 
+              {/* Rooted-device security block (native app only) */}
+              {rooted && (
+                <div
+                  role="alert"
+                  className="flex items-start gap-3 rounded-[10px] border border-[#CC0000]/40 bg-[#CC0000]/10 p-3"
+                >
+                  <RiErrorWarningLine className="text-[#FF3333] text-xl flex-shrink-0 mt-0.5" />
+                  <p className="text-white/80 text-[13px] leading-relaxed">
+                    <span className="font-semibold text-white">Security warning:</span> this
+                    device appears to be rooted. For your protection, Alister Bank login is
+                    disabled on rooted devices.
+                  </p>
+                </div>
+              )}
+
+              {/* Biometric quick login (native app, previously enabled) */}
+              {!rooted && canBiometric && (
+                <button
+                  type="button"
+                  onClick={handleBiometricLogin}
+                  disabled={bioBusy || loading}
+                  className="w-full min-h-[50px] py-[13px] rounded-[12px] border border-[#CC0000]/50 bg-[#CC0000]/10 text-white font-semibold text-[15px] flex items-center justify-center gap-2 hover:bg-[#CC0000]/20 transition-colors disabled:opacity-60"
+                >
+                  <RiFingerprintLine className="text-[22px] text-[#FF3333]" />
+                  {bioBusy ? 'Verifying…' : 'Login with fingerprint'}
+                </button>
+              )}
+
               <motion.button
                 type="submit"
-                disabled={loading}
+                disabled={loading || rooted}
                 whileHover={{ y: -2, boxShadow: '0 8px 25px rgba(204,0,0,0.35)' }}
                 whileTap={{ scale: 0.97 }}
                 className="w-full min-h-[50px] py-[14px] mt-2 rounded-[12px] text-white font-semibold text-[16px] cursor-pointer flex items-center justify-center gap-2 transition-colors duration-200 disabled:opacity-70 disabled:cursor-not-allowed bg-[linear-gradient(135deg,#CC0000,#FF3333)] hover:bg-[linear-gradient(135deg,#990000,#CC0000)]"

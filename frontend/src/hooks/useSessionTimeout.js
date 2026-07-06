@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import api from '../services/api';
+import appStorage from '../services/appStorage';
+import { isNativeApp, isBiometricEnabled, verifyBiometric } from '../services/biometric';
 
 /**
  * useSessionTimeout — customer-only session-security engine.
@@ -23,14 +25,15 @@ import api from '../services/api';
 const INACTIVITY_MS = 5 * 60 * 1000;   // 300000 — 5 minutes
 const ABSOLUTE_MS   = 60 * 60 * 1000;  // 3600000 — 1 hour
 const POLL_MS       = 20 * 1000;       // concurrent-login heartbeat cadence
+const BACKGROUND_LOCK_MS = 60 * 1000;  // native app: auto-lock after 1 min in background
 const ACTIVITY_EVENTS = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
 
 // Wipe every client-side auth artifact (token + cached user + session markers).
 function wipeSession() {
-  localStorage.removeItem('token');
-  localStorage.removeItem('adminToken');
-  localStorage.removeItem('user');
-  localStorage.removeItem('loginTime');
+  appStorage.removeItem('token');
+  appStorage.removeItem('adminToken');
+  appStorage.removeItem('user');
+  appStorage.removeItem('loginTime');
 }
 
 export default function useSessionTimeout() {
@@ -43,9 +46,9 @@ export default function useSessionTimeout() {
   // Only on customer `/dashboard/*` routes, never for admins/admin routes.
   const onCustomerRoute = location.pathname.startsWith('/dashboard');
   const onAdminRoute = location.pathname.startsWith('/admin');
-  const isAdmin = !!localStorage.getItem('adminToken');
+  const isAdmin = !!appStorage.getItem('adminToken');
   let userRole = '';
-  try { userRole = (JSON.parse(localStorage.getItem('user') || '{}').role || '').toLowerCase(); }
+  try { userRole = (JSON.parse(appStorage.getItem('user') || '{}').role || '').toLowerCase(); }
   catch { userRole = ''; }
   const active = onCustomerRoute && !onAdminRoute && !isAdmin && userRole !== 'admin';
 
@@ -75,8 +78,8 @@ export default function useSessionTimeout() {
       window.addEventListener(evt, markActivity, { passive: true }));
 
     // Ensure an absolute-session marker exists even on a hard refresh.
-    if (!localStorage.getItem('loginTime')) {
-      localStorage.setItem('loginTime', String(Date.now()));
+    if (!appStorage.getItem('loginTime')) {
+      appStorage.setItem('loginTime', String(Date.now()));
     }
 
     // ── 1s tick: inactivity (5 min) + absolute lifespan (1 hr) ─────────────
@@ -91,7 +94,7 @@ export default function useSessionTimeout() {
         return;
       }
 
-      const loginTime = parseInt(localStorage.getItem('loginTime') || '0', 10);
+      const loginTime = parseInt(appStorage.getItem('loginTime') || '0', 10);
       if (loginTime && now - loginTime >= ABSOLUTE_MS) {
         kickedRef.current = true;
         clearInterval(tick);
@@ -110,7 +113,7 @@ export default function useSessionTimeout() {
           clearInterval(tick);
           // Token is already dead server-side — wipe it now so no further
           // authenticated calls can succeed, but keep the dialog on screen.
-          localStorage.removeItem('token');
+          appStorage.removeItem('token');
           setConcurrentKicked(true);
         }
       } catch {
@@ -122,6 +125,51 @@ export default function useSessionTimeout() {
       ACTIVITY_EVENTS.forEach((evt) => window.removeEventListener(evt, markActivity));
       clearInterval(tick);
       clearInterval(poll);
+    };
+  }, [active, hardLogout]);
+
+  // ── Native app auto-lock (Android APK only) ──────────────────────────────
+  // When the app is backgrounded for more than BACKGROUND_LOCK_MS the user
+  // must re-authenticate on resume: biometric prompt if enabled, otherwise a
+  // hard logout back to the password login. Uses the Capacitor App plugin's
+  // appStateChange event; entirely inert on the web build.
+  useEffect(() => {
+    if (!active || !isNativeApp()) return undefined;
+
+    let backgroundedAt = null;
+    let removeListener = null;
+    let cancelled = false;
+
+    (async () => {
+      const { App: CapApp } = await import('@capacitor/app');
+      if (cancelled) return;
+      const handle = await CapApp.addListener('appStateChange', async ({ isActive }) => {
+        if (!isActive) {
+          backgroundedAt = Date.now();
+          return;
+        }
+        // Resumed — check how long we were away.
+        if (!backgroundedAt) return;
+        const away = Date.now() - backgroundedAt;
+        backgroundedAt = null;
+        if (away < BACKGROUND_LOCK_MS) return;
+
+        if (isBiometricEnabled()) {
+          const ok = await verifyBiometric('Unlock Alister Bank');
+          if (ok) {
+            lastActivityRef.current = Date.now(); // reset inactivity clock
+            return;
+          }
+        }
+        // No biometric (or it failed/was cancelled) → require password login.
+        hardLogout('For your security, please sign in again.');
+      });
+      removeListener = () => handle.remove();
+    })();
+
+    return () => {
+      cancelled = true;
+      if (removeListener) removeListener();
     };
   }, [active, hardLogout]);
 

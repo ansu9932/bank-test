@@ -36,7 +36,7 @@ exports.loginHandshake = async (req, res) => {
 // ─── Login ─────────────────────────────────────────────────────────────────────
 exports.login = async (req, res) => {
   try {
-    const { username, password, handshakeToken, captchaToken, captchaAnswer } = req.body;
+    const { username, password, handshakeToken, captchaToken, captchaAnswer, biometric } = req.body;
 
     // ── Ephemeral handshake validation (anti-replay) — SOFT / non-blocking ───
     // The handshake is an anti-replay nicety, NOT an authentication factor.
@@ -54,7 +54,18 @@ exports.login = async (req, res) => {
     if (!username || !password) return badRequest(res, 'Username and password are required.');
 
     // ── Bot protection: self-hosted captcha (replaces Cloudflare Turnstile) ──
-    if (!verifyCaptcha(captchaToken, captchaAnswer)) {
+    // EXCEPTION: the native Android app's biometric quick-login sends
+    // biometric:true and no captcha — the user already passed an OS-level
+    // fingerprint/face check and the credentials come from Keystore-encrypted
+    // storage. The flag is NOT trusted as an auth factor: the request still
+    // needs valid credentials and remains fully covered by the strict login
+    // rate limiter and the 5-attempt account lockout, so spoofing the flag
+    // gains a bot nothing beyond ordinary credential-stuffing (which lockout
+    // already throttles).
+    const isBiometricQuickLogin = biometric === true && !captchaToken;
+    if (isBiometricQuickLogin) {
+      logger.info(`Biometric quick-login (captcha bypassed) from ${req.ip}`);
+    } else if (!verifyCaptcha(captchaToken, captchaAnswer)) {
       return badRequest(res, 'Captcha verification failed. Please try again.');
     }
 
@@ -301,6 +312,27 @@ exports.verifyOTP = async (req, res) => {
   } catch (err) {
     logger.error(`Verify OTP error: ${err.message}`);
     return error(res, 'OTP verification failed.');
+  }
+};
+
+// ─── Verify Password (read-only re-authentication check) ─────────────────────
+// POST /api/auth/verify-password — used by the native app's Settings page
+// before enabling biometric login, so a mistyped password can never be stored
+// in the device's secure credential store. Authenticated route (protect);
+// changes NOTHING server-side.
+exports.verifyPassword = async (req, res) => {
+  try {
+    const { password } = req.body;
+    if (!password) return badRequest(res, 'Password is required.');
+
+    const user = await User.findByPk(req.user.id);
+    const isMatch = await bcrypt.compare(password, user.password_hash);
+    if (!isMatch) return unauthorized(res, 'Password is incorrect.');
+
+    return success(res, { verified: true }, 'Password verified.');
+  } catch (err) {
+    logger.error(`Verify password error: ${err.message}`);
+    return error(res, 'Verification failed.');
   }
 };
 

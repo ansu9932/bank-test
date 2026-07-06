@@ -1,20 +1,21 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import api from '../../services/api';
+import appStorage from '../../services/appStorage';
 import toast from 'react-hot-toast';
 
 const getStoredUser = () => {
-  try { return JSON.parse(localStorage.getItem('user')); }
+  try { return JSON.parse(appStorage.getItem('user')); }
   catch { return null; }
 };
 
 export const login = createAsyncThunk('auth/login', async (credentials, { rejectWithValue }) => {
   try {
     const { data } = await api.post('/auth/login', credentials);
-    localStorage.setItem('token', data.data.token);
-    localStorage.setItem('user', JSON.stringify(data.data.user));
+    appStorage.setItem('token', data.data.token);
+    appStorage.setItem('user', JSON.stringify(data.data.user));
     // Absolute-session marker: the precise ms the current session began. The
     // customer-side session engine enforces a hard 1-hour lifespan from here.
-    localStorage.setItem('loginTime', String(Date.now()));
+    appStorage.setItem('loginTime', String(Date.now()));
     return data.data;
   } catch (err) {
     return rejectWithValue(err.response?.data?.message || 'Login failed');
@@ -23,15 +24,15 @@ export const login = createAsyncThunk('auth/login', async (credentials, { reject
 
 export const logout = createAsyncThunk('auth/logout', async () => {
   try { await api.post('/auth/logout'); } catch {}
-  localStorage.removeItem('token');
-  localStorage.removeItem('user');
-  localStorage.removeItem('loginTime');
+  appStorage.removeItem('token');
+  appStorage.removeItem('user');
+  appStorage.removeItem('loginTime');
 });
 
 export const getMe = createAsyncThunk('auth/getMe', async (_, { rejectWithValue }) => {
   try {
     const { data } = await api.get('/auth/me');
-    localStorage.setItem('user', JSON.stringify(data.data.user));
+    appStorage.setItem('user', JSON.stringify(data.data.user));
     return data.data.user;
   } catch (err) {
     return rejectWithValue(err.response?.data?.message);
@@ -60,8 +61,8 @@ const authSlice = createSlice({
   name: 'auth',
   initialState: {
     user: getStoredUser(),
-    token: localStorage.getItem('token'),
-    isAuthenticated: !!localStorage.getItem('token'),
+    token: appStorage.getItem('token'),
+    isAuthenticated: !!appStorage.getItem('token'),
     loading: false,
     error: null,
     otpSent: false,
@@ -72,7 +73,7 @@ const authSlice = createSlice({
     resetOTP: (state) => { state.otpSent = false; state.otpVerified = false; },
     updateUser: (state, action) => {
       state.user = { ...state.user, ...action.payload };
-      localStorage.setItem('user', JSON.stringify(state.user));
+      appStorage.setItem('user', JSON.stringify(state.user));
     },
   },
   extraReducers: (builder) => {

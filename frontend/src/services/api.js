@@ -1,5 +1,6 @@
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import appStorage from './appStorage';
 
 /**
  * Central Axios instance for Alister Bank.
@@ -13,8 +14,13 @@ import toast from 'react-hot-toast';
  * when the user is not already on a login page.
  */
 const api = axios.create({
-  // API base URL. Set VITE_API_BASE_URL at build time; falls back to the AWS API.
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'https://api.alisterbank.online/api',
+  // API base URL. Set VITE_API_URL (preferred, used by the Android APK build)
+  // or VITE_API_BASE_URL at build time; falls back to the production API so
+  // the native app ALWAYS talks to the live backend.
+  baseURL:
+    import.meta.env.VITE_API_URL ||
+    import.meta.env.VITE_API_BASE_URL ||
+    'https://api.alisterbank.online/api',
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
   timeout: 30000,
@@ -27,7 +33,7 @@ const api = axios.create({
 // must still cover every api.get/post call that does NOT manually set headers.
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token') || localStorage.getItem('adminToken');
+    const token = appStorage.getItem('token') || appStorage.getItem('adminToken');
 
     if (token && typeof token === 'string' && token.trim().length > 0) {
       config.headers = config.headers || {};
@@ -59,9 +65,9 @@ api.interceptors.response.use(
       // 'token'      — customer JWT
       // 'adminToken' — admin JWT
       // 'user'       — cached user object
-      localStorage.removeItem('token');
-      localStorage.removeItem('adminToken');
-      localStorage.removeItem('user');
+      appStorage.removeItem('token');
+      appStorage.removeItem('adminToken');
+      appStorage.removeItem('user');
 
       // ── Redirect to the appropriate login page only when not already there ─
       // We check both '/login' and '/admin/login' to avoid infinite redirect

@@ -71,6 +71,11 @@ const STATIC_ALLOWED_ORIGINS = [
   process.env.FRONTEND_URL || 'https://alisterbank.online',
   'https://alisterbank.online',
   'https://www.alisterbank.online',
+  // Capacitor native app WebView origins. 'https://localhost' is the Android
+  // WebView origin (androidScheme: 'https' in capacitor.config.ts) and
+  // 'capacitor://localhost' covers the capacitor scheme (iOS/custom builds).
+  'capacitor://localhost',
+  'https://localhost',
   ...(process.env.CORS_EXTRA_ORIGINS
     ? process.env.CORS_EXTRA_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean)
     : []),
@@ -155,6 +160,36 @@ app.use('/api/payouts', require('./routes/payouts'));
 app.use('/api/admin', require('./routes/admin'));
 // AVA chatbot — public intent engine + in-chat email OTP identity verification.
 app.use('/api/chat', require('./routes/chat'));
+
+// ─── Mobile App: version check + APK download ─────────────────────────────────
+// GET /api/version — the Android app calls this on launch and compares the
+// installed version. Override values via env without redeploying code:
+//   APP_LATEST_VERSION=1.0.0  APP_APK_URL=...  APP_FORCE_UPDATE=true
+app.get('/api/version', (req, res) => {
+  res.json({
+    latestVersion: process.env.APP_LATEST_VERSION || '1.0.0',
+    apkUrl: process.env.APP_APK_URL || 'https://alisterbank.online/downloads/AlisterBank.apk',
+    forceUpdate: process.env.APP_FORCE_UPDATE === 'true',
+  });
+});
+
+// GET /downloads/AlisterBank.apk — serves the signed release APK with the
+// correct Android package MIME type so browsers download (never render) it.
+// Place the APK at backend/downloads/AlisterBank.apk on the server.
+const DOWNLOADS_ROOT = path.join(__dirname, 'downloads');
+app.get('/downloads/:file', (req, res) => {
+  // Only ever serve the known APK name — no directory traversal surface.
+  if (req.params.file !== 'AlisterBank.apk') {
+    return res.status(404).json({ success: false, message: 'Not found.' });
+  }
+  const apkPath = path.join(DOWNLOADS_ROOT, 'AlisterBank.apk');
+  if (!fs.existsSync(apkPath)) {
+    return res.status(404).json({ success: false, message: 'APK not uploaded yet.' });
+  }
+  res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+  res.setHeader('Content-Disposition', 'attachment; filename="AlisterBank.apk"');
+  res.sendFile(apkPath);
+});
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {

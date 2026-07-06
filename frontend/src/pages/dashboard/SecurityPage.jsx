@@ -1,17 +1,74 @@
-import React, { useState } from 'react';
-import { useDispatch } from 'react-redux';
-import { RiLockLine, RiShieldLine, RiEyeLine, RiEyeOffLine, RiLogoutBoxLine } from 'react-icons/ri';
+import React, { useState, useEffect } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { RiLockLine, RiShieldLine, RiEyeLine, RiEyeOffLine, RiLogoutBoxLine, RiFingerprintLine } from 'react-icons/ri';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import { logout } from '../../store/slices/authSlice';
 import { useNavigate } from 'react-router-dom';
+import {
+  isNativeApp,
+  isBiometricAvailable,
+  isBiometricEnabled,
+  enableBiometricLogin,
+  disableBiometricLogin,
+} from '../../services/biometric';
 
 export default function SecurityPage() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const { user } = useSelector(s => s.auth);
   const [pwd, setPwd] = useState({ current: '', new: '', confirm: '' });
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // ── Biometric login toggle (native Android app only) ─────────────────────
+  const [bioSupported, setBioSupported] = useState(false);
+  const [bioEnabled, setBioEnabled] = useState(isBiometricEnabled());
+  const [bioPwd, setBioPwd] = useState('');       // password confirm when enabling
+  const [bioPrompt, setBioPrompt] = useState(false);
+  const [bioBusy, setBioBusy] = useState(false);
+
+  useEffect(() => {
+    if (!isNativeApp()) return;
+    isBiometricAvailable().then(setBioSupported);
+  }, []);
+
+  const handleBioToggle = async () => {
+    if (bioBusy) return;
+    if (bioEnabled) {
+      await disableBiometricLogin();
+      setBioEnabled(false);
+      toast.success('Biometric login disabled');
+      return;
+    }
+    // Enabling requires the account password (to store securely) — show the
+    // inline confirm field instead of flipping the switch immediately.
+    setBioPrompt(true);
+  };
+
+  const confirmEnableBio = async (e) => {
+    e.preventDefault();
+    if (!bioPwd) { toast.error('Enter your password to enable biometric login'); return; }
+    setBioBusy(true);
+    try {
+      // Verify the password against the server BEFORE storing it, so a typo
+      // can't poison the stored credentials (read-only check — nothing changes).
+      await api.post('/auth/verify-password', { password: bioPwd });
+      const enabled = await enableBiometricLogin({ username: user?.email, password: bioPwd });
+      if (enabled) {
+        setBioEnabled(true);
+        setBioPrompt(false);
+        toast.success('Biometric login enabled');
+      } else {
+        toast.error('Biometric confirmation failed');
+      }
+    } catch {
+      toast.error('Password is incorrect');
+    } finally {
+      setBioPwd('');
+      setBioBusy(false);
+    }
+  };
 
   const changePassword = async (e) => {
     e.preventDefault();
