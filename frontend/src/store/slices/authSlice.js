@@ -8,6 +8,22 @@ const getStoredUser = () => {
   catch { return null; }
 };
 
+// QR-code login: the mobile app approved the request (swipe + MPIN); the
+// browser exchanges the one-time token for a full web session. Stores the
+// exact same session artifacts as a password login.
+export const qrLogin = createAsyncThunk('auth/qrLogin', async ({ qrId, loginToken }, { rejectWithValue }) => {
+  try {
+    const { data } = await api.post('/qr-login/exchange', { qrId, loginToken });
+    appStorage.setItem('token', data.data.token);
+    appStorage.setItem('user', JSON.stringify(data.data.user));
+    if (data.data.refreshToken) appStorage.setItem('refreshToken', data.data.refreshToken);
+    appStorage.setItem('loginTime', String(Date.now()));
+    return data.data;
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'QR sign-in failed');
+  }
+});
+
 export const login = createAsyncThunk('auth/login', async (credentials, { rejectWithValue }) => {
   try {
     const { data } = await api.post('/auth/login', credentials);
@@ -93,6 +109,13 @@ const authSlice = createSlice({
         s.token = a.payload.token;
       })
       .addCase(login.rejected, (s, a) => { s.loading = false; s.error = a.payload; })
+      .addCase(qrLogin.fulfilled, (s, a) => {
+        s.loading = false;
+        s.isAuthenticated = true;
+        s.user = a.payload.user;
+        s.token = a.payload.token;
+      })
+      .addCase(qrLogin.rejected, (s, a) => { s.loading = false; s.error = a.payload; })
       .addCase(logout.fulfilled, (s) => { s.user = null; s.token = null; s.isAuthenticated = false; })
       .addCase(getMe.fulfilled, (s, a) => { s.user = a.payload; })
       .addCase(sendOTP.fulfilled, (s) => { s.otpSent = true; })

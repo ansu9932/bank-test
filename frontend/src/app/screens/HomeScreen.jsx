@@ -7,7 +7,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import useSWR from 'swr';
 import {
   Eye, EyeOff, Send, PlusCircle, Users, FileText, CreditCard,
-  Headphones, Bell, ArrowDownLeft, ArrowUpRight, ChevronRight,
+  Bell, ArrowDownLeft, ArrowUpRight, ChevronRight, ScanLine,
 } from 'lucide-react';
 import api from '../../services/api';
 import { getLockScreenIdentity } from '../services/appAuth';
@@ -24,7 +24,8 @@ const QUICK_ACTIONS = [
   { to: '/app/menu/beneficiaries', icon: Users, label: 'Payees' },
   { to: '/app/history', icon: FileText, label: 'Statement' },
   { to: '/app/menu/card', icon: CreditCard, label: 'My Card' },
-  { to: '/app/menu/support', icon: Headphones, label: 'Support' },
+  // Website QR sign-in: scan the code on the login page, approve in-app.
+  { to: '/app/qr-login', icon: ScanLine, label: 'Scan QR' },
 ];
 
 export default function HomeScreen() {

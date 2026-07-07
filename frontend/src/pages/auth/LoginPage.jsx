@@ -2,12 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useDispatch, useSelector } from 'react-redux';
-import { RiEyeLine, RiEyeOffLine, RiBankLine, RiLockLine, RiUserLine, RiShieldCheckLine, RiRefreshLine, RiFingerprintLine, RiErrorWarningLine } from 'react-icons/ri';
+import { RiEyeLine, RiEyeOffLine, RiBankLine, RiLockLine, RiUserLine, RiShieldCheckLine, RiRefreshLine, RiFingerprintLine, RiErrorWarningLine, RiQrCodeLine } from 'react-icons/ri';
 import { login, clearError } from '../../store/slices/authSlice';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import useEntryPageGuard from '../../hooks/useEntryPageGuard';
 import BackToHome from '../../components/common/BackToHome';
+import QrLoginPanel from '../../components/auth/QrLoginPanel';
 import {
   isNativeApp,
   isBiometricAvailable,
@@ -43,6 +44,9 @@ export default function LoginPage() {
   const { loading, error } = useSelector(s => s.auth);
   const [form, setForm] = useState({ username: '', password: '' });
   const [showPwd, setShowPwd] = useState(false);
+  // Login method tab: 'password' (default) or 'qr' — QR mounts QrLoginPanel,
+  // which manages its own session lifecycle and unmount cleanup.
+  const [mode, setMode] = useState('password');
   // Self-hosted captcha (image + opaque token from the backend).
   const [captcha, setCaptcha] = useState({ svg: '', token: '' });
   const [captchaAnswer, setCaptchaAnswer] = useState('');
@@ -322,9 +326,38 @@ export default function LoginPage() {
               <h2 className="text-white font-bold text-[24px]" style={{ fontFamily: 'Inter, sans-serif' }}>Welcome back</h2>
               <p className="text-[14px] font-medium mt-1" style={{ color: '#CC0000' }}>Sign in to your account to continue</p>
             </div>
-            <div className="border-b border-white/[0.07] mb-6" />
+            <div className="border-b border-white/[0.07] mb-5" />
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Login method tabs: Password | Scan QR */}
+            <div className="flex gap-2 mb-6 p-1 rounded-[12px] bg-white/[0.04] border border-white/[0.06]" role="tablist" aria-label="Login method">
+              <button
+                type="button" role="tab" aria-selected={mode === 'password'}
+                onClick={() => setMode('password')}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-[9px] text-[13px] font-semibold transition-all ${
+                  mode === 'password'
+                    ? 'bg-[#CC0000] text-white shadow-[0_4px_14px_rgba(204,0,0,0.35)]'
+                    : 'text-white/50 hover:text-white/80'
+                }`}
+              >
+                <RiLockLine className="text-base" /> Password
+              </button>
+              <button
+                type="button" role="tab" aria-selected={mode === 'qr'}
+                onClick={() => setMode('qr')}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-[9px] text-[13px] font-semibold transition-all ${
+                  mode === 'qr'
+                    ? 'bg-[#CC0000] text-white shadow-[0_4px_14px_rgba(204,0,0,0.35)]'
+                    : 'text-white/50 hover:text-white/80'
+                }`}
+              >
+                <RiQrCodeLine className="text-base" /> Scan to Login
+              </button>
+            </div>
+
+            {/* QR mode — approve on the phone; no password ever typed here */}
+            {mode === 'qr' && <QrLoginPanel onSuccess={allowNavigation} />}
+
+            <form onSubmit={handleSubmit} className={`space-y-4 ${mode === 'qr' ? 'hidden' : ''}`}>
               <div>
                 <label className={LABEL_CLASS}>Username or Email</label>
                 <div className="relative">
