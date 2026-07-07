@@ -5,6 +5,8 @@ import { useSelector, useDispatch } from 'react-redux';
 import { getMe } from './store/slices/authSlice';
 
 import PageLoader from './components/common/PageLoader';
+// Website theme switcher — auto day/night (light by day, dark from 7 PM)
+import ThemeToggle from './components/common/ThemeToggle';
 // AVA — floating bank chatbot, available on every page (hidden on /admin)
 import AvaChatWidget from './components/chatbot/AvaChatWidget';
 // Native APK only: on-launch version check + update dialog (renders null on web)
@@ -212,6 +214,9 @@ export default function App() {
 
       {/* AVA chatbot — floating widget on every page (self-hides on /admin) */}
       <AvaChatWidget />
+
+      {/* Theme switcher — auto day/night; self-hides on /app and /admin */}
+      <ThemeToggle />
     </BrowserRouter>
   );
 }
