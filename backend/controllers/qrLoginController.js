@@ -98,12 +98,13 @@ exports.create = async (req, res) => {
       color: { dark: '#101623', light: '#ffffff' },
     });
 
-    return success(res, 'QR session created', {
+    // NOTE: apiResponse.success signature is (res, DATA, message).
+    return success(res, {
       qrId,
       qrImage,
       expiresAt: expiresAt.toISOString(),
       pollMs: 2000,
-    });
+    }, 'QR session created');
   } catch (err) {
     logger.error(`qr-login create: ${err.message}`);
     return badRequest(res, 'Could not create QR session.');
@@ -125,13 +126,13 @@ exports.status = async (req, res) => {
     if (s.status === 'approved' && s.login_token && !s.token_delivered_at) {
       const raw = s.login_token;
       await s.update({ login_token: null, token_delivered_at: new Date() });
-      return success(res, 'Approved', { status: 'approved', loginToken: raw });
+      return success(res, { status: 'approved', loginToken: raw }, 'Approved');
     }
 
-    return success(res, 'Status', {
+    return success(res, {
       status: s.status === 'consumed' ? 'approved' : s.status,
       expiresAt: s.expires_at,
-    });
+    }, 'Status');
   } catch (err) {
     logger.error(`qr-login status: ${err.message}`);
     return badRequest(res, 'Could not read session status.');
@@ -192,7 +193,7 @@ exports.scan = async (req, res) => {
 
     // Context for the approval screen — lets the customer reject logins
     // they don't recognize (defeats relayed/MITM'd QR codes).
-    return success(res, 'Scanned', {
+    return success(res, {
       qrId,
       context: {
         browser: detectDevice(s.browser_agent) || 'Unknown browser',
@@ -200,7 +201,7 @@ exports.scan = async (req, res) => {
         ip: s.browser_ip,
         requestedAt: s.createdAt,
       },
-    });
+    }, 'Scanned');
   } catch (err) {
     logger.error(`qr-login scan: ${err.message}`);
     return badRequest(res, 'Could not process the QR code.');
@@ -276,7 +277,7 @@ exports.approve = async (req, res) => {
       description: `QR login approved for browser IP ${s.browser_ip}`,
     });
 
-    return success(res, 'Login approved. The website will sign in automatically.');
+    return success(res, {}, 'Login approved. The website will sign in automatically.');
   } catch (err) {
     logger.error(`qr-login approve: ${err.message}`);
     return badRequest(res, 'Could not approve the login.');
@@ -300,7 +301,7 @@ exports.reject = async (req, res) => {
         description: `QR login rejected (browser IP ${s.browser_ip})`,
       });
     }
-    return success(res, 'Login request rejected.');
+    return success(res, {}, 'Login request rejected.');
   } catch (err) {
     logger.error(`qr-login reject: ${err.message}`);
     return badRequest(res, 'Could not reject the login.');
@@ -372,7 +373,7 @@ exports.exchange = async (req, res) => {
       description: 'Signed in to NetBanking via QR approval from the mobile app',
     });
 
-    return success(res, 'Signed in', {
+    return success(res, {
       token,
       refreshToken,
       user: {
@@ -384,7 +385,7 @@ exports.exchange = async (req, res) => {
         kycStatus: user.kyc_status,
         accountStatus: user.account_status,
       },
-    });
+    }, 'Signed in');
   } catch (err) {
     logger.error(`qr-login exchange: ${err.message}`);
     return badRequest(res, 'Could not complete the sign-in.');
