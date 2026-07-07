@@ -26,6 +26,7 @@ import HomeScreen from './screens/HomeScreen';
 import PayScreen from './screens/PayScreen';
 import HistoryScreen from './screens/HistoryScreen';
 import MenuScreen from './screens/MenuScreen';
+import QrLoginScreen from './screens/QrLoginScreen';
 import { BottomNav } from './components/AppUI';
 
 // ─── Theme context (light/dark, persisted, scoped to /app) ───────────────────
@@ -191,6 +192,8 @@ export default function MobileApp() {
             <Route path="pay" element={<RequireAppAuth><MainLayout><PayScreen /></MainLayout></RequireAppAuth>} />
             <Route path="history" element={<RequireAppAuth><MainLayout><HistoryScreen /></MainLayout></RequireAppAuth>} />
             <Route path="menu/*" element={<RequireAppAuth><MainLayout><MenuScreen /></MainLayout></RequireAppAuth>} />
+            {/* Website QR sign-in — full-screen camera flow, no bottom nav */}
+            <Route path="qr-login" element={<RequireAppAuth><QrLoginScreen /></RequireAppAuth>} />
             <Route path="*" element={<Navigate to="/app" replace />} />
           </Routes>
         </div>
