@@ -43,7 +43,7 @@ export default function HeroCard3D() {
       <div className="al-float">
         <div
           ref={cardRef}
-          className="relative w-[330px] sm:w-[380px] h-[215px] sm:h-[240px] rounded-3xl p-6 flex flex-col justify-between overflow-hidden"
+          className="al-keep-dark relative w-[330px] sm:w-[380px] h-[215px] sm:h-[240px] rounded-3xl p-6 flex flex-col justify-between overflow-hidden"
           style={{
             background: 'linear-gradient(145deg, #1A1A1A 0%, #0A0A0A 55%, #2D0000 100%)',
             boxShadow: '0 30px 80px rgba(204,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.10)',
