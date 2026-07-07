@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
+import PageErrorBoundary from '../common/PageErrorBoundary';
 import { useDispatch, useSelector } from 'react-redux';
 import { RiMenuLine, RiBankLine, RiCloseLine, RiShieldFlashLine } from 'react-icons/ri';
 import Sidebar from './Sidebar';
@@ -12,6 +13,7 @@ import useSessionTimeout from '../../hooks/useSessionTimeout';
 
 export default function DashboardLayout() {
   const dispatch = useDispatch();
+  const { pathname } = useLocation();
   const { sidebarMobileOpen } = useSelector((s) => s.ui);
 
   // Customer-only session-security engine (5-min inactivity, 1-hr absolute cap,
@@ -120,9 +122,12 @@ export default function DashboardLayout() {
           <Topbar />
         </div>
 
-        {/* Scrollable content panel */}
+        {/* Scrollable content panel — the error boundary guarantees a page
+            crash shows a recovery card instead of a blank screen. */}
         <main className="flex-1 w-full overflow-y-auto overflow-x-hidden p-4 lg:p-6 page-enter">
-          <Outlet />
+          <PageErrorBoundary resetKey={pathname}>
+            <Outlet />
+          </PageErrorBoundary>
         </main>
       </div>
     </div>

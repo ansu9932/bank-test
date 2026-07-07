@@ -310,3 +310,290 @@
   background: #0A0A0A;
   min-height: 100vh;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THEME SWITCHER FAB — bottom-left floating toggle (Auto / Light / Dark)
+   ══════════════════════════════════════════════════════════════════════════ */
+.theme-toggle-fab {
+  position: fixed;
+  right: 20px;
+  bottom: 92px; /* stacked above the AVA chatbot bubble (bottom-right) */
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  background: rgba(30, 30, 46, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.25s ease;
+}
+.theme-toggle-fab:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(0,0,0,0.45); }
+.theme-toggle-fab:active { transform: scale(0.95); }
+.theme-toggle-fab svg { font-size: 17px; }
+@media (max-width: 640px) {
+  .theme-toggle-label { display: none; }
+  .theme-toggle-fab { padding: 11px; }
+}
+
+/* Smooth cross-theme transitions on the biggest surfaces */
+body,
+.glass-card,
+.input-field,
+.btn-secondary,
+.nav-item,
+.stat-card {
+  transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ALISTER BANK · LIGHT THEME  (html.theme-light)
+   Automatic by time of day: light 7 AM – 7 PM, dark 7 PM – 7 AM (auto mode).
+   Dark styling is the site's native CSS; this block remaps every dark token
+   to a professional banking light palette:
+     bg #f3f4f6 · surface #ffffff · ink #101623 · brand red unchanged
+   Applied to the website + dashboard only (never /app or /admin).
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Base ────────────────────────────────────────────────────────────────── */
+html.theme-light body {
+  background-color: #f3f4f6;
+  color: #101623;
+  background-image:
+    radial-gradient(ellipse at 20% 10%, rgba(204, 0, 0, 0.045) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 90%, rgba(204, 0, 0, 0.03) 0%, transparent 50%);
+}
+html.theme-light ::selection { background: #cc0000; color: #ffffff; }
+html.theme-light ::-webkit-scrollbar-track { background: #e5e7eb; }
+html.theme-light ::-webkit-scrollbar-thumb { background: #c3c8d2; }
+html.theme-light ::-webkit-scrollbar-thumb:hover { background: #cc0000; }
+
+/* ── Dark background utilities → light surfaces ─────────────────────────── */
+html.theme-light .bg-dark-900 { background-color: #f3f4f6; }
+html.theme-light .bg-dark-800 { background-color: #ffffff; }
+html.theme-light .bg-dark-700 { background-color: #ffffff; }
+html.theme-light .bg-dark-600 { background-color: #eef0f4; }
+html.theme-light .bg-dark-500 { background-color: #e6e9ee; }
+html.theme-light .bg-dark-800\/80 { background-color: rgba(255, 255, 255, 0.85); }
+html.theme-light .bg-dark-700\/50 { background-color: #f0f1f4; }
+html.theme-light .bg-dark-800\/50 { background-color: #f3f4f6; }
+/* Solid arbitrary-value surfaces used across the dashboard */
+html.theme-light .bg-\[\#161622\] { background-color: #ffffff; }
+html.theme-light .bg-\[\#111118\] { background-color: #ffffff; }
+html.theme-light .bg-\[\#1c1c2d\] { background-color: #eef0f4; }
+html.theme-light .bg-\[\#15161c\] { background-color: #ffffff; }
+html.theme-light .bg-\[\#0d0e12\] { background-color: #f3f4f6; }
+html.theme-light .bg-\[\#15151f\] { background-color: #ffffff; }
+html.theme-light .bg-black\/50 { background-color: rgba(15, 23, 42, 0.35); }
+html.theme-light .bg-black\/70 { background-color: rgba(15, 23, 42, 0.45); }
+
+/* ── Component classes ───────────────────────────────────────────────────── */
+html.theme-light .glass-card,
+html.theme-light .glass-card-hover {
+  background: #ffffff;
+  border-color: #e5e7eb;
+  box-shadow: 0 1px 3px rgba(16, 22, 35, 0.06), 0 8px 24px rgba(16, 22, 35, 0.05);
+}
+html.theme-light .glass-card-hover:hover { border-color: #d3d8e0; }
+html.theme-light .input-field {
+  background-color: #ffffff;
+  border-color: #d7dbe2;
+  color: #101623;
+}
+html.theme-light .input-field::placeholder { color: #9aa1ad; }
+html.theme-light .input-field:focus { border-color: #cc0000; }
+html.theme-light .btn-secondary {
+  background-color: #ffffff;
+  border-color: #d7dbe2;
+  color: #101623;
+}
+html.theme-light .btn-secondary:hover { background-color: #f3f4f6; border-color: #c3c8d2; }
+html.theme-light .btn-ghost { color: #4b5563; }
+html.theme-light .btn-ghost:hover { color: #101623; background-color: #e9ebef; }
+html.theme-light .nav-item { color: #4b5563; }
+html.theme-light .nav-item:hover { color: #101623; background-color: #f0f1f4; }
+html.theme-light .nav-item.active { background-color: rgba(204, 0, 0, 0.08); color: #cc0000; border-color: rgba(204, 0, 0, 0.2); }
+html.theme-light .page-title { color: #101623; }
+html.theme-light .form-label { color: #4b5563; }
+html.theme-light .divider { border-color: #e5e7eb; }
+html.theme-light .table-row { border-color: #eceef2; }
+html.theme-light .table-row:hover { background-color: #f7f8fa; }
+html.theme-light .otp-input {
+  background-color: #ffffff;
+  border-color: #d7dbe2;
+  color: #101623;
+}
+html.theme-light .skeleton {
+  background: linear-gradient(90deg, #e9ebef 25%, #f3f4f6 50%, #e9ebef 75%);
+  background-size: 200% 100%;
+}
+html.theme-light .modal-overlay { background-color: rgba(15, 23, 42, 0.4); }
+
+/* ── Text remapping ──────────────────────────────────────────────────────── */
+html.theme-light .text-white { color: #101623; }
+html.theme-light .text-slate-200 { color: #2c3444; }
+html.theme-light .text-slate-300 { color: #3d4657; }
+html.theme-light .text-slate-400 { color: #5a6272; }
+html.theme-light .text-slate-500 { color: #6b7280; }
+html.theme-light .text-slate-600 { color: #7d8595; }
+html.theme-light .text-dark-200 { color: #4b5563; }
+html.theme-light .text-dark-300 { color: #5a6272; }
+html.theme-light .text-dark-400 { color: #6b7280; }
+html.theme-light .text-dark-500 { color: #8a93a3; }
+html.theme-light .text-gray-400 { color: #5a6272; }
+html.theme-light .text-gray-500 { color: #6b7280; }
+/* Colored accents darken one notch so they pass contrast on white */
+html.theme-light .text-green-400 { color: #15803d; }
+html.theme-light .text-green-300 { color: #166534; }
+html.theme-light .text-red-400 { color: #b91c1c; }
+html.theme-light .text-yellow-400 { color: #a16207; }
+html.theme-light .text-yellow-300 { color: #854d0e; }
+html.theme-light .text-blue-400 { color: #1d4ed8; }
+html.theme-light .text-brand-400 { color: #b30d29; }
+
+/* ── Borders & hovers (white-alpha utilities → ink-alpha) ────────────────── */
+html.theme-light .border-white\/\[0\.04\] { border-color: rgba(16, 22, 35, 0.07); }
+html.theme-light .border-white\/\[0\.05\] { border-color: rgba(16, 22, 35, 0.08); }
+html.theme-light .border-white\/\[0\.06\] { border-color: rgba(16, 22, 35, 0.08); }
+html.theme-light .border-white\/\[0\.08\] { border-color: rgba(16, 22, 35, 0.1); }
+html.theme-light .border-white\/\[0\.10\],
+html.theme-light .border-white\/\[0\.1\] { border-color: rgba(16, 22, 35, 0.12); }
+html.theme-light .border-white\/\[0\.12\] { border-color: rgba(16, 22, 35, 0.14); }
+html.theme-light .border-white\/10 { border-color: rgba(16, 22, 35, 0.1); }
+html.theme-light .hover\:bg-white\/\[0\.02\]:hover { background-color: rgba(16, 22, 35, 0.025); }
+html.theme-light .hover\:bg-white\/\[0\.05\]:hover { background-color: rgba(16, 22, 35, 0.05); }
+html.theme-light .hover\:bg-white\/\[0\.06\]:hover { background-color: rgba(16, 22, 35, 0.06); }
+html.theme-light .hover\:border-white\/\[0\.1\]:hover,
+html.theme-light .hover\:border-white\/\[0\.10\]:hover { border-color: rgba(16, 22, 35, 0.16); }
+html.theme-light .bg-white\/\[0\.03\] { background-color: rgba(16, 22, 35, 0.03); }
+html.theme-light .bg-white\/\[0\.04\] { background-color: rgba(16, 22, 35, 0.04); }
+html.theme-light .bg-white\/\[0\.05\] { background-color: rgba(16, 22, 35, 0.05); }
+html.theme-light .bg-white\/5 { background-color: rgba(16, 22, 35, 0.05); }
+html.theme-light .bg-white\/10 { background-color: rgba(16, 22, 35, 0.07); }
+
+/* ── Public marketing site ───────────────────────────────────────────────── */
+html.theme-light .al-public-root { background: #f6f7f9; }
+html.theme-light .al-hero-bg {
+  background: linear-gradient(135deg, #ffffff 0%, #f3f4f6 50%, #ffe9e9 100%);
+}
+html.theme-light .al-glass {
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(16, 22, 35, 0.09);
+}
+html.theme-light .al-card-dark {
+  background: linear-gradient(145deg, #ffffff, #f3f4f6);
+  border: 1px solid rgba(16, 22, 35, 0.07);
+}
+html.theme-light .bg-alister-black { background-color: #f6f7f9; }
+html.theme-light .bg-alister-black-soft { background-color: #ffffff; }
+html.theme-light .bg-alister-black-medium { background-color: #eef0f4; }
+html.theme-light .text-alister-white { color: #101623; }
+html.theme-light .text-alister-white-soft { color: #2c3444; }
+html.theme-light .text-alister-white-muted { color: #4b5563; }
+html.theme-light .al-range { background: #d7dbe2; }
+
+/* ── White-opacity text variants → ink with boosted contrast ─────────────── */
+html.theme-light .text-white\/25 { color: rgba(16, 22, 35, 0.45); }
+html.theme-light .text-white\/40 { color: rgba(16, 22, 35, 0.55); }
+html.theme-light .text-white\/50 { color: rgba(16, 22, 35, 0.6); }
+html.theme-light .text-white\/55 { color: rgba(16, 22, 35, 0.62); }
+html.theme-light .text-white\/60 { color: rgba(16, 22, 35, 0.66); }
+html.theme-light .text-white\/65 { color: rgba(16, 22, 35, 0.68); }
+html.theme-light .text-white\/70 { color: rgba(16, 22, 35, 0.72); }
+html.theme-light .text-white\/80 { color: rgba(16, 22, 35, 0.8); }
+html.theme-light .text-white\/85 { color: rgba(16, 22, 35, 0.85); }
+html.theme-light .text-white\/90 { color: rgba(16, 22, 35, 0.9); }
+html.theme-light .hover\:text-white:hover { color: #101623; }
+html.theme-light .placeholder-dark-300::placeholder { color: #9aa1ad; }
+
+/* ── Brand-red containers KEEP white text (must come after remaps) ───────── */
+/* Catch-all: every text-white* variant inside a red-painted container stays
+   white — covers the Visa account card (inline #c8102e gradient) and all
+   red gradient hero/CTA sections. */
+/* NOTE: browsers serialize inline hex colors to rgb() form in the style
+   attribute, so we match BOTH the raw hex (static HTML) and the serialized
+   rgb() strings (React-rendered):
+     #c8102e → rgb(200, 16, 46) · #CC0000 → rgb(204, 0, 0)
+     #ef4444 → rgb(239, 68, 68) */
+html.theme-light [style*="c8102e"] [class*="text-white"],
+html.theme-light [style*="c8102e"][class*="text-white"],
+html.theme-light [style*="rgb(200, 16, 46)"] [class*="text-white"],
+html.theme-light [style*="rgb(200, 16, 46)"][class*="text-white"],
+html.theme-light [style*="cc0000"] [class*="text-white"],
+html.theme-light [style*="CC0000"] [class*="text-white"],
+html.theme-light [style*="rgb(204, 0, 0)"] [class*="text-white"],
+html.theme-light [style*="ef4444"] [class*="text-white"],
+html.theme-light [style*="rgb(239, 68, 68)"] [class*="text-white"],
+html.theme-light .al-red-gradient [class*="text-white"],
+html.theme-light .bg-card-gradient [class*="text-white"],
+html.theme-light .bg-brand-500 [class*="text-white"],
+html.theme-light .bg-brand-600 [class*="text-white"] { color: #ffffff; }
+html.theme-light [style*="c8102e"] .text-white\/40,
+html.theme-light [style*="rgb(200, 16, 46)"] .text-white\/40 { color: rgba(255,255,255,0.55); }
+html.theme-light [style*="c8102e"] .text-white\/50,
+html.theme-light [style*="rgb(200, 16, 46)"] .text-white\/50 { color: rgba(255,255,255,0.62); }
+html.theme-light [style*="c8102e"] .text-white\/60,
+html.theme-light [style*="rgb(200, 16, 46)"] .text-white\/60 { color: rgba(255,255,255,0.68); }
+html.theme-light [style*="c8102e"] .text-white\/70,
+html.theme-light [style*="rgb(200, 16, 46)"] .text-white\/70 { color: rgba(255,255,255,0.75); }
+html.theme-light [style*="c8102e"] .text-white\/80,
+html.theme-light [style*="rgb(200, 16, 46)"] .text-white\/80 { color: rgba(255,255,255,0.85); }
+html.theme-light [style*="c8102e"] .text-white\/90,
+html.theme-light [style*="rgb(200, 16, 46)"] .text-white\/90 { color: rgba(255,255,255,0.92); }
+html.theme-light [style*="rgb(200, 16, 46)"] .text-green-300 { color: #86efac; }
+html.theme-light [style*="rgb(200, 16, 46)"] .text-yellow-300 { color: #fde047; }
+
+/* Sticky dashboard top bar uses a dark inline gradient — repaint it light.
+   (!important is required to beat an inline style attribute.) */
+html.theme-light [style*="rgba(30, 30, 46"] {
+  background: rgba(255, 255, 255, 0.92) !important;
+  border-bottom-color: rgba(16, 22, 35, 0.08) !important;
+}
+/* Inline solid dark surfaces (React serializes hex → rgb() in the DOM):
+   #0d0e12 → rgb(13, 14, 18) · #15161c → rgb(21, 22, 28) · #1e1e2e → rgb(30, 30, 46) */
+html.theme-light [style*="rgb(13, 14, 18)"] { background: #f3f4f6 !important; }
+html.theme-light [style*="rgb(21, 22, 28)"] { background: #ffffff !important; border-color: rgba(16, 22, 35, 0.1) !important; }
+html.theme-light [style*="rgb(30, 30, 46)"]:not(.theme-toggle-fab) {
+  background: #ffffff !important;
+  color: #101623 !important;
+  border-color: rgba(16, 22, 35, 0.1) !important;
+  box-shadow: 0 8px 24px rgba(16, 22, 35, 0.12) !important;
+}
+
+/* Anything painted with the brand gradient/red — the Visa account card uses
+   an inline style containing #c8102e; buttons/badges use utility classes. */
+html.theme-light .btn-primary,
+html.theme-light .btn-primary * { color: #ffffff; }
+html.theme-light [style*="c8102e"] .text-white,
+html.theme-light [style*="c8102e"].text-white,
+html.theme-light [style*="C8102E"] .text-white,
+html.theme-light [style*="cc0000"] .text-white,
+html.theme-light [style*="CC0000"] .text-white,
+html.theme-light [style*="ef4444"] .text-white,
+html.theme-light .bg-card-gradient .text-white,
+html.theme-light .al-red-gradient .text-white,
+html.theme-light .al-red-gradient.text-white,
+html.theme-light .bg-brand-500 .text-white,
+html.theme-light .bg-brand-500.text-white,
+html.theme-light .bg-brand-600 .text-white,
+html.theme-light .bg-brand-600.text-white { color: #ffffff; }
+/* Red-gradient cards keep their light green/yellow status pills readable */
+html.theme-light [style*="c8102e"] .text-green-300 { color: #86efac; }
+html.theme-light [style*="c8102e"] .text-yellow-300 { color: #fde047; }
+/* The theme FAB itself in light mode */
+html.theme-light .theme-toggle-fab {
+  background: rgba(255, 255, 255, 0.95);
+  color: #101623;
+  border-color: rgba(16, 22, 35, 0.12);
+  box-shadow: 0 8px 24px rgba(16, 22, 35, 0.14);
+}
