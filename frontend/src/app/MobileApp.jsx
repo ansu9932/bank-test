@@ -46,6 +46,19 @@ function AppEntry() {
   return <Navigate to="/app/onboarding" replace />;
 }
 
+// ─── Registration-only gate (QR web-login scanner) ───────────────────────────
+// The one-session rule means an app-signed-in user can NOT also log into the
+// web with a password — the QR scanner IS their way onto the website. So it
+// must be reachable straight from the MPIN lock screen, before unlocking.
+// This is still safe pre-unlock: approving requires the registered device's
+// deviceToken AND a fresh MPIN entry, both verified server-side.
+function RequireDeviceRegistration({ children }) {
+  if (!hasDeviceRegistration()) {
+    return <Navigate to="/app/onboarding" replace />;
+  }
+  return children;
+}
+
 // ─── Auth gate for main screens ──────────────────────────────────────────────
 function RequireAppAuth({ children }) {
   if (isAppAuthenticated() && isInactivityLocked()) {
@@ -192,8 +205,11 @@ export default function MobileApp() {
             <Route path="pay" element={<RequireAppAuth><MainLayout><PayScreen /></MainLayout></RequireAppAuth>} />
             <Route path="history" element={<RequireAppAuth><MainLayout><HistoryScreen /></MainLayout></RequireAppAuth>} />
             <Route path="menu/*" element={<RequireAppAuth><MainLayout><MenuScreen /></MainLayout></RequireAppAuth>} />
-            {/* Website QR sign-in — full-screen camera flow, no bottom nav */}
-            <Route path="qr-login" element={<RequireAppAuth><QrLoginScreen /></RequireAppAuth>} />
+            {/* Website QR sign-in — full-screen camera flow, no bottom nav.
+                Registration-gated (NOT auth-gated) so it works from the MPIN
+                lock screen: per the one-session rule this is how an
+                app-signed-in user gets onto the website. */}
+            <Route path="qr-login" element={<RequireDeviceRegistration><QrLoginScreen /></RequireDeviceRegistration>} />
             <Route path="*" element={<Navigate to="/app" replace />} />
           </Routes>
         </div>

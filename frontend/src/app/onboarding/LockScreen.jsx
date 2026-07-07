@@ -11,7 +11,7 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, KeyRound, AlertTriangle } from 'lucide-react';
+import { ShieldCheck, KeyRound, AlertTriangle, ScanLine } from 'lucide-react';
 import appStorage from '../../services/appStorage';
 import {
   isBiometricAvailable, isBiometricEnabled, verifyBiometric,
@@ -132,14 +132,27 @@ export default function LockScreen() {
       </section>
 
       <footer className="flex flex-col items-center gap-4 pt-6">
-        <button
-          type="button"
-          className="flex items-center gap-2 text-sm app-dim"
-          onClick={() => setForgotStep(1)}
-        >
-          <KeyRound size={14} aria-hidden="true" />
-          Forgot MPIN?
-        </button>
+        {/* One-session rule: web password login is blocked while the app is
+            registered, so QR scan must be reachable from HERE, pre-unlock.
+            Approval still demands the MPIN, so this is not a bypass. */}
+        <div className="flex items-center gap-6">
+          <button
+            type="button"
+            className="flex items-center gap-2 text-sm app-dim"
+            onClick={() => navigate('/app/qr-login')}
+          >
+            <ScanLine size={14} aria-hidden="true" />
+            Scan QR to login on web
+          </button>
+          <button
+            type="button"
+            className="flex items-center gap-2 text-sm app-dim"
+            onClick={() => setForgotStep(1)}
+          >
+            <KeyRound size={14} aria-hidden="true" />
+            Forgot MPIN?
+          </button>
+        </div>
         <p className="flex items-center gap-1.5 text-xs app-dim">
           <ShieldCheck size={13} aria-hidden="true" />
           Secured by Alister Bank

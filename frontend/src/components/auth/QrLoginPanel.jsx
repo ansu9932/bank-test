@@ -4,7 +4,7 @@ import { useDispatch } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   RiSmartphoneLine, RiRefreshLine, RiCheckboxCircleFill,
-  RiCloseCircleFill, RiTimeLine, RiShieldCheckLine,
+  RiCloseCircleFill, RiTimeLine, RiShieldCheckLine, RiQrCodeLine,
 } from 'react-icons/ri';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -13,13 +13,14 @@ import { qrLogin } from '../../store/slices/authSlice';
 /**
  * "Scan to Login" panel on the NetBanking login page.
  *
- * Renders the server-generated QR code with a live countdown ring, then
- * short-polls /qr-login/status/:qrId every 2s through the state machine:
+ * The QR is generated ON DEMAND: the user clicks "Generate QR Code", the
+ * code lives for 60 seconds with a countdown ring, and when it expires the
+ * button simply comes back — no codes are minted that nobody asked for.
+ * While live, we short-poll /qr-login/status/:qrId every 2s through:
  *   pending → scanned → approved (one-time token → exchange → dashboard)
- *                     → rejected | expired (auto-offers a fresh code)
+ *                     → rejected | expired
  *
- * The QR auto-refreshes on expiry so the user never sees a dead code.
- * Polling (not WebSocket) keeps this compatible with the existing PHP-free
+ * Polling (not WebSocket) keeps this compatible with the existing
  * Express + PM2 deployment with zero new infrastructure.
  */
 const QR_TTL_SECONDS = 60;
@@ -28,8 +29,8 @@ export default function QrLoginPanel({ onSuccess }) {
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
-  // ui: loading | active | scanned | approving | success | rejected | expired | error
-  const [ui, setUi] = useState('loading');
+  // ui: idle | loading | active | scanned | approving | success | rejected | expired | error
+  const [ui, setUi] = useState('idle');
   const [qr, setQr] = useState(null); // { qrId, qrImage, expiresAt }
   const [secondsLeft, setSecondsLeft] = useState(QR_TTL_SECONDS);
   const pollRef = useRef(null);
@@ -48,8 +49,14 @@ export default function QrLoginPanel({ onSuccess }) {
       const { data } = await api.post('/qr-login/create');
       const info = data.data || data;
       if (deadRef.current) return;
+      // Guard against unexpected server responses (old backend, proxy HTML,
+      // etc.) — never render a broken image or a NaN countdown.
+      if (!info || !info.qrId || !info.qrImage || !info.expiresAt) {
+        throw new Error('QR login is not available right now.');
+      }
+      const ttl = Math.round((new Date(info.expiresAt) - Date.now()) / 1000);
       setQr(info);
-      setSecondsLeft(Math.max(1, Math.round((new Date(info.expiresAt) - Date.now()) / 1000)));
+      setSecondsLeft(Number.isFinite(ttl) ? Math.max(1, Math.min(ttl, QR_TTL_SECONDS)) : QR_TTL_SECONDS);
       setUi('active');
 
       // Countdown tick (1s)
@@ -95,21 +102,24 @@ export default function QrLoginPanel({ onSuccess }) {
     } catch (err) {
       if (deadRef.current) return;
       setUi('error');
-      toast.error(err.response?.data?.message || 'Could not generate a QR code.');
+      toast.error(err.response?.data?.message || err.message || 'Could not generate a QR code.');
     }
   }, [dispatch, navigate, onSuccess]);
 
-  // Auto-refresh: when the countdown hits zero while still waiting for a
-  // scan, mint a brand-new code instead of showing a dead one.
+  // When the countdown hits zero while still waiting for a scan, the code
+  // is dead — stop everything and bring the Generate button back.
   useEffect(() => {
-    if (secondsLeft === 0 && ui === 'active') createSession();
-  }, [secondsLeft, ui, createSession]);
+    if (secondsLeft === 0 && ui === 'active') {
+      stopTimers();
+      setUi('expired');
+    }
+  }, [secondsLeft, ui]);
 
+  // No auto-generation on mount: codes are only minted when the user asks.
   useEffect(() => {
     deadRef.current = false;
-    createSession();
     return () => { deadRef.current = true; stopTimers(); };
-  }, [createSession]);
+  }, []);
 
   const pct = Math.max(0, Math.min(100, (secondsLeft / QR_TTL_SECONDS) * 100));
 
@@ -118,6 +128,25 @@ export default function QrLoginPanel({ onSuccess }) {
       {/* QR area */}
       <div className="relative w-[260px] h-[260px] rounded-2xl overflow-hidden border border-white/10 bg-white flex items-center justify-center">
         <AnimatePresence mode="wait">
+          {ui === 'idle' && (
+            <motion.div key="i" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="flex flex-col items-center gap-4 px-6 text-center">
+              <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#CC0000]/10 border border-[#CC0000]/25" aria-hidden="true">
+                <RiQrCodeLine className="text-3xl text-[#CC0000]" />
+              </span>
+              <p className="text-[#101623]/60 text-xs leading-relaxed max-w-[200px]">
+                Generate a one-time QR code, then scan it with the Alister Bank app.
+              </p>
+              <button
+                type="button"
+                onClick={createSession}
+                className="px-6 py-3 rounded-[10px] bg-[#CC0000] text-white text-sm font-semibold hover:bg-[#E60000] transition-colors shadow-[0_4px_14px_rgba(204,0,0,0.3)]"
+              >
+                Generate QR Code
+              </button>
+            </motion.div>
+          )}
+
           {ui === 'loading' && (
             <motion.div key="l" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="flex flex-col items-center gap-3 text-[#101623]">
@@ -193,14 +222,14 @@ export default function QrLoginPanel({ onSuccess }) {
         </div>
       )}
 
-      {/* Retry for terminal states */}
+      {/* The Generate button comes back for every terminal state */}
       {['rejected', 'expired', 'error'].includes(ui) && (
         <button
           type="button"
           onClick={createSession}
-          className="mt-4 px-5 py-2.5 rounded-[10px] bg-[#CC0000] text-white text-sm font-semibold hover:bg-[#E60000] transition-colors"
+          className="mt-4 px-6 py-3 rounded-[10px] bg-[#CC0000] text-white text-sm font-semibold hover:bg-[#E60000] transition-colors shadow-[0_4px_14px_rgba(204,0,0,0.3)]"
         >
-          Generate a new code
+          Generate QR Code
         </button>
       )}
 
