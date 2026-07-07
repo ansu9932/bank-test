@@ -164,6 +164,26 @@ export async function isDeveloperModeEnabled() {
 }
 
 /**
+ * Runtime CAMERA permission for the QR-login scanner. On the native app this
+ * triggers the standard Android permission dialog; the WebView's
+ * getUserMedia() only works after it is granted. On the web (dev preview)
+ * the browser handles its own prompt, so we return true and let
+ * getUserMedia ask.
+ */
+export async function requestCameraPermission() {
+  if (!isNativeApp()) return true;
+  try {
+    const { registerPlugin } = await import('@capacitor/core');
+    const RootCheck = registerPlugin('RootCheck');
+    const { granted } = await RootCheck.requestCameraPermission();
+    return !!granted;
+  } catch {
+    // Older APK without the method — let getUserMedia try anyway.
+    return true;
+  }
+}
+
+/**
  * Stable per-install device identifier for device binding. Generated once
  * with the Web Crypto CSPRNG and persisted; sent with every login so the
  * backend can email an alert when a NEW device signs in. Not PII — a random

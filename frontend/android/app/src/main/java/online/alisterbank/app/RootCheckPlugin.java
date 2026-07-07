@@ -1,12 +1,16 @@
 package online.alisterbank.app;
 
 import com.getcapacitor.JSObject;
+import com.getcapacitor.PermissionState;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
 import com.scottyab.rootbeer.RootBeer;
 
+import android.Manifest;
 import android.os.Build;
 import android.provider.Settings;
 
@@ -16,8 +20,37 @@ import android.provider.Settings;
  * On a rooted device the Android Keystore and FLAG_SECURE guarantees do not
  * hold, so the web layer blocks login entirely.
  */
-@CapacitorPlugin(name = "RootCheck")
+@CapacitorPlugin(
+    name = "RootCheck",
+    permissions = {
+        @Permission(alias = "camera", strings = { Manifest.permission.CAMERA })
+    }
+)
 public class RootCheckPlugin extends Plugin {
+
+    /**
+     * Runtime camera permission for the QR-login scanner. The WebView's
+     * getUserMedia() only works once the Android CAMERA permission has been
+     * granted, so the JS layer calls this FIRST — Android shows the standard
+     * "Allow Alister Bank to take pictures and record video?" dialog.
+     */
+    @PluginMethod
+    public void requestCameraPermission(PluginCall call) {
+        if (getPermissionState("camera") == PermissionState.GRANTED) {
+            JSObject result = new JSObject();
+            result.put("granted", true);
+            call.resolve(result);
+        } else {
+            requestPermissionForAlias("camera", call, "cameraPermissionCallback");
+        }
+    }
+
+    @PermissionCallback
+    private void cameraPermissionCallback(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("granted", getPermissionState("camera") == PermissionState.GRANTED);
+        call.resolve(result);
+    }
 
     @PluginMethod
     public void isRooted(PluginCall call) {

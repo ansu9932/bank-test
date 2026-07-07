@@ -19,10 +19,16 @@ import {
 import { Screen, AppHeader, Card, PrimaryButton, GhostButton, PinDots, NumberPad } from '../components/AppUI';
 import {
   parseQrLoginPayload, qrScan, qrApprove, qrReject, getMpinLength, lockApp,
+  isAppAuthenticated,
 } from '../services/appAuth';
+import { requestCameraPermission } from '../../services/biometric';
 
 export default function QrLoginScreen() {
   const navigate = useNavigate();
+  // Reachable from the lock screen too (one-session rule: a user who is
+  // signed in on the app uses THIS flow to get onto the web). Back/cancel
+  // must return to wherever the user actually came from.
+  const backTarget = isAppAuthenticated() ? '/app/home' : '/app/lock';
   // step: scan | confirm | swipe | mpin | done
   const [step, setStep] = useState('scan');
   const [error, setError] = useState('');
@@ -78,6 +84,16 @@ export default function QrLoginScreen() {
 
     (async () => {
       try {
+        // Native Android: ask for the CAMERA runtime permission FIRST, so
+        // the user sees the standard system dialog. getUserMedia inside the
+        // WebView silently fails without it.
+        const allowed = await requestCameraPermission();
+        if (!allowed) {
+          if (!cancelled) {
+            setCameraError('Camera permission denied. Enable Camera for Alister Bank in your phone Settings to scan the login code.');
+          }
+          return;
+        }
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'environment' },
         });
@@ -172,7 +188,7 @@ export default function QrLoginScreen() {
 
   const rejectAndExit = async () => {
     if (session?.qrId) await qrReject(session.qrId);
-    navigate('/app/home', { replace: true });
+    navigate(backTarget, { replace: true });
   };
 
   const fmtWhen = (iso) => {
@@ -181,7 +197,7 @@ export default function QrLoginScreen() {
 
   return (
     <Screen className="pb-10">
-      <AppHeader title="Scan to Login" backTo="/app/home" />
+      <AppHeader title="Scan to Login" backTo={backTarget} />
 
       {/* ── Step: camera scan ── */}
       {step === 'scan' && (
