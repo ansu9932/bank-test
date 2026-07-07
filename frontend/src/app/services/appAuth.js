@@ -159,6 +159,54 @@ export function isAppAuthenticated() {
   return !!appStorage.getItem('token');
 }
 
+// ─── QR-code website login (scan → context → swipe + MPIN) ──────────────────
+// The app validates the QR payload structure BEFORE anything goes to the
+// server (anti-quishing): exact Alister prefix + 48-hex session id only.
+const QR_PREFIX = 'ALISTERBANK:QRLOGIN:v1:';
+const QR_ID_RE = /^[a-f0-9]{48}$/;
+
+/** Client-side payload validation. Returns the qrId or null. */
+export function parseQrLoginPayload(raw) {
+  const s = String(raw || '');
+  if (!s.startsWith(QR_PREFIX)) return null;
+  const qrId = s.slice(QR_PREFIX.length);
+  return QR_ID_RE.test(qrId) ? qrId : null;
+}
+
+/** Report the scan; returns { qrId, context } for the approval screen. */
+export async function qrScan(qrPayload) {
+  const { data } = await api.post('/qr-login/scan', {
+    qrPayload,
+    deviceId: getDeviceId(),
+    deviceToken: appStorage.getItem('appDeviceToken'),
+  });
+  return data.data || data;
+}
+
+/** Final authorization: swipe done + MPIN entered. */
+export async function qrApprove(qrId, mpin) {
+  const { data } = await api.post('/qr-login/approve', {
+    qrId,
+    mpin,
+    deviceId: getDeviceId(),
+    deviceToken: appStorage.getItem('appDeviceToken'),
+  });
+  return data;
+}
+
+/** Decline the login request. */
+export async function qrReject(qrId) {
+  try {
+    await api.post('/qr-login/reject', {
+      qrId,
+      deviceId: getDeviceId(),
+      deviceToken: appStorage.getItem('appDeviceToken'),
+    });
+  } catch {
+    /* best-effort; the session expires on its own in 60s anyway */
+  }
+}
+
 // ─── Inactivity lock (10 min) ────────────────────────────────────────────────
 // Survives cold starts: appLastActiveAt lives in secure storage, so killing
 // the app from the recents screen and reopening still triggers the lock.

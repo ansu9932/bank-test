@@ -162,6 +162,8 @@ app.use('/api/payouts', require('./routes/payouts'));
 app.use('/api/admin', require('./routes/admin'));
 // AVA chatbot — public intent engine + in-chat email OTP identity verification.
 app.use('/api/chat', require('./routes/chat'));
+// QR-code login — scan on the website, approve with swipe + MPIN in the app.
+app.use('/api/qr-login', require('./routes/qrLogin'));
 
 // ─── Mobile App: version check + APK download ─────────────────────────────────
 // GET /api/version — the Android app calls this on launch and compares the
