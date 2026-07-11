@@ -1,0 +1,82 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+/* ────────────────────────────────────────────────────────────────
+   Alister Bank vKYC — scoped styles
+   Palette (strict): #FFFFFF, #0A0A0A, #DC2626, #F4F4F5, #16A34A
+   ──────────────────────────────────────────────────────────────── */
+
+.vkyc {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: #0a0a0a;
+  line-height: 1.5;
+}
+
+.vkyc-heading {
+  font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  letter-spacing: -0.02em;
+}
+
+/* Camera screens are dark surfaces regardless of app theme */
+.vkyc-dark {
+  background: #0a0a0a;
+  color: #ffffff;
+}
+
+/* Laser scan line for the ID frame */
+@keyframes vkyc-laser {
+  0%   { top: 6%; opacity: 0.2; }
+  8%   { opacity: 1; }
+  92%  { opacity: 1; }
+  100% { top: 94%; opacity: 0.2; }
+}
+.vkyc-laser {
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  height: 2px;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, transparent, #dc2626, transparent);
+  box-shadow: 0 0 14px rgba(220, 38, 38, 0.9);
+  animation: vkyc-laser 2.2s ease-in-out infinite alternate;
+}
+
+/* Capture flash */
+@keyframes vkyc-flash {
+  0% { opacity: 0.95; }
+  100% { opacity: 0; }
+}
+.vkyc-flash {
+  animation: vkyc-flash 0.45s ease-out forwards;
+}
+
+/* Success checkmark draw-in */
+@keyframes vkyc-draw {
+  to { stroke-dashoffset: 0; }
+}
+.vkyc-check-ring {
+  stroke-dasharray: 302;
+  stroke-dashoffset: 302;
+  animation: vkyc-draw 0.7s ease-out forwards;
+}
+.vkyc-check-mark {
+  stroke-dasharray: 60;
+  stroke-dashoffset: 60;
+  animation: vkyc-draw 0.45s ease-out 0.6s forwards;
+}
+
+/* Disable save/drag on captured biometric previews */
+.vkyc-protected {
+  -webkit-user-drag: none;
+  user-select: none;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vkyc-laser,
+  .vkyc-check-ring,
+  .vkyc-check-mark,
+  .vkyc-flash {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

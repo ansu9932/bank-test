@@ -42,7 +42,7 @@ import DashboardLayout from './components/layout/DashboardLayout';
 import AdminLayout from './components/layout/AdminLayout';
 import AdminDeviceGate from './components/AdminDeviceGate';
 const AccountOpeningPage = lazy(() => import('./pages/account-opening/AccountOpeningPage'));
-const CyberVideoKYC = lazy(() => import('./pages/account-opening/CyberVideoKYC'));
+const VideoKYC = lazy(() => import('./pages/video-kyc/VideoKYC'));
 const AccountSetupPage = lazy(() => import('./pages/account-opening/AccountSetupPage'));
 const ActivateDepositPage = lazy(() => import('./pages/account-opening/ActivateDepositPage'));
 
@@ -159,9 +159,9 @@ export default function App() {
         {/* Account Opening */}
         <Route path="/open-account" element={withSuspense(<AccountOpeningPage />)} />
         {/* Live production Video KYC — email secure links land here (?token=...) */}
-        <Route path="/video-kyc" element={withSuspense(<CyberVideoKYC />)} />
-        {/* Public showcase / demo of the same cyber wizard (no token = demo mode) */}
-        <Route path="/cyber-kyc" element={withSuspense(<CyberVideoKYC />)} />
+        <Route path="/video-kyc" element={withSuspense(<VideoKYC />)} />
+        {/* Public showcase / demo of the same vKYC wizard (no token = demo mode) */}
+        <Route path="/cyber-kyc" element={withSuspense(<VideoKYC />)} />
         <Route path="/account-setup" element={withSuspense(<AccountSetupPage />)} />
         {/* Activation deposit (sandbox simulation) — emailed secure-token link */}
         <Route path="/activate-deposit" element={withSuspense(<ActivateDepositPage />)} />
