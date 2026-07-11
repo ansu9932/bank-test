@@ -153,49 +153,205 @@ export function frameDiff(a, b) {
   return sum / (a.data.length / step);
 }
 
+/* ── OCR image preprocessing ─────────────────────────────────── */
+
+/**
+ * Prepare a captured ID photo for OCR: upscale to ~1800px wide,
+ * grayscale, and stretch contrast between the 2nd–98th luminance
+ * percentiles. Dramatically improves Tesseract accuracy on phone
+ * captures with shadows / low contrast.
+ */
+export async function preprocessIdImage(dataURL) {
+  const img = new Image();
+  await new Promise((resolve, reject) => {
+    img.onload = resolve;
+    img.onerror = reject;
+    img.src = dataURL;
+  });
+  const scale = Math.max(1, Math.min(2.5, 1800 / (img.width || 1)));
+  const w = Math.round(img.width * scale);
+  const h = Math.round(img.height * scale);
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, 0, 0, w, h);
+
+  const imgData = ctx.getImageData(0, 0, w, h);
+  const { data } = imgData;
+  const total = w * h;
+  const gray = new Float32Array(total);
+  const hist = new Uint32Array(256);
+  for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
+    const g = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    gray[p] = g;
+    hist[g | 0] += 1;
+  }
+  let lo = 0;
+  let hi = 255;
+  let acc = 0;
+  for (let v = 0; v < 256; v += 1) { acc += hist[v]; if (acc >= total * 0.02) { lo = v; break; } }
+  acc = 0;
+  for (let v = 255; v >= 0; v -= 1) { acc += hist[v]; if (acc >= total * 0.02) { hi = v; break; } }
+  const range = Math.max(1, hi - lo);
+  for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
+    const v = Math.max(0, Math.min(255, ((gray[p] - lo) / range) * 255));
+    data[i] = v;
+    data[i + 1] = v;
+    data[i + 2] = v;
+  }
+  ctx.putImageData(imgData, 0, 0);
+  return canvas.toDataURL('image/png');
+}
+
 /* ── OCR parsing ─────────────────────────────────────────────── */
 
-const NAME_STOPWORDS = /(government|india|bank|card|license|licence|permanent|account|income|department|authority|republic|identity|national|driving|union|federal|state|birth|male|female|address|issue|expiry|valid|signature|father|mother)/i;
+const NAME_STOPWORDS = /(government|govt|india|indian|bank|card|license|licence|permanent|account|income|department|authority|republic|identity|national|driving|union|federal|state|birth|male|female|address|issue|expiry|valid|validity|signature|father|mother|transport|blood|group|organ|donor|holder|number|element|minor|west|bengal|issued|date|first)/i;
+
+/** Labels whose value is a RELATIVE's name, never the holder's. */
+const RELATIVE_LABEL = /father|mother|husband|guardian|spouse|son\s*\/|daughter|wife/i;
+
+const TITLE_CASE = (s) => s.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
+
+function cleanNameValue(s) {
+  return String(s || '')
+    .replace(/[^A-Za-z .']/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** A plausible person name: 2-4 words, each ≥2 letters, no stopwords. */
+function isPlausibleName(s) {
+  if (!s || s.length < 5 || s.length > 40) return false;
+  if (NAME_STOPWORDS.test(s)) return false;
+  const words = s.split(' ').filter((w) => w.replace(/[.']/g, '').length >= 2);
+  return words.length >= 2 && words.length <= 4;
+}
+
+/**
+ * Extract DOB. Strategy: collect ALL dates in the text with their
+ * surrounding context, then pick the one that is (a) explicitly
+ * labelled as birth date, or (b) the only date giving a plausible
+ * age (15–100 yrs). This stops the parser grabbing Issue Date /
+ * Validity dates that appear FIRST on Indian driving licences.
+ */
+function extractDob(text) {
+  const now = new Date();
+  const candidates = [];
+  const re = /(\d{2})[\s/\-.]{1,2}(\d{2})[\s/\-.]{1,2}(\d{4})|(\d{4})[\s/\-.]{1,2}(\d{2})[\s/\-.]{1,2}(\d{2})/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    let dd; let mm; let yyyy;
+    if (m[1]) { dd = +m[1]; mm = +m[2]; yyyy = +m[3]; } else { yyyy = +m[4]; mm = +m[5]; dd = +m[6]; }
+    if (mm < 1 || mm > 12 || dd < 1 || dd > 31 || yyyy < 1900) continue;
+    const before = text.slice(Math.max(0, m.index - 40), m.index);
+    const labelledBirth = /birth|dob|d\.o\.b|born|जन्म/i.test(before);
+    const labelledOther = /issue|valid|expir|exp\b|first|renew|upto|till/i.test(before);
+    const age = (now - new Date(yyyy, mm - 1, dd)) / (365.25 * 24 * 3600 * 1000);
+    const plausibleAge = age >= 15 && age <= 100;
+    let score = 0;
+    if (labelledBirth) score += 10;
+    if (labelledOther) score -= 8;
+    if (plausibleAge) score += 5; else score -= 5;
+    candidates.push({ dd, mm, yyyy, score });
+  }
+  if (!candidates.length) return '';
+  candidates.sort((a, b) => b.score - a.score);
+  const best = candidates[0];
+  if (best.score <= 0) return '';
+  const p2 = (n) => String(n).padStart(2, '0');
+  return `${p2(best.dd)}/${p2(best.mm)}/${best.yyyy}`;
+}
+
+/**
+ * Extract the document number. Ordered by specificity so an Indian
+ * driving licence number ("WB31 20250008761") wins over the bare
+ * digit run inside it, and a PAN ("OHKPS4829C") wins over generic
+ * alphanumeric noise.
+ */
+function extractIdNumber(text, dob) {
+  // Remove all date strings so "10-02-2005" can never leak into a
+  // generic digit-run match.
+  const scrub = text
+    .toUpperCase()
+    .replace(/(\d{2})[\s/\-.]{1,2}(\d{2})[\s/\-.]{1,2}(\d{4})/g, ' ')
+    .replace(/(\d{4})[\s/\-.]{1,2}(\d{2})[\s/\-.]{1,2}(\d{2})/g, ' ');
+  const patterns = [
+    /\b[A-Z]{2}[-\s]?\d{2}[-\s]?\d{10,13}\b/, // Indian DL: WB31 20250008761
+    /\b[A-Z]{2}\d{13}\b/,                     // DL without space
+    /\b[A-Z]{5}\d{4}[A-Z]\b/,                 // PAN: OHKPS4829C
+    /\b\d{4}\s\d{4}\s\d{4}\b/,                // Aadhaar: 1234 5678 9012
+    /\b[A-Z]{3}\d{7}\b/,                      // Voter ID: ABC1234567
+    /\b[A-Z]\d{7}\b/,                         // Passport: A1234567
+    /\b\d{9,16}\b/,                           // generic long digit run
+  ];
+  for (const p of patterns) {
+    const m = scrub.match(p);
+    if (m && m[0] !== dob) return m[0].replace(/\s+/g, ' ').replace(/-/g, ' ').trim();
+  }
+  return '';
+}
+
+/**
+ * Extract the holder's name. Prefers explicit "Name:" labels (same
+ * line or the following line), skips relative labels like
+ * "Son/Daughter/Wife of" and "Father's Name", then falls back to an
+ * uppercase-heavy plausible-name line heuristic.
+ */
+function extractName(lines) {
+  // Pass 1: labelled name
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (!/name/i.test(line) || RELATIVE_LABEL.test(line)) continue;
+    // Value on the same line: "Name: ANSUMAN SAHOO"
+    const same = line.match(/name\s*[:\-—]?\s*(.+)$/i);
+    let candidate = same && same[1] ? cleanNameValue(same[1]) : '';
+    if (isPlausibleName(candidate)) return TITLE_CASE(candidate);
+    // Value on the next line (PAN layout: "नाम / Name" then the name)
+    for (let j = i + 1; j <= i + 2 && j < lines.length; j += 1) {
+      if (RELATIVE_LABEL.test(lines[j]) || /name/i.test(lines[j])) break;
+      candidate = cleanNameValue(lines[j]);
+      if (isPlausibleName(candidate)) return TITLE_CASE(candidate);
+    }
+  }
+  // Pass 2: best uppercase-heavy candidate line
+  let best = '';
+  let bestScore = 0;
+  for (let i = 0; i < lines.length; i += 1) {
+    const prev = i > 0 ? lines[i - 1] : '';
+    if (RELATIVE_LABEL.test(prev)) continue; // value under "Father's Name"
+    const raw = lines[i];
+    if (/\d/.test(raw)) continue;
+    const cleaned = cleanNameValue(raw);
+    if (!isPlausibleName(cleaned)) continue;
+    const letters = cleaned.replace(/[^A-Za-z]/g, '');
+    const upperRatio = letters.length ? (cleaned.match(/[A-Z]/g) || []).length / letters.length : 0;
+    // ID names are printed in ALL CAPS — heavily favour those lines.
+    const score = upperRatio * 10 + (raw === raw.toUpperCase() ? 3 : 0);
+    if (score > bestScore) { bestScore = score; best = cleaned; }
+  }
+  return best ? TITLE_CASE(best) : '';
+}
 
 /** Parse OCR text into { fullName, dob, idNumber }. */
 export function parseIdText(rawText) {
-  const text = String(rawText || '');
+  const text = String(rawText || '').replace(/\r/g, '');
   const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
-
-  // DOB — DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY or YYYY-MM-DD
-  let dob = '';
-  const dmy = text.match(/\b(\d{2})[/\-.](\d{2})[/\-.](\d{4})\b/);
-  const ymd = text.match(/\b(\d{4})[/\-.](\d{2})[/\-.](\d{2})\b/);
-  if (dmy) dob = `${dmy[1]}/${dmy[2]}/${dmy[3]}`;
-  else if (ymd) dob = `${ymd[3]}/${ymd[2]}/${ymd[1]}`;
-
-  // ID number — Aadhaar-style groups, PAN-style alnum, or long digit runs
-  let idNumber = '';
-  const candidates = [
-    text.match(/\b\d{4}\s\d{4}\s\d{4}\b/),          // Aadhaar
-    text.match(/\b[A-Z]{3,5}\d{4}[A-Z]?\b/),         // PAN-like
-    text.match(/\b[A-Z]{1,3}[- ]?\d{6,}\b/),         // DL / passport-like
-    text.match(/\b\d{8,}\b/),                        // generic long number
-  ];
-  for (const m of candidates) {
-    if (m && m[0] !== dob) { idNumber = m[0].trim(); break; }
-  }
-
-  // Name — first line of 2-4 alphabetic words, no digits, no stopwords
-  let fullName = '';
-  for (const line of lines) {
-    if (/\d/.test(line)) continue;
-    if (NAME_STOPWORDS.test(line)) continue;
-    const words = line.split(/\s+/).filter((w) => /^[A-Za-z.']{2,}$/.test(w));
-    if (words.length >= 2 && words.length <= 4) {
-      fullName = words
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-        .join(' ');
-      break;
-    }
-  }
-
+  const dob = extractDob(text);
+  const idNumber = extractIdNumber(text, dob);
+  const fullName = extractName(lines);
   return { fullName, dob, idNumber };
+}
+
+/** Merge two parse results — `primary` wins per field. */
+export function mergeParsedId(primary, secondary) {
+  return {
+    fullName: primary.fullName || secondary.fullName || '',
+    dob: primary.dob || secondary.dob || '',
+    idNumber: primary.idNumber || secondary.idNumber || '',
+  };
 }
 
 /* ── Field validation ────────────────────────────────────────── */

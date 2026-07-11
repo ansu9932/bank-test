@@ -35,6 +35,19 @@ html.theme-light .vkyc .vkyc-dark {
 html.theme-light .vkyc .bg-white { background-color: #ffffff; }
 .vkyc { color-scheme: light; }
 
+/* The global light theme repaints ANY element whose inline style contains
+   "rgba(10, 10, 10" or "rgba(20, 20, 20" as a white surface (navbar/menu
+   rules in globals.css). The camera cutout overlays (face circle + ID card
+   frame) use `box-shadow: 0 0 0 100vmax rgba(10,10,10,.72)` to dim outside
+   the cutout, so in light mode they rendered as a solid WHITE disc/rect
+   covering the camera. Restore the transparent cutout here. */
+html.theme-light .vkyc [style*="rgba(10, 10, 10"],
+html.theme-light .vkyc [style*="rgba(20, 20, 20"] {
+  background: transparent !important;
+  box-shadow: 0 0 0 100vmax rgba(10, 10, 10, 0.72) !important;
+  border-bottom-color: transparent !important;
+}
+
 /* Laser scan line for the ID frame */
 @keyframes vkyc-laser {
   0%   { top: 6%; opacity: 0.2; }

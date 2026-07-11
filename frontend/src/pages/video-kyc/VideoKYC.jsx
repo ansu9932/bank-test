@@ -6,7 +6,7 @@ import { Loader2, ShieldCheck, ScanText, Camera, ArrowRight, Lock } from 'lucide
 import api from '../../services/api';
 import ExpiredLinkPage from '../../components/ExpiredLinkPage';
 import useFaceLandmarker from './useFaceLandmarker';
-import { parseIdText } from './faceMath';
+import { parseIdText, mergeParsedId, preprocessIdImage } from './faceMath';
 import StepProgress from './StepProgress';
 import ConsentScreen from './ConsentScreen';
 import FaceScanStep from './FaceScanStep';
@@ -217,9 +217,25 @@ export default function VideoKYC() {
     goPhase('extracting');
     try {
       // Tesseract is lazy-loaded only when the ID step is reached.
-      const Tesseract = (await import('tesseract.js')).default;
-      const { data } = await Tesseract.recognize(dataURL, 'eng');
-      const parsed = parseIdText(data?.text);
+      const { createWorker } = await import('tesseract.js');
+      const worker = await createWorker('eng');
+      await worker.setParameters({ preserve_interword_spaces: '1' });
+
+      // Pass 1 — preprocessed image (upscaled, grayscale, contrast-stretched).
+      let processed = dataURL;
+      try { processed = await preprocessIdImage(dataURL); } catch { /* fall back to raw */ }
+      const passA = await worker.recognize(processed);
+      let parsed = parseIdText(passA?.data?.text);
+
+      // Pass 2 — raw capture fills in any field the first pass missed.
+      if (!parsed.fullName || !parsed.dob || !parsed.idNumber) {
+        try {
+          const passB = await worker.recognize(dataURL);
+          parsed = mergeParsedId(parsed, parseIdText(passB?.data?.text));
+        } catch { /* keep pass-1 results */ }
+      }
+      await worker.terminate();
+
       const empty = !parsed.fullName && !parsed.dob && !parsed.idNumber;
       setOcrEmpty(empty);
       setDetails((d) => ({

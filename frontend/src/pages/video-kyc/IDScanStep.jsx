@@ -3,9 +3,9 @@ import { motion } from 'framer-motion';
 import {
   Camera, SwitchCamera, AlertTriangle, RefreshCw, Loader2, CreditCard,
 } from 'lucide-react';
-import { laplacianVariance, frameDiff, frameLuminance } from './faceMath';
+import { laplacianVariance, frameDiff } from './faceMath';
 
-const STABLE_MS = 1500;      // card must be stable/sharp/lit this long
+const STABLE_MS = 1200;      // card must be stable/sharp/lit this long
 const SHARPNESS_MIN = 120;   // Laplacian variance floor (blur check)
 const LUMA_MIN = 60;
 const DIFF_MAX = 9;          // mean frame difference = "stable"
@@ -40,7 +40,6 @@ function describeCameraError(err) {
 export default function IDScanStep({ onCaptured }) {
   const videoRef = useRef(null);
   const roiCanvasRef = useRef(document.createElement('canvas'));
-  const lumaCanvasRef = useRef(document.createElement('canvas'));
   const snapCanvasRef = useRef(document.createElement('canvas'));
   const streamRef = useRef(null);
   const mountedRef = useRef(true);
@@ -69,7 +68,9 @@ export default function IDScanStep({ onCaptured }) {
       return;
     }
     const attempts = [
-      { video: { facingMode: { exact: mode }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+      // Highest available resolution first — sharper text = better OCR.
+      { video: { facingMode: { exact: mode }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false },
+      { video: { facingMode: mode, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false },
       { video: { facingMode: mode }, audio: false },
       { video: true, audio: false },
     ];
@@ -127,10 +128,17 @@ export default function IDScanStep({ onCaptured }) {
     if (!v || !v.videoWidth || S.current.captured) return;
     S.current.captured = true;
     const { x, y, w, h } = cardRect(v);
+    // Pad the crop ~4% so text touching the frame edges isn't cut off (OCR).
+    const padX = w * 0.04;
+    const padY = h * 0.04;
+    const sx = Math.max(0, x - padX);
+    const sy = Math.max(0, y - padY);
+    const sw = Math.min(v.videoWidth - sx, w + padX * 2);
+    const sh = Math.min(v.videoHeight - sy, h + padY * 2);
     const c = snapCanvasRef.current;
-    c.width = Math.round(w);
-    c.height = Math.round(h);
-    c.getContext('2d').drawImage(v, x, y, w, h, 0, 0, c.width, c.height);
+    c.width = Math.round(sw);
+    c.height = Math.round(sh);
+    c.getContext('2d').drawImage(v, sx, sy, sw, sh, 0, 0, c.width, c.height);
     const dataURL = c.toDataURL('image/jpeg', 0.93);
     setFlash(true);
     setTimeout(() => onCaptured(dataURL), 350);
@@ -155,7 +163,13 @@ export default function IDScanStep({ onCaptured }) {
       const img = ctx.getImageData(0, 0, rw, rh);
 
       const sharp = laplacianVariance(img);
-      const luma = frameLuminance(v, lumaCanvasRef.current);
+      // Measure lighting on the CARD region itself (not the whole frame) so
+      // a dark background no longer blocks auto-capture of a well-lit card.
+      let lumaSum = 0;
+      for (let i = 0; i < img.data.length; i += 16) {
+        lumaSum += 0.299 * img.data[i] + 0.587 * img.data[i + 1] + 0.114 * img.data[i + 2];
+      }
+      const luma = lumaSum / (img.data.length / 16);
       const diff = frameDiff(img, st.prevRoi);
       st.prevRoi = img;
 
