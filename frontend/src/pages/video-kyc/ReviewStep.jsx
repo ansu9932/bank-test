@@ -71,7 +71,7 @@ function EditableField({ field, value, onChange }) {
  * validated fields, plus rescan/retake escape hatches.
  */
 export default function ReviewStep({
-  selfie, idPhoto, details, onDetailsChange, ocrEmpty,
+  selfie, idPhoto, details, idTypeLabel, onDetailsChange, ocrEmpty,
   onRetakeSelfie, onRescanId, onSubmit, submitting,
 }) {
   const errors = FIELDS.map((f) => f.validate(details[f.key])).filter(Boolean);
@@ -88,9 +88,18 @@ export default function ReviewStep({
       <h2 className="vkyc-heading text-2xl font-bold text-[#0A0A0A] text-center mb-1">
         Review your details
       </h2>
-      <p className="text-sm text-[#0A0A0A]/60 text-center mb-6 leading-relaxed">
+      <p className="text-sm text-[#0A0A0A]/60 text-center mb-4 leading-relaxed">
         Check the extracted information and correct anything before submitting.
       </p>
+
+      {idTypeLabel && (
+        <div className="flex justify-center mb-4">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#F4F4F5] text-xs font-semibold text-[#0A0A0A]/75">
+            <ShieldCheck size={14} className="text-[#DC2626]" aria-hidden="true" />
+            Detected: {idTypeLabel}
+          </span>
+        </div>
+      )}
 
       {/* Captures */}
       <div className="grid grid-cols-2 gap-3 mb-4">

@@ -6,7 +6,8 @@ import { Loader2, ShieldCheck, ScanText, Camera, ArrowRight, Lock } from 'lucide
 import api from '../../services/api';
 import ExpiredLinkPage from '../../components/ExpiredLinkPage';
 import useFaceLandmarker from './useFaceLandmarker';
-import { parseIdText, mergeParsedId, preprocessIdImage } from './faceMath';
+import { preprocessIdImage } from './faceMath';
+import { parseIndianId, mergeParsedId } from './idParser';
 import StepProgress from './StepProgress';
 import ConsentScreen from './ConsentScreen';
 import FaceScanStep from './FaceScanStep';
@@ -94,6 +95,8 @@ export default function VideoKYC() {
   const [selfie, setSelfie] = useState(null);
   const [idPhoto, setIdPhoto] = useState(null);
   const [details, setDetails] = useState({ fullName: '', dob: '', idNumber: '' });
+  const [idType, setIdType] = useState('unknown');
+  const [idTypeLabel, setIdTypeLabel] = useState('');
 
   const streamRef = useRef(null);
   const lastActivityRef = useRef(Date.now());
@@ -117,6 +120,8 @@ export default function VideoKYC() {
     setSelfie(null);
     setIdPhoto(null);
     setDetails({ fullName: '', dob: '', idNumber: '' });
+    setIdType('unknown');
+    setIdTypeLabel('');
     setOcrEmpty(false);
     goPhase('consent');
     if (message) toast(message);
@@ -225,19 +230,23 @@ export default function VideoKYC() {
       let processed = dataURL;
       try { processed = await preprocessIdImage(dataURL); } catch { /* fall back to raw */ }
       const passA = await worker.recognize(processed);
-      let parsed = parseIdText(passA?.data?.text);
+      // Auto-detects which of the 5 Indian IDs (Aadhaar / PAN / Voter /
+      // Passport / DL) was scanned and parses per that document's layout.
+      let parsed = parseIndianId(passA?.data?.text);
 
       // Pass 2 — raw capture fills in any field the first pass missed.
-      if (!parsed.fullName || !parsed.dob || !parsed.idNumber) {
+      if (!parsed.fullName || !parsed.dob || !parsed.idNumber || parsed.idType === 'unknown') {
         try {
           const passB = await worker.recognize(dataURL);
-          parsed = mergeParsedId(parsed, parseIdText(passB?.data?.text));
+          parsed = mergeParsedId(parsed, parseIndianId(passB?.data?.text));
         } catch { /* keep pass-1 results */ }
       }
       await worker.terminate();
 
       const empty = !parsed.fullName && !parsed.dob && !parsed.idNumber;
       setOcrEmpty(empty);
+      setIdType(parsed.idType);
+      setIdTypeLabel(parsed.idType !== 'unknown' ? parsed.idTypeLabel : '');
       setDetails((d) => ({
         fullName: parsed.fullName || d.fullName,
         dob: parsed.dob || d.dob,
@@ -266,7 +275,7 @@ export default function VideoKYC() {
       form.append('document', new File([dataURLToBlob(idPhoto)], `video-kyc-${Date.now()}.jpg`, { type: 'image/jpeg' }));
       form.append('selfie', new File([dataURLToBlob(selfie)], `selfie-${Date.now()}.jpg`, { type: 'image/jpeg' }));
       if (token) form.append('token', token);
-      form.append('details', JSON.stringify(details));
+      form.append('details', JSON.stringify({ ...details, idType, idTypeLabel }));
 
       const { data } = await api.post('/account/kyc/upload', form, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -428,6 +437,7 @@ export default function VideoKYC() {
               selfie={selfie}
               idPhoto={idPhoto}
               details={details}
+              idTypeLabel={idTypeLabel}
               onDetailsChange={setDetails}
               ocrEmpty={ocrEmpty}
               onRetakeSelfie={retakeSelfie}

@@ -264,11 +264,14 @@ export default function IDScanStep({ onCaptured }) {
             </div>
 
             {/* Header pill */}
-            <div className="absolute top-5 left-0 right-0 flex justify-center pointer-events-none">
+            <div className="absolute top-5 left-0 right-0 flex flex-col items-center gap-1.5 pointer-events-none px-4">
               <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-[#0A0A0A]/80 border border-white/20 backdrop-blur">
                 <CreditCard size={18} className="text-[#DC2626]" aria-hidden="true" />
                 <span className="text-sm font-semibold text-white">Scan the FRONT of your ID</span>
               </div>
+              <span className="text-[11px] font-medium tracking-wide text-white/70 bg-[#0A0A0A]/60 px-3 py-1 rounded-full backdrop-blur">
+                Aadhaar · PAN · Voter ID · Passport · Driving Licence
+              </span>
             </div>
 
             {/* Guidance + controls */}

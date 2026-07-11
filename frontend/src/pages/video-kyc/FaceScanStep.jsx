@@ -9,16 +9,17 @@ import {
 } from './faceMath';
 
 /* ── Tunables ────────────────────────────────────────────────── */
-const HOLD_MS = 1500;          // stable hold before positioning passes
-const CHALLENGE_HOLD_MS = 400; // pose must be held to count
+const HOLD_MS = 1000;          // stable hold before positioning passes
+const CHALLENGE_HOLD_MS = 350; // pose must be held to count
 const CHALLENGE_TIMEOUT = 10000;
-const CENTER_TOLERANCE = 0.12; // face center vs circle center (normalized)
-const MIN_WIDTH = 0.22;        // face width / frame width
-const MAX_WIDTH = 0.58;
-const MIN_LUMA = 55;           // average luminance floor
-const YAW_RATIO = 0.15;        // geometry yaw threshold
-const PITCH_UP = 0.43;         // nose above this ratio = looking up
-const PITCH_DOWN = 0.67;       // below = looking down
+const CHALLENGE_COUNT = 2;     // random subset — enough for liveness, less user effort
+const CENTER_TOLERANCE = 0.16; // face center vs circle center (normalized)
+const MIN_WIDTH = 0.19;        // face width / frame width
+const MAX_WIDTH = 0.62;
+const MIN_LUMA = 45;           // average luminance floor
+const YAW_RATIO = 0.12;        // geometry yaw threshold (gentler turn passes)
+const PITCH_UP = 0.46;         // nose above this ratio = looking up
+const PITCH_DOWN = 0.63;       // below = looking down
 const BLINK_CLOSE = 0.5;
 const BLINK_OPEN = 0.25;
 const SWAP_THRESHOLD = 0.28;   // face-signature distance = different person
@@ -30,14 +31,15 @@ const CHALLENGES = {
   down: { label: 'Look DOWN', icon: ArrowDown },
 };
 
-// Randomize challenge order per session (defeats replay recordings).
+// Random subset + order per session (defeats replay recordings) while
+// keeping the flow short and easy for the user.
 function shuffledChallenges() {
   const keys = Object.keys(CHALLENGES);
   for (let i = keys.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));
     [keys[i], keys[j]] = [keys[j], keys[i]];
   }
-  return keys;
+  return keys.slice(0, CHALLENGE_COUNT);
 }
 
 function getBlend(categories, name) {
@@ -82,6 +84,7 @@ export default function FaceScanStep({ stream, landmarkerRef, lmStatus, onSelfie
     countdownStart: 0,
     lastGuidance: '',
     slow: false,
+    lenient: false,
     frame: 0,
     paused: false,
     captured: false,
@@ -281,11 +284,19 @@ export default function FaceScanStep({ stream, landmarkerRef, lmStatus, onSelfie
         const { yawRatio, pitchRatio } = poseFromLandmarks(landmarks);
         const matrixPose = poseFromMatrix(res.facialTransformationMatrixes?.[0]?.data);
 
+        // If the user struggled past one timeout, soften thresholds ~30%
+        // so a smaller head movement still counts (accessibility).
+        const ease = st.lenient ? 0.7 : 1;
+        const yawT = YAW_RATIO * ease;
+        const upT = st.lenient ? PITCH_UP + 0.03 : PITCH_UP;
+        const downT = st.lenient ? PITCH_DOWN - 0.03 : PITCH_DOWN;
+        const matrixYaw = st.lenient ? 13 : 18;
+
         let passed = false;
-        if (key === 'left') passed = yawRatio < -YAW_RATIO || (matrixPose && matrixPose.yaw < -18);
-        if (key === 'right') passed = yawRatio > YAW_RATIO || (matrixPose && matrixPose.yaw > 18);
-        if (key === 'up') passed = pitchRatio < PITCH_UP;
-        if (key === 'down') passed = pitchRatio > PITCH_DOWN;
+        if (key === 'left') passed = yawRatio < -yawT || (matrixPose && matrixPose.yaw < -matrixYaw);
+        if (key === 'right') passed = yawRatio > yawT || (matrixPose && matrixPose.yaw > matrixYaw);
+        if (key === 'up') passed = pitchRatio < upT;
+        if (key === 'down') passed = pitchRatio > downT;
 
         setRingState(passed ? 'ok' : 'adjusting');
 
@@ -308,7 +319,8 @@ export default function FaceScanStep({ stream, landmarkerRef, lmStatus, onSelfie
           st.poseHoldStart = 0;
           if (now - st.challengeStart > CHALLENGE_TIMEOUT) {
             st.challengeStart = now;
-            say('Almost there — turn a little further and hold it');
+            st.lenient = true; // soften thresholds after a struggle
+            say('Almost there — a small turn is enough, hold it briefly');
           } else {
             say(CHALLENGES[key].label);
           }
