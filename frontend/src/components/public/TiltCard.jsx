@@ -14,6 +14,9 @@ export default function TiltCard({ children, className = '', max = 8, style = {}
     const rotateX = (y - 0.5) * -2 * max;
     const rotateY = (x - 0.5) * 2 * max;
     el.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateY(-6px)`;
+    // Feed the cursor position to the .al-spotlight radial glow (CSS vars).
+    el.style.setProperty('--al-mx', `${x * 100}%`);
+    el.style.setProperty('--al-my', `${y * 100}%`);
   };
 
   const handleLeave = () => {

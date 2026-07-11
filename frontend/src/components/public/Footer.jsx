@@ -62,7 +62,7 @@ export default function Footer() {
             <ul className="space-y-2.5">
               {PRODUCTS.map(([label, to]) => (
                 <li key={label}>
-                  <Link to={to} className="text-sm transition-colors hover:text-white" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                  <Link to={to} className="inline-block text-sm transition-all duration-200 hover:text-white hover:translate-x-1" style={{ color: 'rgba(255,255,255,0.55)' }}>
                     {label}
                   </Link>
                 </li>
@@ -76,7 +76,7 @@ export default function Footer() {
             <ul className="space-y-2.5">
               {QUICK.map(([label, to]) => (
                 <li key={label}>
-                  <Link to={to} className="text-sm transition-colors hover:text-white" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                  <Link to={to} className="inline-block text-sm transition-all duration-200 hover:text-white hover:translate-x-1" style={{ color: 'rgba(255,255,255,0.55)' }}>
                     {label}
                   </Link>
                 </li>

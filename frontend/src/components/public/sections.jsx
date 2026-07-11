@@ -30,11 +30,13 @@ export function SectionTitle({ eyebrow, title, subtitle, align = 'center' }) {
       className={`max-w-2xl mb-12 lg:mb-16 ${alignCls}`}
     >
       {eyebrow && (
-        <p className="text-[11px] font-semibold tracking-[0.3em] uppercase mb-3" style={{ color: '#FF3333' }}>
+        <p className={`inline-flex items-center gap-2 text-[11px] font-semibold tracking-[0.3em] uppercase mb-3 ${align === 'center' ? 'justify-center' : ''}`} style={{ color: '#FF3333' }}>
+          <span className="h-px w-6" style={{ background: 'linear-gradient(90deg, transparent, #FF3333)' }} />
           {eyebrow}
+          <span className="h-px w-6" style={{ background: 'linear-gradient(90deg, #FF3333, transparent)' }} />
         </p>
       )}
-      <h2 className="font-serif-display font-bold text-white text-3xl sm:text-4xl lg:text-5xl leading-tight">
+      <h2 className="font-serif-display font-bold text-white text-3xl sm:text-4xl lg:text-5xl leading-tight text-balance">
         {title}
       </h2>
       {subtitle && (
@@ -97,27 +99,27 @@ export function PageHero({ eyebrow, title, highlight, subtitle, children }) {
   );
 }
 
-// Solid red CTA button (link).
+// Solid red CTA button (link) with animated shine sweep + breathing glow.
 export function RedButton({ to = '/open-account', children, className = '', large = false }) {
   return (
     <Link
       to={to}
-      className={`inline-flex items-center justify-center gap-2 rounded-xl font-semibold text-white transition-all active:scale-95 hover:scale-[1.03] ${
-        large ? 'px-7 py-4 text-base' : 'px-5 py-3 text-sm'
+      className={`al-btn-shine group/btn inline-flex items-center justify-center gap-2 rounded-xl font-semibold text-white transition-all duration-300 active:scale-95 hover:scale-[1.04] hover:-translate-y-0.5 ${
+        large ? 'px-7 py-4 text-base al-breathe' : 'px-5 py-3 text-sm'
       } ${className}`}
       style={{ background: 'linear-gradient(135deg, #CC0000, #FF3333)', boxShadow: '0 0 28px rgba(204,0,0,0.45)' }}
     >
-      {children} <ArrowRight size={large ? 18 : 15} />
+      {children} <ArrowRight size={large ? 18 : 15} className="transition-transform duration-300 group-hover/btn:translate-x-1" />
     </Link>
   );
 }
 
-// Outlined / ghost button (link).
+// Outlined / ghost button (link) with soft red fill on hover.
 export function GhostButton({ to = '/', children, className = '', large = false }) {
   return (
     <Link
       to={to}
-      className={`inline-flex items-center justify-center gap-2 rounded-xl font-semibold text-white border border-white/20 hover:border-[#CC0000] hover:text-[#FF3333] transition-all ${
+      className={`inline-flex items-center justify-center gap-2 rounded-xl font-semibold text-white border border-white/20 hover:border-[#CC0000] hover:text-[#FF3333] hover:bg-[rgba(204,0,0,0.08)] hover:-translate-y-0.5 transition-all duration-300 active:scale-95 ${
         large ? 'px-7 py-4 text-base' : 'px-5 py-3 text-sm'
       } ${className}`}
     >
@@ -131,7 +133,7 @@ export function GlassCard({ children, className = '', hover = false }) {
   return (
     <div
       className={`rounded-2xl al-glass border border-white/[0.08] ${
-        hover ? 'transition-all duration-300 hover:border-[#CC0000] hover:-translate-y-1' : ''
+        hover ? 'al-spotlight transition-all duration-300 hover:border-[#CC0000] hover:-translate-y-1.5 hover:shadow-[0_20px_50px_rgba(204,0,0,0.18)]' : ''
       } ${className}`}
     >
       {children}

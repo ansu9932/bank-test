@@ -70,6 +70,7 @@ export default function HomePage() {
     >
       <Hero />
       <StatsBar />
+      <FeatureMarquee />
       <Products />
       <WhyChoose />
       <HowItWorks />
@@ -88,10 +89,14 @@ function Hero() {
     // `overflow-hidden` reliably clips the animated (transform: scale) glow on
     // mobile and the hero's paint can't bleed into the sections below.
     <section className="relative isolate overflow-hidden al-hero-bg">
-      {/* Animated red glow + grid */}
+      {/* Animated red glow + drifting aurora blobs + grid */}
       <div
-        className="pointer-events-none absolute -top-48 left-1/3 w-[760px] h-[760px] rounded-full blur-[170px] al-glow-pulse"
+        className="pointer-events-none absolute -top-48 left-1/3 w-[760px] h-[760px] rounded-full blur-[170px] al-glow-pulse al-aurora"
         style={{ background: 'radial-gradient(circle, rgba(204,0,0,0.22), transparent 70%)' }}
+      />
+      <div
+        className="pointer-events-none absolute top-1/3 -left-40 w-[520px] h-[520px] rounded-full blur-[150px] al-aurora-slow"
+        style={{ background: 'radial-gradient(circle, rgba(153,0,0,0.16), transparent 70%)' }}
       />
       <div
         className="pointer-events-none absolute inset-0 opacity-[0.04]"
@@ -129,7 +134,7 @@ function Hero() {
           <h1 className="font-serif-display font-bold text-white leading-[1.05] text-4xl sm:text-6xl lg:text-7xl">
             <motion.span variants={heroLine} className="block">Bank Smarter,</motion.span>
             <motion.span variants={heroLine} className="block">
-              Live <span className="text-al-gradient">Better</span>
+              Live <span className="al-text-shimmer">Better</span>
             </motion.span>
           </h1>
 
@@ -183,6 +188,34 @@ function StatsBar() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/* ── Section 2.5: Feature Marquee ────────────────────────────────────────── */
+const MARQUEE_ITEMS = [
+  'Zero Hidden Charges', 'Instant IMPS / NEFT / RTGS', '24/7 Human Support',
+  'Video KYC in 5 Minutes', 'FDIC Insured', 'Military-Grade Security',
+  'Up to 7% Interest p.a.', 'Free Scheduled Transfers', 'Instant Card Lock',
+];
+function FeatureMarquee() {
+  return (
+    <div className="al-marquee relative z-10 overflow-hidden border-b border-white/[0.06] py-4" aria-hidden="true">
+      <div className="al-marquee-track">
+        {[0, 1].map((dup) => (
+          <div key={dup} className="flex shrink-0 items-center">
+            {MARQUEE_ITEMS.map((item) => (
+              <span key={`${dup}-${item}`} className="flex items-center gap-3 px-6 text-sm font-medium whitespace-nowrap" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: '#CC0000', boxShadow: '0 0 8px rgba(204,0,0,0.8)' }} />
+                {item}
+              </span>
+            ))}
+          </div>
+        ))}
+      </div>
+      {/* Edge fade masks */}
+      <div className="al-marquee-fade-l pointer-events-none absolute inset-y-0 left-0 w-24" />
+      <div className="al-marquee-fade-r pointer-events-none absolute inset-y-0 right-0 w-24" />
     </div>
   );
 }
@@ -384,7 +417,7 @@ function RatesTable() {
         initial="hidden"
         whileInView="show"
         viewport={inView}
-        className="rounded-2xl overflow-hidden border border-white/[0.08]"
+        className="al-table-scroll rounded-2xl overflow-hidden border border-white/[0.08]"
       >
         <table className="w-full text-left">
           <thead>
@@ -507,7 +540,7 @@ function News() {
       >
         {NEWS.map((n) => (
           <motion.div key={n.title} variants={fadeUp}>
-            <TiltCard max={6} className="h-full rounded-2xl al-glass border border-white/[0.08] p-6 hover:border-[#CC0000] transition-colors">
+            <TiltCard max={6} className="group al-spotlight h-full rounded-2xl al-glass border border-white/[0.08] p-6 hover:border-[#CC0000] transition-all duration-300 hover:shadow-[0_20px_50px_rgba(204,0,0,0.15)]">
               <span className="inline-block text-[11px] font-semibold uppercase tracking-wider px-3 py-1 rounded-full mb-4" style={{ background: 'rgba(204,0,0,0.15)', color: '#FF3333' }}>
                 {n.tag}
               </span>

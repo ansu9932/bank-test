@@ -12,14 +12,14 @@ export default function ProductCard({ emoji, title, subtitle, to = '/open-accoun
     <motion.div variants={fadeUp}>
       <TiltCard
         max={7}
-        className="group relative h-full rounded-2xl p-7 overflow-hidden border border-white/[0.08] al-glass transition-colors duration-300 hover:border-[#CC0000]"
+        className="group al-spotlight relative h-full rounded-2xl p-7 overflow-hidden border border-white/[0.08] al-glass transition-all duration-300 hover:border-[#CC0000] hover:shadow-[0_20px_50px_rgba(204,0,0,0.18)]"
       >
         {/* Red left accent bar appears on hover */}
         <span className="absolute left-0 top-0 h-full w-1 scale-y-0 group-hover:scale-y-100 origin-top transition-transform duration-300"
           style={{ background: 'linear-gradient(180deg, #FF3333, #990000)' }} />
 
         <div
-          className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl mb-5"
+          className="al-icon-pop w-14 h-14 rounded-2xl flex items-center justify-center text-3xl mb-5 transition-shadow duration-300 group-hover:shadow-[0_0_24px_rgba(204,0,0,0.35)]"
           style={{ background: 'rgba(204,0,0,0.12)', border: '1px solid rgba(204,0,0,0.3)' }}
         >
           {emoji}
