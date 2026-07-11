@@ -349,7 +349,7 @@ export default function FaceScanStep({ stream, landmarkerRef, lmStatus, onSelfie
   return (
     <div className="relative w-full flex-1 flex flex-col items-center overflow-hidden">
       {/* Camera feed — mirrored preview for selfie steps only */}
-      <div className="relative w-full flex-1 min-h-[420px] bg-[#0A0A0A] overflow-hidden">
+      <div className="relative w-full flex-1 min-h-[320px] bg-[#0A0A0A] overflow-hidden">
         <video
           ref={videoRef}
           autoPlay
@@ -366,7 +366,9 @@ export default function FaceScanStep({ stream, landmarkerRef, lmStatus, onSelfie
             style={{
               width: 'min(72vw, 320px)',
               height: 'min(72vw, 320px)',
-              boxShadow: '0 0 0 9999px rgba(10,10,10,0.72)',
+              // 100vmax (not 9999px) — huge spreads exceed iOS Safari's GPU
+              // texture limit and render as a glitched solid disc.
+              boxShadow: '0 0 0 100vmax rgba(10,10,10,0.72)',
             }}
           >
             {/* Animated ring: red on fail, pulsing red↔white while adjusting */}

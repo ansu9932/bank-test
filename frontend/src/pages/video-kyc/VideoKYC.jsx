@@ -298,7 +298,7 @@ export default function VideoKYC() {
 
   return (
     <div
-      className={`vkyc min-h-[100dvh] flex flex-col ${dark ? 'vkyc-dark' : 'bg-white'}`}
+      className={`vkyc flex flex-col ${dark ? 'vkyc-dark h-[100dvh] overflow-hidden' : 'bg-white min-h-[100dvh]'}`}
       style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
       {inApp && (
@@ -311,7 +311,7 @@ export default function VideoKYC() {
       )}
 
       {/* Header */}
-      <header className="flex items-center justify-between px-4 sm:px-6 py-4">
+      <header className="shrink-0 flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4">
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-lg bg-[#DC2626] flex items-center justify-center">
             <ShieldCheck size={18} className="text-white" aria-hidden="true" />
@@ -326,12 +326,12 @@ export default function VideoKYC() {
       </header>
 
       {/* Step progress */}
-      <div className="pb-4">
+      <div className="shrink-0 pb-3 sm:pb-4">
         <StepProgress current={stepIndex} dark={dark} />
       </div>
 
       {/* Main */}
-      <main className="flex-1 flex flex-col">
+      <main className="flex-1 min-h-0 flex flex-col">
         <AnimatePresence mode="wait">
           {phase === 'consent' && (
             <ConsentScreen key="consent" onStart={startVerification} starting={starting} error={camError} />
@@ -425,7 +425,7 @@ export default function VideoKYC() {
         </AnimatePresence>
       </main>
 
-      <footer className={`text-center text-[10px] tracking-[0.25em] uppercase py-4 ${dark ? 'text-white/30' : 'text-[#0A0A0A]/30'}`}>
+      <footer className={`shrink-0 text-center text-[10px] tracking-[0.25em] uppercase py-2.5 sm:py-4 px-4 ${dark ? 'text-white/30' : 'text-[#0A0A0A]/30'}`}>
         Alister Bank · Biometric data never leaves this device
       </footer>
     </div>

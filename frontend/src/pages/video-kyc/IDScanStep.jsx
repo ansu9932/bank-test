@@ -185,7 +185,7 @@ export default function IDScanStep({ onCaptured }) {
 
   return (
     <div className="relative w-full flex-1 flex flex-col overflow-hidden">
-      <div className="relative w-full flex-1 min-h-[420px] bg-[#0A0A0A] overflow-hidden">
+      <div className="relative w-full flex-1 min-h-[320px] bg-[#0A0A0A] overflow-hidden">
         {/* Rear camera — NOT mirrored */}
         <video
           ref={videoRef}
@@ -217,7 +217,9 @@ export default function IDScanStep({ onCaptured }) {
                 style={{
                   width: 'min(86vw, 460px)',
                   aspectRatio: `${CARD_ASPECT}`,
-                  boxShadow: '0 0 0 9999px rgba(10,10,10,0.72)',
+                  // 100vmax (not 9999px) — huge spreads exceed iOS Safari's
+                  // GPU texture limit and render as a glitched solid fill.
+                  boxShadow: '0 0 0 100vmax rgba(10,10,10,0.72)',
                   borderRadius: 14,
                 }}
               >

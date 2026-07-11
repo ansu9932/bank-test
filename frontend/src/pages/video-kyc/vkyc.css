@@ -22,6 +22,19 @@
   color: #ffffff;
 }
 
+/* ── Theme immunity ──────────────────────────────────────────────
+   The site's light theme (html.theme-light) remaps `.text-white`
+   to dark ink globally. The vKYC flow manages its own contrast, so
+   restore true white inside it — otherwise all text on the dark
+   camera screens becomes invisible in light mode. */
+html.theme-light .vkyc .text-white,
+html.theme-light .vkyc.vkyc-dark,
+html.theme-light .vkyc .vkyc-dark {
+  color: #ffffff;
+}
+html.theme-light .vkyc .bg-white { background-color: #ffffff; }
+.vkyc { color-scheme: light; }
+
 /* Laser scan line for the ID frame */
 @keyframes vkyc-laser {
   0%   { top: 6%; opacity: 0.2; }
