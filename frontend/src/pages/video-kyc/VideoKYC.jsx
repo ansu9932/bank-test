@@ -6,7 +6,7 @@ import { Loader2, ShieldCheck, ScanText, Camera, ArrowRight, Lock } from 'lucide
 import api from '../../services/api';
 import ExpiredLinkPage from '../../components/ExpiredLinkPage';
 import useFaceLandmarker from './useFaceLandmarker';
-import { preprocessIdImage } from './faceMath';
+import { preprocessIdImage, binarizeIdImage } from './faceMath';
 import { parseIndianId, mergeParsedId } from './idParser';
 import StepProgress from './StepProgress';
 import ConsentScreen from './ConsentScreen';
@@ -224,22 +224,31 @@ export default function VideoKYC() {
       // Tesseract is lazy-loaded only when the ID step is reached.
       const { createWorker } = await import('tesseract.js');
       const worker = await createWorker('eng');
-      await worker.setParameters({ preserve_interword_spaces: '1' });
+      await worker.setParameters({
+        preserve_interword_spaces: '1',
+        user_defined_dpi: '300',
+      });
 
-      // Pass 1 — preprocessed image (upscaled, grayscale, contrast-stretched).
-      let processed = dataURL;
-      try { processed = await preprocessIdImage(dataURL); } catch { /* fall back to raw */ }
-      const passA = await worker.recognize(processed);
+      // Build the image variants (each pass reads text the others miss):
+      //   1. grayscale + contrast-stretched (best on shadows/low contrast)
+      //   2. Otsu-binarized pure B/W (best on printed labels + numbers)
+      //   3. raw capture (best when preprocessing over-corrects)
+      const variants = [];
+      try { variants.push(await preprocessIdImage(dataURL)); } catch { /* skip */ }
+      try { variants.push(await binarizeIdImage(dataURL)); } catch { /* skip */ }
+      variants.push(dataURL);
+
       // Auto-detects which of the 5 Indian IDs (Aadhaar / PAN / Voter /
       // Passport / DL) was scanned and parses per that document's layout.
-      let parsed = parseIndianId(passA?.data?.text);
-
-      // Pass 2 — raw capture fills in any field the first pass missed.
-      if (!parsed.fullName || !parsed.dob || !parsed.idNumber || parsed.idType === 'unknown') {
+      // Each pass fills in fields the previous passes missed; stops early
+      // once name + DOB + ID number are all extracted.
+      let parsed = { idType: 'unknown', fullName: '', dob: '', idNumber: '' };
+      for (const image of variants) {
         try {
-          const passB = await worker.recognize(dataURL);
-          parsed = mergeParsedId(parsed, parseIndianId(passB?.data?.text));
-        } catch { /* keep pass-1 results */ }
+          const pass = await worker.recognize(image);
+          parsed = mergeParsedId(parsed, parseIndianId(pass?.data?.text));
+        } catch { /* keep previous results */ }
+        if (parsed.fullName && parsed.dob && parsed.idNumber && parsed.idType !== 'unknown') break;
       }
       await worker.terminate();
 

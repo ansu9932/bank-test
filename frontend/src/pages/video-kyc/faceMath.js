@@ -206,6 +206,67 @@ export async function preprocessIdImage(dataURL) {
   return canvas.toDataURL('image/png');
 }
 
+/**
+ * Otsu-binarized variant of the ID capture (pure black/white).
+ * Tesseract often reads label text (Name / DOB / numbers) that the
+ * grayscale pass missed — used as an extra OCR pass.
+ */
+export async function binarizeIdImage(dataURL) {
+  const img = new Image();
+  await new Promise((resolve, reject) => {
+    img.onload = resolve;
+    img.onerror = reject;
+    img.src = dataURL;
+  });
+  const scale = Math.max(1, Math.min(2.5, 1800 / (img.width || 1)));
+  const w = Math.round(img.width * scale);
+  const h = Math.round(img.height * scale);
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, 0, 0, w, h);
+
+  const imgData = ctx.getImageData(0, 0, w, h);
+  const { data } = imgData;
+  const total = w * h;
+  const gray = new Float32Array(total);
+  const hist = new Uint32Array(256);
+  for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
+    const g = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    gray[p] = g;
+    hist[g | 0] += 1;
+  }
+  // Otsu's method — maximise between-class variance.
+  let sumAll = 0;
+  for (let v = 0; v < 256; v += 1) sumAll += v * hist[v];
+  let sumB = 0;
+  let wB = 0;
+  let maxVar = -1;
+  let threshold = 127;
+  for (let v = 0; v < 256; v += 1) {
+    wB += hist[v];
+    if (!wB) continue;
+    const wF = total - wB;
+    if (!wF) break;
+    sumB += v * hist[v];
+    const mB = sumB / wB;
+    const mF = (sumAll - sumB) / wF;
+    const between = wB * wF * (mB - mF) * (mB - mF);
+    if (between > maxVar) { maxVar = between; threshold = v; }
+  }
+  for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
+    const v = gray[p] > threshold ? 255 : 0;
+    data[i] = v;
+    data[i + 1] = v;
+    data[i + 2] = v;
+  }
+  ctx.putImageData(imgData, 0, 0);
+  return canvas.toDataURL('image/png');
+}
+
 /* ── Field validation ────────────────────────────────────────── */
 
 export function validateName(v) {

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Camera, SwitchCamera, AlertTriangle, RefreshCw, Loader2, CreditCard,
+  Camera, SwitchCamera, AlertTriangle, RefreshCw, Loader2, CreditCard, Upload,
 } from 'lucide-react';
 import { laplacianVariance, frameDiff } from './faceMath';
 
@@ -37,8 +37,32 @@ function describeCameraError(err) {
  * when the card region is sharp, well lit, and stable for ~1.5s.
  * A manual shutter appears as fallback after 8s.
  */
+/** Read an uploaded image file → JPEG data URL, downscaled to ≤2200px. */
+function fileToDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const maxSide = 2200;
+      const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * scale);
+      c.height = Math.round(img.height * scale);
+      const ctx = c.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      resolve(c.toDataURL('image/jpeg', 0.93));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('unreadable image')); };
+    img.src = url;
+  });
+}
+
 export default function IDScanStep({ onCaptured }) {
   const videoRef = useRef(null);
+  const fileInputRef = useRef(null);
   const roiCanvasRef = useRef(document.createElement('canvas'));
   const snapCanvasRef = useRef(document.createElement('canvas'));
   const streamRef = useRef(null);
@@ -144,6 +168,22 @@ export default function IDScanStep({ onCaptured }) {
     setTimeout(() => onCaptured(dataURL), 350);
   }, [cardRect, onCaptured]);
 
+  /* Upload path — a sharp gallery photo OCRs far better than a shaky frame. */
+  const handleUpload = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || S.current.captured) return;
+    try {
+      const dataURL = await fileToDataURL(file);
+      S.current.captured = true;
+      stopStream();
+      setFlash(true);
+      setTimeout(() => onCaptured(dataURL), 350);
+    } catch {
+      setHint('That image could not be read — try another photo.');
+    }
+  }, [onCaptured, stopStream]);
+
   /* Quality-check loop (throttled ~6fps to avoid jank). */
   useEffect(() => {
     if (!camReady) return undefined;
@@ -214,12 +254,20 @@ export default function IDScanStep({ onCaptured }) {
             <div className="max-w-sm text-center">
               <AlertTriangle size={32} className="text-[#DC2626] mx-auto mb-3" aria-hidden="true" />
               <p role="alert" className="text-sm text-white/85 leading-relaxed mb-5">{camError}</p>
-              <button
-                onClick={() => acquire(facing)}
-                className="min-h-[48px] px-6 rounded-xl bg-[#DC2626] text-white font-semibold text-sm inline-flex items-center gap-2"
-              >
-                <RefreshCw size={16} aria-hidden="true" /> Retry
-              </button>
+              <div className="flex items-center justify-center gap-3 flex-wrap">
+                <button
+                  onClick={() => acquire(facing)}
+                  className="min-h-[48px] px-6 rounded-xl bg-[#DC2626] text-white font-semibold text-sm inline-flex items-center gap-2"
+                >
+                  <RefreshCw size={16} aria-hidden="true" /> Retry
+                </button>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="min-h-[48px] px-6 rounded-xl border border-white/25 text-white/90 font-semibold text-sm inline-flex items-center gap-2"
+                >
+                  <Upload size={16} aria-hidden="true" /> Upload ID photo
+                </button>
+              </div>
             </div>
           </div>
         ) : (
@@ -287,7 +335,7 @@ export default function IDScanStep({ onCaptured }) {
               >
                 {hint}
               </p>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center gap-3 flex-wrap">
                 <button
                   onClick={switchCamera}
                   disabled={switching}
@@ -295,6 +343,12 @@ export default function IDScanStep({ onCaptured }) {
                 >
                   <SwitchCamera size={16} aria-hidden="true" />
                   {facing === 'environment' ? 'Front camera' : 'Rear camera'}
+                </button>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="min-h-[44px] px-4 rounded-xl border border-white/25 text-white/85 text-sm font-medium inline-flex items-center gap-2 bg-[#0A0A0A]/60 backdrop-blur"
+                >
+                  <Upload size={16} aria-hidden="true" /> Upload photo
                 </button>
                 {showManual && camReady && (
                   <button
@@ -311,6 +365,16 @@ export default function IDScanStep({ onCaptured }) {
 
         {flash && <div className="vkyc-flash absolute inset-0 bg-white z-20" aria-hidden="true" />}
       </div>
+
+      {/* Hidden file input for the "Upload photo" path */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleUpload}
+        className="sr-only"
+        aria-label="Upload a photo of your ID"
+      />
     </div>
   );
 }
