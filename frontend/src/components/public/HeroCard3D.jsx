@@ -34,6 +34,12 @@ export default function HeroCard3D() {
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
+      {/* Slow rotating conic halo behind the card */}
+      <div
+        className="al-halo pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[460px] h-[460px] rounded-full blur-[70px] opacity-70"
+        aria-hidden="true"
+      />
+
       {/* Glow shadow beneath the card */}
       <div
         className="absolute left-1/2 -translate-x-1/2 bottom-[-30px] w-[80%] h-10 rounded-full blur-2xl"

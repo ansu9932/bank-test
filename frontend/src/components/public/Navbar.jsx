@@ -77,8 +77,8 @@ export default function Navbar() {
   };
 
   const linkClass = ({ isActive }) =>
-    `relative text-sm font-medium transition-colors py-2 ${
-      isActive ? 'text-white' : 'text-white/65 hover:text-white'
+    `al-underline relative text-sm font-medium transition-colors py-2 ${
+      isActive ? 'text-white active' : 'text-white/65 hover:text-white'
     }`;
 
   return (
@@ -173,10 +173,10 @@ export default function Navbar() {
           </Link>
           <Link
             to="/open-account"
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all active:scale-95"
+            className="al-btn-shine group/cta inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all duration-300 active:scale-95 hover:scale-[1.04]"
             style={{ background: 'linear-gradient(135deg, #CC0000, #FF3333)', boxShadow: '0 0 22px rgba(204,0,0,0.45)' }}
           >
-            Open Account <ArrowRight size={15} />
+            Open Account <ArrowRight size={15} className="transition-transform duration-300 group-hover/cta:translate-x-0.5" />
           </Link>
         </div>
 

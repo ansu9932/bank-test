@@ -659,3 +659,206 @@ html.theme-light .theme-toggle-fab {
   border-color: rgba(16, 22, 35, 0.12);
   box-shadow: 0 8px 24px rgba(16, 22, 35, 0.14);
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ALISTER BANK · ADVANCED ANIMATION UTILITIES (v2 polish pass)
+   Aurora drift · animated gradient borders · button shine · text shimmer ·
+   spotlight cards · icon micro-interactions · marquee · responsive helpers
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Aurora: slow drifting red glow blobs for hero backgrounds ──────────── */
+@keyframes al-aurora {
+  0%   { transform: translate(0, 0) scale(1); }
+  25%  { transform: translate(6%, -4%) scale(1.08); }
+  50%  { transform: translate(-4%, 5%) scale(0.96); }
+  75%  { transform: translate(3%, 2%) scale(1.05); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+.al-aurora { animation: al-aurora 16s ease-in-out infinite; will-change: transform; }
+.al-aurora-slow { animation: al-aurora 24s ease-in-out infinite reverse; will-change: transform; }
+
+/* ── Animated gradient border for premium cards ─────────────────────────── */
+@keyframes al-border-spin { to { --al-angle: 360deg; } }
+@property --al-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+.al-gradient-border {
+  position: relative;
+  border: 1px solid transparent !important;
+  background-clip: padding-box;
+}
+.al-gradient-border::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--al-angle, 0deg),
+    rgba(204, 0, 0, 0) 0%,
+    rgba(255, 51, 51, 0.8) 12%,
+    rgba(204, 0, 0, 0) 30%,
+    rgba(204, 0, 0, 0) 60%,
+    rgba(153, 0, 0, 0.6) 75%,
+    rgba(204, 0, 0, 0) 90%
+  );
+  animation: al-border-spin 5s linear infinite;
+}
+
+/* ── Button shine sweep on hover ────────────────────────────────────────── */
+.al-btn-shine {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.al-btn-shine::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -80%;
+  width: 50%;
+  height: 100%;
+  transform: skewX(-24deg);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
+  transition: left 0.55s ease;
+  pointer-events: none;
+}
+.al-btn-shine:hover::after { left: 130%; }
+
+/* ── Animated shimmering gradient text (hero highlight) ─────────────────── */
+@keyframes al-text-shimmer {
+  0% { background-position: 0% center; }
+  100% { background-position: 200% center; }
+}
+.al-text-shimmer {
+  background: linear-gradient(90deg, #FF3333 0%, #CC0000 25%, #FF6666 50%, #CC0000 75%, #FF3333 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: al-text-shimmer 4s linear infinite;
+}
+
+/* ── Spotlight card: radial glow follows the cursor (via --al-mx/--al-my) ─ */
+.al-spotlight {
+  position: relative;
+  overflow: hidden;
+}
+.al-spotlight::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  background: radial-gradient(
+    340px circle at var(--al-mx, 50%) var(--al-my, 50%),
+    rgba(204, 0, 0, 0.14),
+    transparent 65%
+  );
+  pointer-events: none;
+}
+.al-spotlight:hover::before { opacity: 1; }
+
+/* ── Icon micro-interactions ────────────────────────────────────────────── */
+@keyframes al-icon-pop {
+  0% { transform: scale(1) rotate(0deg); }
+  40% { transform: scale(1.18) rotate(-6deg); }
+  70% { transform: scale(0.96) rotate(3deg); }
+  100% { transform: scale(1.1) rotate(0deg); }
+}
+.group:hover .al-icon-pop { animation: al-icon-pop 0.45s ease forwards; }
+
+/* ── Soft breathing glow for CTAs ───────────────────────────────────────── */
+@keyframes al-breathe {
+  0%, 100% { box-shadow: 0 0 22px rgba(204, 0, 0, 0.4); }
+  50% { box-shadow: 0 0 42px rgba(204, 0, 0, 0.65); }
+}
+.al-breathe { animation: al-breathe 3s ease-in-out infinite; }
+
+/* ── Infinite horizontal marquee ────────────────────────────────────────── */
+@keyframes al-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.al-marquee-track {
+  display: flex;
+  width: max-content;
+  animation: al-marquee 30s linear infinite;
+}
+.al-marquee:hover .al-marquee-track { animation-play-state: paused; }
+.al-marquee-fade-l { background: linear-gradient(90deg, #0A0A0A, transparent); }
+.al-marquee-fade-r { background: linear-gradient(270deg, #0A0A0A, transparent); }
+html.theme-light .al-marquee-fade-l { background: linear-gradient(90deg, #f6f7f9, transparent); }
+html.theme-light .al-marquee-fade-r { background: linear-gradient(270deg, #f6f7f9, transparent); }
+
+/* ── Animated link underline (navbar) ───────────────────────────────────── */
+.al-underline {
+  position: relative;
+}
+.al-underline::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 2px;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, #FF3333, #CC0000);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.al-underline:hover::after,
+.al-underline[aria-current='page']::after,
+.al-underline.active::after { transform: scaleX(1); }
+
+/* ── Gentle scale-in pop for badges / chips ─────────────────────────────── */
+@keyframes al-pop-in {
+  0% { opacity: 0; transform: scale(0.85); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.al-pop-in { animation: al-pop-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+
+/* ── Slow rotating conic halo behind hero visuals ───────────────────────── */
+@keyframes al-halo-spin { to { transform: rotate(360deg); } }
+.al-halo {
+  background: conic-gradient(
+    from 0deg,
+    rgba(204, 0, 0, 0) 0deg,
+    rgba(204, 0, 0, 0.25) 90deg,
+    rgba(255, 51, 51, 0.1) 180deg,
+    rgba(204, 0, 0, 0) 270deg
+  );
+  animation: al-halo-spin 14s linear infinite;
+  will-change: transform;
+}
+
+/* ── Responsive table wrapper: horizontal scroll on small screens ───────── */
+.al-table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+.al-table-scroll table { min-width: 560px; }
+
+/* ── Prevent any accidental horizontal overflow site-wide ───────────────── */
+html, body { overflow-x: clip; }
+
+/* ── Better tap targets + fluid type on very small screens ──────────────── */
+@media (max-width: 380px) {
+  .font-serif-display { letter-spacing: -0.01em; }
+}
+
+/* ── Light theme support for the new utilities ──────────────────────────── */
+html.theme-light .al-btn-shine::after {
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent);
+}
+html.theme-light .al-spotlight::before {
+  background: radial-gradient(
+    340px circle at var(--al-mx, 50%) var(--al-my, 50%),
+    rgba(204, 0, 0, 0.08),
+    transparent 65%
+  );
+}
