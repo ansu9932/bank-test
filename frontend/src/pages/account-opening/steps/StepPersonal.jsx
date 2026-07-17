@@ -108,6 +108,7 @@ export default function StepPersonal({ form, update, errors = {}, nameLocked = f
           <select className={`input-field${ring('accountType')}`} value={form.accountType} onChange={set('accountType')}>
             <option value="savings">Savings Account</option>
             <option value="current">Current Account</option>
+            <option value="business_elite">Business Elite Account</option>
           </select>
         </Field>
       </div>

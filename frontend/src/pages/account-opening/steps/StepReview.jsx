@@ -33,7 +33,7 @@ export default function StepReview({ form }) {
         <Row label="Date of Birth" value={form.dateOfBirth} />
         <Row label="Gender" value={form.gender} />
         <Row label="Occupation" value={form.occupation} />
-        <Row label="Account Type" value={form.accountType?.toUpperCase()} />
+        <Row label="Account Type" value={form.accountType?.replace(/_/g, ' ').toUpperCase()} />
       </Section>
 
       <Section title="Address" icon="📍">

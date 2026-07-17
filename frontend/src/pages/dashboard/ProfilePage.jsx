@@ -97,7 +97,7 @@ export default function ProfilePage() {
         <p className="text-white font-semibold mb-4">Account Information</p>
         <InfoRow icon={RiBankCardLine} label="Account Number" value={account?.account_number} />
         <InfoRow icon={RiBankCardLine} label="SWIFT Code"     value={account?.swift_code} />
-        <InfoRow icon={RiBankCardLine} label="Account Type"   value={account?.account_type?.toUpperCase()} />
+        <InfoRow icon={RiBankCardLine} label="Account Type"   value={account?.account_type?.replace(/_/g, ' ').toUpperCase()} />
         <InfoRow icon={RiBankCardLine} label="Branch"         value={account?.branch_name} />
       </div>
 

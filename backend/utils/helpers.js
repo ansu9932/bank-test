@@ -281,13 +281,16 @@ const maskCardNumber = (cardNumber) => {
 
 /**
  * Minimum balance required by account type.
- *   • Savings → $5,298
- *   • Current → $10,598
- * @param {string} accountType 'savings' | 'current'
+ *   • Savings        → $5,298
+ *   • Current        → $10,598
+ *   • Business Elite → $20,744.90
+ * @param {string} accountType 'savings' | 'current' | 'business_elite'
  * @returns {number}
  */
 const minimumBalanceForType = (accountType) => {
-  return String(accountType).toLowerCase() === 'current' ? 10598 : 5298;
+  const type = String(accountType).toLowerCase();
+  if (type === 'business_elite') return 20744.90;
+  return type === 'current' ? 10598 : 5298;
 };
 
 /**

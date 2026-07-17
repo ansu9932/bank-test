@@ -7,7 +7,7 @@ const Account = sequelize.define('Account', {
   account_number: { type: DataTypes.STRING(20), unique: true, allowNull: false },
   ifsc_code: { type: DataTypes.STRING(20), allowNull: false },
   swift_code: { type: DataTypes.STRING(20) },
-  account_type: { type: DataTypes.ENUM('savings', 'current'), allowNull: false },
+  account_type: { type: DataTypes.ENUM('savings', 'current', 'business_elite'), allowNull: false },
   balance: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0.00 },
   available_balance: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0.00 },
   hold_amount: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0.00 },

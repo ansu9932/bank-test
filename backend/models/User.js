@@ -33,7 +33,7 @@ const User = sequelize.define('User', {
   username: { type: DataTypes.STRING(100), unique: true },
   password_hash: { type: DataTypes.STRING(255) },
   security_pin: { type: DataTypes.STRING(255) },
-  account_type: { type: DataTypes.ENUM('savings', 'current'), allowNull: false },
+  account_type: { type: DataTypes.ENUM('savings', 'current', 'business_elite'), allowNull: false },
   kyc_status: { type: DataTypes.ENUM('pending', 'under_review', 'video_kyc_pending', 'approved', 'rejected'), defaultValue: 'pending' },
   account_status: { type: DataTypes.ENUM('pending', 'active', 'frozen', 'closed'), defaultValue: 'pending' },
   email_verified: { type: DataTypes.BOOLEAN, defaultValue: false },

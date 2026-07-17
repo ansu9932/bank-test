@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Check, X, Wallet, Building2, ShieldAlert } from 'lucide-react';
+import { Check, X, Wallet, Building2, Crown, ShieldAlert } from 'lucide-react';
 
 import PageTransition from '../../components/public/PageTransition';
 import FAQAccordion from '../../components/public/FAQAccordion';
@@ -28,15 +28,24 @@ const ACCOUNTS = [
     eligibility: 'India-based businesses, invited under the Corporate Partnership Program',
     cta: 'Request Account Access',
   },
+  {
+    icon: Crown,
+    name: 'Business Elite Account',
+    badge: 'Premium',
+    desc: 'Premium-tier business banking with priority service and elevated limits.',
+    benefits: ['Priority relationship manager', 'Highest transaction limits', 'Overdraft & bulk payments', 'Premium concierge support'],
+    minBalance: '$20,744.90',
+    eligibility: 'India-based businesses, invited under the Corporate Partnership Program',
+    cta: 'Request Account Access',
+  },
 ];
 
 const COMPARE_ROWS = [
-  ['Eligible Users', 'India (Invited Only)', 'India (Invited Only)'],
-  ['Opening Deposit', '$100,000', '$100,000'],
-  ['Minimum Balance', '$5,298', '$10,598'],
-  ['Interest Rate', '4% – 7% p.a.', 'Non-interest bearing'],
-  ['Transaction Limits', 'Standard', 'High / Bulk supported'],
-  ['Overdraft Facility', false, true],
+  ['Eligible Users', 'India (Invited Only)', 'India (Invited Only)', 'India (Invited Only)'],
+  ['Minimum Balance', '$5,298', '$10,598', '$20,744.90'],
+  ['Interest Rate', '4% – 7% p.a.', 'Non-interest bearing', 'Non-interest bearing'],
+  ['Transaction Limits', 'Standard', 'High / Bulk supported', 'Highest / Priority'],
+  ['Overdraft Facility', false, true, true],
 ];
 
 const KYC_ITEMS = [
@@ -77,22 +86,11 @@ export default function AccountsPage() {
             Public applications are not accepted. Please contact your project coordinator for access.
           </p>
         </motion.div>
-
-        <motion.div
-          variants={fadeUp}
-          initial="hidden"
-          whileInView="show"
-          viewport={inView}
-          className="rounded-2xl px-6 py-5 text-center"
-          style={{ background: 'linear-gradient(135deg, #CC0000, #990000)' }}
-        >
-          <p className="text-white font-bold text-lg sm:text-xl">Minimum Account Opening Deposit: $100,000</p>
-        </motion.div>
       </Section>
 
       {/* Account type cards */}
       <Section className="!pt-0">
-        <motion.div variants={staggerContainer(0.12)} initial="hidden" whileInView="show" viewport={inView} className="grid sm:grid-cols-2 gap-6 max-w-4xl mx-auto">
+        <motion.div variants={staggerContainer(0.12)} initial="hidden" whileInView="show" viewport={inView} className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
           {ACCOUNTS.map((a) => (
             <motion.div
               key={a.name}
@@ -131,12 +129,13 @@ export default function AccountsPage() {
       <Section>
         <SectionTitle eyebrow="Side by Side" title="Compare All Accounts" />
         <motion.div variants={fadeUp} initial="hidden" whileInView="show" viewport={inView} className="rounded-2xl overflow-hidden border border-white/[0.08] overflow-x-auto">
-          <table className="w-full text-left min-w-[480px]">
+          <table className="w-full text-left min-w-[640px]">
             <thead>
               <tr style={{ background: 'linear-gradient(135deg, #CC0000, #990000)' }}>
                 <th className="px-5 py-4 text-white text-sm font-semibold">Feature</th>
                 <th className="px-5 py-4 text-white text-sm font-semibold">Savings Account</th>
                 <th className="px-5 py-4 text-white text-sm font-semibold">Current Account</th>
+                <th className="px-5 py-4 text-white text-sm font-semibold">Business Elite Account</th>
               </tr>
             </thead>
             <tbody>

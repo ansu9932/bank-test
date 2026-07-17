@@ -34,7 +34,7 @@ export default function AccountCard() {
           <div>
             <p className="text-white/60 text-xs uppercase tracking-widest font-medium">Alister Bank</p>
             <p className="text-white font-semibold text-sm mt-0.5">
-              {account?.account_type?.toUpperCase()} ACCOUNT
+              {account?.account_type?.replace(/_/g, ' ').toUpperCase()} ACCOUNT
             </p>
           </div>
           <div className="flex flex-col items-end gap-1">

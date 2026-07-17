@@ -199,7 +199,7 @@ export default function AdminUserDetailPage() {
                   ['Account Number', user.account.account_number],
                   ['Balance', `$${parseFloat(user.account.balance).toLocaleString('en-US')}`],
                   ['SWIFT Code', user.account.swift_code || 'ALSTINBB'],
-                  ['Account Type', user.account.account_type?.toUpperCase()],
+                  ['Account Type', user.account.account_type?.replace(/_/g, ' ').toUpperCase()],
                   ['Status', user.account.status],
                   ['Daily Transfer Limit', `$${parseFloat(user.account.daily_transfer_limit || 0).toLocaleString('en-US')}`],
                 ].map(([k,v]) => (
