@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -199,7 +200,10 @@ export default function Navbar() {
         </div>
       </nav>
 
-      {/* Mobile full-screen overlay */}
+      {/* Mobile full-screen overlay — rendered via portal so the header's
+          backdrop-filter (active when scrolled) can't trap this fixed
+          element inside the 72px header containing block. */}
+      {createPortal(
       <AnimatePresence>
         {menuOpen && (
           <motion.div
@@ -249,7 +253,9 @@ export default function Navbar() {
             </div>
           </motion.div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+      document.body
+      )}
     </header>
   );
 }

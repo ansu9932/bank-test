@@ -6,9 +6,46 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
   html {
+    /* The app is dark-themed with hardcoded white text. Force the UA to
+       render native form controls (select dropdowns, date pickers, inputs,
+       scrollbars) in dark mode so text never disappears when the OS/browser
+       is in light ("white") mode. */
+    color-scheme: dark;
     scroll-behavior: smooth;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* The in-app light theme flips the scheme so native controls match. */
+  html.theme-light {
+    color-scheme: light;
+  }
+
+  /* Native <option> popups ignore most CSS — set explicit dark bg + white
+     text so dropdown options stay readable in light mode browsers. */
+  select option {
+    background-color: #15161c;
+    color: #ffffff;
+  }
+  html.theme-light select option {
+    background-color: #ffffff;
+    color: #101623;
+  }
+
+  /* Browser autofill paints a light background with dark text by default,
+     which clashes with (and can hide) our white-on-dark inputs. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus {
+    -webkit-text-fill-color: #ffffff;
+    -webkit-box-shadow: 0 0 0 1000px #15161c inset;
+    transition: background-color 9999s ease-in-out 0s;
+  }
+  html.theme-light input:-webkit-autofill,
+  html.theme-light input:-webkit-autofill:hover,
+  html.theme-light input:-webkit-autofill:focus {
+    -webkit-text-fill-color: #101623;
+    -webkit-box-shadow: 0 0 0 1000px #ffffff inset;
   }
 
   body {
