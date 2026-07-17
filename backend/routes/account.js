@@ -4,14 +4,25 @@ const accountController = require('../controllers/accountController');
 const activationDepositController = require('../controllers/activationDepositController');
 const { protect, requireActiveAccount } = require('../middleware/auth');
 const { kycUpload, kycFields, videoUpload, profileUpload } = require('../middleware/upload');
+const { openAccountLimiter } = require('../middleware/security');
+const { validateOpenAccount } = require('../middleware/validateOpenAccount');
 
 // Ephemeral anti-CSRF registration nonce for the secure onboarding gateway
 // (HDFC-style). The "Open Account" wizard fetches this when its first step
 // mounts, reflects it into the URL, and echoes it back on submit.
 router.get('/registration-handshake', accountController.registrationHandshake);
 
+// Layered protection on the public account-opening pipeline:
+//   1. openAccountLimiter — max 5 applications/hour/IP, rejected BEFORE multer
+//      so throttled bots can't even write upload files to disk.
+//   2. kycUpload.fields  — existing typed/size-capped file upload handling.
+//   3. validateOpenAccount — strict server-side format + whitelist validation
+//      (email, phone, adult DOB, PAN/Aadhaar formats, account type, lengths)
+//      so direct-to-API payloads can't bypass the frontend wizard's checks.
 router.post('/open',
+  openAccountLimiter,
   kycUpload.fields(kycFields),
+  validateOpenAccount,
   accountController.openAccount
 );
 

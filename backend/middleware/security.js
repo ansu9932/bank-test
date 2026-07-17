@@ -67,6 +67,25 @@ const panVerifyLimiter = rateLimit({
 });
 
 /**
+ * Rate limiter — account opening (public, unauthenticated).
+ *
+ * The /api/account/open endpoint creates real User rows and accepts file
+ * uploads with NO auth, so without a ceiling a bot could mass-register fake
+ * applicants and fill the disk with junk KYC uploads. 5 submissions per hour
+ * per IP is generous for a real household (retries after a validation error
+ * are typically same-payload fixes within minutes) while making bulk fake
+ * account creation impractical. Runs BEFORE multer so a throttled request is
+ * rejected before any file is written to disk.
+ */
+const openAccountLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => tooManyRequests(res, 'Too many account applications from this device. Please try again after 1 hour.'),
+});
+
+/**
  * Rate limiter — transfer endpoints
  */
 const transferLimiter = rateLimit({
@@ -151,6 +170,7 @@ module.exports = {
   loginLimiter,
   otpLimiter,
   panVerifyLimiter,
+  openAccountLimiter,
   transferLimiter,
   securityHeaders,
   sanitizeRequest,
