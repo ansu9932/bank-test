@@ -384,6 +384,20 @@ async function ensureAccountColumns() {
       }
     }
   }
+
+  // accounts.account_type has the same stale-ENUM problem as users.account_type
+  // (created as ENUM('savings','current') before 'business_elite' existed, and
+  // sync is locked to alter:false). The Account row is created by the KYC
+  // approval workflow — a constrained ENUM there would fail approval for
+  // Business Elite applicants. Widen to a plain STRING; best-effort, non-fatal.
+  try {
+    await qi.changeColumn('accounts', 'account_type', {
+      type: DataTypes.STRING(30), allowNull: false, defaultValue: 'savings',
+    });
+    logger.info("accounts: widened 'account_type' to STRING(30).");
+  } catch (e) {
+    logger.warn(`accounts: account_type widen skipped: ${e.message}`);
+  }
 }
 
 /**
@@ -423,6 +437,24 @@ async function ensureUserColumns() {
         logger.error(`users: could not add column '${name}': ${e.message}`);
       }
     }
+  }
+
+  // The account_type ENUM gained 'business_elite' AFTER the live table was
+  // created, and schema sync is locked to alter:false — so on the production
+  // DB the column is still ENUM('savings','current'). Inserting
+  // 'business_elite' then throws "Data truncated for column 'account_type'"
+  // (SequelizeDatabaseError → 400 "One or more submitted details are invalid")
+  // on POST /api/account/open. Widen it to a plain STRING — the same fix used
+  // for card_requests.status / transactions.transfer_mode — so any current or
+  // future account tier is accepted with no ENUM migration. Best-effort,
+  // non-fatal, adds NO indexes.
+  try {
+    await qi.changeColumn('users', 'account_type', {
+      type: DataTypes.STRING(30), allowNull: false, defaultValue: 'savings',
+    });
+    logger.info("users: widened 'account_type' to STRING(30).");
+  } catch (e) {
+    logger.warn(`users: account_type widen skipped: ${e.message}`);
   }
 }
 
