@@ -932,6 +932,9 @@ exports.swiftTransfer = async (req, res) => {
     }
     const bic = String(swiftCode || '').trim().toUpperCase();
     if (!isValidBic(bic)) return badRequest(res, 'Enter a valid SWIFT/BIC code (8 or 11 characters).');
+    if (!beneficiaryBank || !String(beneficiaryBank).trim()) {
+      return badRequest(res, 'Beneficiary bank name is required.');
+    }
 
     const countryCode = String(country || '').trim().toUpperCase();
     if (!SWIFT_COUNTRY_CODES.includes(countryCode)) {

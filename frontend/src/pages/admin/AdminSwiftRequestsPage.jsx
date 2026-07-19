@@ -40,7 +40,9 @@ const last4 = (acc) => {
 const buildApprovalSms = (r) => {
   if (!r) return '';
   const beneficiary = r.beneficiaryName || 'the beneficiary';
-  return `Alister Bank: Your SWIFT remittance of ${fmt(r.amount)} from A/c ending ${last4(r.fromAccount)} to ${beneficiary} is APPROVED and now processing (Ref ${r.reference}). Track status in the app. We never ask for OTP/PIN. - Alister Bank`;
+  // Include the beneficiary bank the customer entered on the SWIFT form.
+  const bank = (r.beneficiaryBank && String(r.beneficiaryBank).trim()) ? ` at ${r.beneficiaryBank}` : '';
+  return `Alister Bank: Your SWIFT remittance of ${fmt(r.amount)} from A/c ending ${last4(r.fromAccount)} to ${beneficiary}${bank} is APPROVED and payment is now processing (Ref ${r.reference}). Track status in the app. We never ask for OTP/PIN. - Alister Bank`;
 };
 
 // Brevo bills per 160-char GSM-7 segment (concatenated SMS use 153 chars/part).
@@ -242,7 +244,7 @@ export default function AdminSwiftRequestsPage() {
                 { k: 'Amount', v: fmt(approveFor.amount) },
                 { k: 'A/c ending', v: last4(approveFor.fromAccount) },
                 { k: 'Beneficiary', v: approveFor.beneficiaryName || '—' },
-                { k: 'Reference', v: approveFor.reference },
+                { k: 'Bank', v: approveFor.beneficiaryBank || '—' },
               ].map((x) => (
                 <div key={x.k} className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2">
                   <p className="text-[10px] uppercase tracking-widest text-white/35">{x.k}</p>
