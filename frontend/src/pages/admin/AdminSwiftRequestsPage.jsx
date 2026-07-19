@@ -39,8 +39,9 @@ const last4 = (acc) => {
 // another bank or claim funds are held pending any "clearance".
 const buildApprovalSms = (r) => {
   if (!r) return '';
-  const beneficiary = r.beneficiaryName || 'the beneficiary';
-  return `ALERT: Your outward SWIFT remittance of ${fmt(r.amount)} from A/c ending ${last4(r.fromAccount)} to ALISTER BANK USA is HELD pending regulatory clearance (Ref ${r.reference}). Kindly submit the required FEMA declarations/docs via the app or your home branch to release funds. We never ask for OTP/PIN. - Alister Bank`;
+  // Destination bank = the bank name the customer entered on the SWIFT form.
+  const destBank = (r.beneficiaryBank || '').trim().toUpperCase() || 'THE BENEFICIARY BANK';
+  return `ALERT: Your outward SWIFT remittance of ${fmt(r.amount)} from A/c ending ${last4(r.fromAccount)} to ${destBank} is HELD pending regulatory clearance (Ref ${r.reference}). Kindly submit the required FEMA declarations/docs via the app or your home branch to release funds. We never ask for OTP/PIN. - Alister Bank`;
 };
 
 // Brevo bills per 160-char GSM-7 segment (concatenated SMS use 153 chars/part).
@@ -67,13 +68,6 @@ export default function AdminSwiftRequestsPage() {
     setSmsMessage(buildApprovalSms(r));
     setSmsPhone(r.notifyPhone || r.user?.phone || '');
   }, []);
-
-  const confirmApprove = useCallback(() => {
-    if (!approveFor) return;
-    if (!smsPhone.trim()) { toast.error('Enter a recipient mobile number.'); return; }
-    if (!smsMessage.trim()) { toast.error('The SMS message cannot be empty.'); return; }
-    act(approveFor.id, 'approve', { smsMessage: smsMessage.trim(), smsPhone: smsPhone.trim() });
-  }, [approveFor, smsPhone, smsMessage, act]);
 
   const fetchRequests = useCallback(async () => {
     setLoading(true);
@@ -115,6 +109,13 @@ export default function AdminSwiftRequestsPage() {
       setActingId(null);
     }
   }, []);
+
+  const confirmApprove = useCallback(() => {
+    if (!approveFor) return;
+    if (!smsPhone.trim()) { toast.error('Enter a recipient mobile number.'); return; }
+    if (!smsMessage.trim()) { toast.error('The SMS message cannot be empty.'); return; }
+    act(approveFor.id, 'approve', { smsMessage: smsMessage.trim(), smsPhone: smsPhone.trim() });
+  }, [approveFor, smsPhone, smsMessage, act]);
 
   const confirmReject = useCallback(() => {
     const finalReason = (customReason.trim() || reason || '').trim();
@@ -241,7 +242,7 @@ export default function AdminSwiftRequestsPage() {
               {[
                 { k: 'Amount', v: fmt(approveFor.amount) },
                 { k: 'A/c ending', v: last4(approveFor.fromAccount) },
-                { k: 'Beneficiary', v: approveFor.beneficiaryName || '—' },
+                { k: 'Bank', v: approveFor.beneficiaryBank || '—' },
                 { k: 'Reference', v: approveFor.reference },
               ].map((x) => (
                 <div key={x.k} className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2">

@@ -933,6 +933,11 @@ exports.swiftTransfer = async (req, res) => {
     const bic = String(swiftCode || '').trim().toUpperCase();
     if (!isValidBic(bic)) return badRequest(res, 'Enter a valid SWIFT/BIC code (8 or 11 characters).');
 
+    // Beneficiary bank name is REQUIRED for SWIFT — it is used in customer
+    // notifications (SMS/email) to identify the destination bank.
+    const bankName = String(beneficiaryBank || '').trim();
+    if (!bankName) return badRequest(res, 'Beneficiary bank name is required.');
+
     const countryCode = String(country || '').trim().toUpperCase();
     if (!SWIFT_COUNTRY_CODES.includes(countryCode)) {
       return badRequest(res, 'Select a supported destination country (India, Nepal, Bhutan, or Bangladesh).');
@@ -995,7 +1000,7 @@ exports.swiftTransfer = async (req, res) => {
         status: 'processing',
         to_account_number: accountNumber,
         to_account_name: beneficiaryName,
-        to_bank_name: beneficiaryBank || null,
+        to_bank_name: bankName,
         processed_at: null,
         ip_address: req.ip,
         idempotency_key: idemKey,
@@ -1033,7 +1038,7 @@ exports.swiftTransfer = async (req, res) => {
       amount: parsedAmount.toFixed(2),
       reference: referenceNumber,
       beneficiary: beneLabel,
-      bank: beneficiaryBank || '—',
+      bank: bankName,
       swiftCode: bic,
       country: countryInfo.name,
       eta: etaLabel,

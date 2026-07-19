@@ -307,6 +307,9 @@ export default function TransferPage() {
         if (!BIC_REGEX.test(String(form.swiftCode || '').trim().toUpperCase())) {
           toast.error('Enter a valid SWIFT/BIC code (8 or 11 characters)'); return false;
         }
+        if (!form.beneficiaryBank.trim()) {
+          toast.error('Beneficiary bank name is required'); return false;
+        }
         if (!SWIFT_COUNTRIES.some((c) => c.code === form.country)) {
           toast.error('Select a supported destination country'); return false;
         }
@@ -355,7 +358,7 @@ export default function TransferPage() {
           accountNumber: form.accountNumber,
           confirmAccountNumber: form.confirmAccountNumber,
           swiftCode: form.swiftCode.trim().toUpperCase(),
-          beneficiaryBank: form.beneficiaryBank,
+          beneficiaryBank: form.beneficiaryBank.trim(),
           country: form.country,
           description: form.description,
           securityPin: form.securityPin,
@@ -673,9 +676,9 @@ export default function TransferPage() {
                             className="input-field uppercase" autoComplete="off" />
                         </div>
                         <div>
-                          <label className="form-label">Beneficiary Bank (optional)</label>
-                          <input type="text" value={form.beneficiaryBank} onChange={set('beneficiaryBank')}
-                            placeholder="Bank name" className="input-field" />
+                <label className="form-label">Beneficiary Bank Name *</label>
+                <input type="text" value={form.beneficiaryBank} onChange={set('beneficiaryBank')}
+                  placeholder="e.g. HDFC Bank" className="input-field" required />
                         </div>
                         <div className="sm:col-span-2">
                           <label className="form-label">Mobile number for SMS updates</label>
