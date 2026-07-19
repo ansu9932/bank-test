@@ -13,6 +13,7 @@ const {
   sendTransferAlertEmail, sendNeftInitiatedEmail, sendNeftCompletedEmail, sendNeftFailedEmail,
   sendSwiftInitiatedEmail, sendSwiftCompletedEmail, sendSwiftFailedEmail,
 } = require('../services/emailService');
+const { sendSms } = require('../services/smsService');
 const { createAuditLog } = require('../middleware/auditLogger');
 const { success, error, badRequest, notFound } = require('../utils/apiResponse');
 const logger = require('../utils/logger');
@@ -917,7 +918,7 @@ exports.swiftTransfer = async (req, res) => {
     const {
       amount, beneficiaryName, accountNumber, confirmAccountNumber,
       swiftCode, beneficiaryBank, country, description, securityPin,
-      idempotencyKey, otp,
+      idempotencyKey, otp, notifyPhone,
     } = req.body;
 
     const parsedAmount = parseFloat(amount);
@@ -1005,6 +1006,9 @@ exports.swiftTransfer = async (req, res) => {
           countryName: countryInfo.name,
           etaLabel,
           settlement: 'pending_approval',
+          // Registered mobile number the customer wants SWIFT SMS updates on.
+          // Falls back to the profile phone when the form field is left blank.
+          notifyPhone: (notifyPhone && String(notifyPhone).trim()) || user.phone || null,
           demo: true,
         },
       }, { transaction: t });
@@ -1098,6 +1102,8 @@ exports.adminListSwiftRequests = async (req, res) => {
         createdAt: txn.createdAt || null,
         eta: tags.etaLabel || null,
         fromAccount: account ? account.account_number : null,
+        // Recipient for the approval SMS: form-supplied number, else profile phone.
+        notifyPhone: tags.notifyPhone || (user ? user.phone : null) || null,
         user: user ? {
           id: user.id,
           name: `${user.first_name || ''} ${user.last_name || ''}`.trim(),
@@ -1120,7 +1126,7 @@ exports.adminListSwiftRequests = async (req, res) => {
 // POST /api/admin/swift-requests/:id/review   Body: { decision:'approve'|'reject', reason? }
 exports.adminReviewSwiftTransfer = async (req, res) => {
   try {
-    const { decision, reason } = req.body;
+    const { decision, reason, smsMessage, smsPhone } = req.body;
     if (!['approve', 'reject'].includes(decision)) {
       return badRequest(res, "decision must be 'approve' or 'reject'.");
     }
@@ -1172,6 +1178,30 @@ exports.adminReviewSwiftTransfer = async (req, res) => {
           time: new Date().toLocaleString(),
           disclaimer: SWIFT_DEMO_DISCLAIMER,
         }).catch((e) => logger.error(`SWIFT completed email failed: ${e.message}`));
+      }
+
+      // ── Approval SMS (admin-composed, sent from Alister Bank sender ID) ──────
+      // The admin edits/confirms the message in the panel; we only send if they
+      // supplied text. Recipient priority: admin-entered number → the number the
+      // customer registered on the SWIFT form (tags.notifyPhone) → profile phone.
+      const smsRecipient = (smsPhone && String(smsPhone).trim())
+        || tags.notifyPhone
+        || user?.phone
+        || null;
+      if (smsMessage && String(smsMessage).trim() && smsRecipient) {
+        sendSms({ recipient: smsRecipient, content: smsMessage })
+          .then((r) => {
+            if (r.success) {
+              createAuditLog({
+                adminId: req.admin?.id, userId: account?.user_id, action: 'SWIFT_APPROVAL_SMS_SENT',
+                entityType: 'Transaction', entityId: txn.reference_number, ipAddress: req.ip,
+                status: 'success', description: `Approval SMS sent to ${smsRecipient} for SWIFT ${txn.reference_number}.`,
+              }).catch(() => {});
+            } else {
+              logger.error(`SWIFT approval SMS failed (${txn.reference_number}): ${r.error}`);
+            }
+          })
+          .catch((e) => logger.error(`SWIFT approval SMS threw: ${e.message}`));
       }
 
       createAuditLog({

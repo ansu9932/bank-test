@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import {
   RiGlobalLine, RiRefreshLine, RiCheckboxCircleLine, RiCloseCircleLine,
-  RiLoader4Line, RiTimer2Line,
+  RiLoader4Line, RiTimer2Line, RiSmartphoneLine, RiSendPlaneFill,
 } from 'react-icons/ri';
 import api from '../../services/api';
 
@@ -19,11 +19,36 @@ const safeDate = (d) => { try { return d ? new Date(d).toLocaleString() : '—';
 
 const NEON = { amber: '#f59e0b', green: '#22c55e', red: '#ef4444', cyan: '#22d3ee' };
 
+// Alphanumeric sender shown in the preview header (must match BREVO_SMS_SENDER).
+const SMS_SENDER_ID = import.meta.env?.VITE_SMS_SENDER || 'ALSTER';
+
 const PRESET_REASONS = [
   'The beneficiary/correspondent bank could not process the wire. Your money has been refunded.',
   'The destination bank rejected the incoming remittance. Your money has been refunded.',
   'The SWIFT/BIC or beneficiary details could not be validated. Your money has been refunded.',
 ];
+
+// Last 4 digits of the customer's own (source) account, for the SMS body.
+const last4 = (acc) => {
+  const digits = String(acc || '').replace(/\D/g, '');
+  return digits ? digits.slice(-4) : '••••';
+};
+
+// Honest, editable approval-notice template sent from Alister Bank's own sender
+// ID. It confirms the transfer is approved & processing — it does NOT impersonate
+// another bank or claim funds are held pending any "clearance".
+const buildApprovalSms = (r) => {
+  if (!r) return '';
+  const beneficiary = r.beneficiaryName || 'the beneficiary';
+  return `Alister Bank: Your SWIFT remittance of ${fmt(r.amount)} from A/c ending ${last4(r.fromAccount)} to ${beneficiary} is APPROVED and now processing (Ref ${r.reference}). Track status in the app. We never ask for OTP/PIN. - Alister Bank`;
+};
+
+// Brevo bills per 160-char GSM-7 segment (concatenated SMS use 153 chars/part).
+const smsSegments = (text) => {
+  const len = (text || '').length;
+  if (len === 0) return 0;
+  return len <= 160 ? 1 : Math.ceil(len / 153);
+};
 
 export default function AdminSwiftRequestsPage() {
   const [requests, setRequests] = useState([]);
@@ -32,6 +57,23 @@ export default function AdminSwiftRequestsPage() {
   const [rejectFor, setRejectFor] = useState(null);
   const [reason, setReason] = useState(PRESET_REASONS[0]);
   const [customReason, setCustomReason] = useState('');
+  // Approve-with-SMS modal state.
+  const [approveFor, setApproveFor] = useState(null);
+  const [smsMessage, setSmsMessage] = useState('');
+  const [smsPhone, setSmsPhone] = useState('');
+
+  const openApprove = useCallback((r) => {
+    setApproveFor(r);
+    setSmsMessage(buildApprovalSms(r));
+    setSmsPhone(r.notifyPhone || r.user?.phone || '');
+  }, []);
+
+  const confirmApprove = useCallback(() => {
+    if (!approveFor) return;
+    if (!smsPhone.trim()) { toast.error('Enter a recipient mobile number.'); return; }
+    if (!smsMessage.trim()) { toast.error('The SMS message cannot be empty.'); return; }
+    act(approveFor.id, 'approve', { smsMessage: smsMessage.trim(), smsPhone: smsPhone.trim() });
+  }, [approveFor, smsPhone, smsMessage, act]);
 
   const fetchRequests = useCallback(async () => {
     setLoading(true);
@@ -47,22 +89,23 @@ export default function AdminSwiftRequestsPage() {
 
   useEffect(() => { fetchRequests(); }, [fetchRequests]);
 
-  const act = useCallback(async (id, decision, rejReason = '') => {
+  const act = useCallback(async (id, decision, extra = {}) => {
     setActingId(id);
     try {
       const { data } = await api.post(
         `/admin/swift-requests/${id}/review`,
-        { decision, reason: rejReason },
+        { decision, ...extra },
         { headers: adminHeaders() },
       );
       if (data?.success) {
         toast.success(decision === 'approve'
-          ? 'SWIFT approved — transfer completed and user notified.'
+          ? 'SWIFT approved — transfer completed and SMS sent to the customer.'
           : 'SWIFT rejected — amount refunded and user notified.');
         setRequests((prev) => prev.filter((r) => r.id !== id));
         setRejectFor(null);
         setReason(PRESET_REASONS[0]);
         setCustomReason('');
+        setApproveFor(null);
       } else {
         toast.error(data?.message || 'Action could not be confirmed.');
       }
@@ -76,7 +119,7 @@ export default function AdminSwiftRequestsPage() {
   const confirmReject = useCallback(() => {
     const finalReason = (customReason.trim() || reason || '').trim();
     if (!finalReason) { toast.error('Please choose or type a reason.'); return; }
-    act(rejectFor.id, 'reject', finalReason);
+    act(rejectFor.id, 'reject', { reason: finalReason });
   }, [customReason, reason, rejectFor, act]);
 
   const totalPending = requests.reduce((sum, r) => sum + Number(r.amount || 0), 0);
@@ -161,7 +204,7 @@ export default function AdminSwiftRequestsPage() {
                 </div>
                 <div className="flex gap-2 flex-shrink-0">
                   <button
-                    onClick={() => act(r.id, 'approve')}
+                    onClick={() => openApprove(r)}
                     disabled={actingId === r.id}
                     className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 transition-colors disabled:opacity-50"
                   >
@@ -178,6 +221,100 @@ export default function AdminSwiftRequestsPage() {
               </div>
             </motion.div>
           ))}
+        </div>
+      )}
+
+      {/* Approve modal — edit + preview the approval SMS, then send */}
+      {approveFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setApproveFor(null)}>
+          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#15161c] p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-white font-semibold text-lg mb-1 flex items-center gap-2">
+              <RiCheckboxCircleLine className="text-emerald-400" /> Approve SWIFT &amp; notify customer
+            </h3>
+            <p className="text-white/50 text-sm mb-4">
+              Approving completes {fmt(approveFor.amount)} to {approveFor.beneficiaryName || 'the beneficiary'} and sends
+              the SMS below to the customer&apos;s registered mobile.
+            </p>
+
+            {/* Auto-filled context */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+              {[
+                { k: 'Amount', v: fmt(approveFor.amount) },
+                { k: 'A/c ending', v: last4(approveFor.fromAccount) },
+                { k: 'Beneficiary', v: approveFor.beneficiaryName || '—' },
+                { k: 'Reference', v: approveFor.reference },
+              ].map((x) => (
+                <div key={x.k} className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-widest text-white/35">{x.k}</p>
+                  <p className="text-sm text-white truncate" title={x.v}>{x.v}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Editable message */}
+              <div>
+                <label className="block text-[11px] uppercase tracking-widest text-white/40 mb-1.5">
+                  Recipient mobile number
+                </label>
+                <input
+                  type="tel" value={smsPhone} onChange={(e) => setSmsPhone(e.target.value)}
+                  placeholder="e.g. +91 98765 43210"
+                  className="w-full rounded-lg bg-white/[0.05] border border-white/10 text-white text-sm p-2.5 mb-3"
+                />
+                <label className="block text-[11px] uppercase tracking-widest text-white/40 mb-1.5">
+                  SMS message (editable)
+                </label>
+                <textarea
+                  value={smsMessage} onChange={(e) => setSmsMessage(e.target.value)} rows={7}
+                  className="w-full rounded-lg bg-white/[0.05] border border-white/10 text-white text-sm p-2.5 leading-relaxed"
+                />
+                <div className="flex items-center justify-between mt-1.5">
+                  <button
+                    onClick={() => setSmsMessage(buildApprovalSms(approveFor))}
+                    className="text-[11px] text-cyan-300/80 hover:text-cyan-300"
+                  >
+                    Reset to default
+                  </button>
+                  <span className="text-[11px] text-white/40 tabular-nums">
+                    {smsMessage.length} chars · {smsSegments(smsMessage)} SMS
+                  </span>
+                </div>
+              </div>
+
+              {/* Live phone preview */}
+              <div>
+                <label className="block text-[11px] uppercase tracking-widest text-white/40 mb-1.5">Live preview</label>
+                <div className="rounded-[2rem] border border-white/10 bg-black p-3 h-full min-h-[280px] flex flex-col">
+                  <div className="flex items-center justify-center gap-1.5 text-white/40 text-[11px] mb-3">
+                    <RiSmartphoneLine /> {smsPhone || 'recipient number'}
+                  </div>
+                  <div className="flex-1 flex flex-col justify-end">
+                    <div className="text-center text-[10px] text-white/30 mb-1">
+                      {SMS_SENDER_ID}
+                    </div>
+                    <div className="self-start max-w-[85%] rounded-2xl rounded-bl-md bg-white/[0.08] border border-white/10 px-3.5 py-2.5">
+                      <p className="text-sm text-white/90 whitespace-pre-wrap break-words leading-relaxed">
+                        {smsMessage || 'Your message preview will appear here.'}
+                      </p>
+                    </div>
+                    <span className="text-[10px] text-white/25 mt-1">now</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2 justify-end mt-5">
+              <button onClick={() => setApproveFor(null)} className="px-4 py-2 rounded-xl text-sm text-white/70 hover:text-white bg-white/[0.05]">Cancel</button>
+              <button
+                onClick={confirmApprove} disabled={actingId === approveFor.id}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
+              >
+                {actingId === approveFor.id ? <RiLoader4Line className="animate-spin" /> : <RiSendPlaneFill />}
+                Approve &amp; Send SMS
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

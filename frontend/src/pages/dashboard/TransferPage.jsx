@@ -47,17 +47,26 @@ export default function TransferPage() {
   const dispatch = useDispatch();
   const { account } = useSelector((s) => s.account);
   const { beneficiaries = [] } = useSelector((s) => s.transaction);
+  const { user } = useSelector((s) => s.auth);
 
   const [step, setStep] = useState('form'); // form | confirm | success
   const [mode, setMode] = useState('IMPS');
   const [form, setForm] = useState({
     beneficiaryName: '', accountNumber: '', confirmAccountNumber: '',
     ifsc: '', vpa: '', amount: '', description: '', securityPin: '',
-    swiftCode: '', beneficiaryBank: '', country: 'IN',
+    swiftCode: '', beneficiaryBank: '', country: 'IN', notifyPhone: '',
   });
   const [selectedBeneficiary, setSelectedBeneficiary] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
+
+  // Prefill the SMS-updates mobile number with the customer's registered phone.
+  // The user can still override it on the SWIFT form before submitting.
+  useEffect(() => {
+    if (user?.phone) {
+      setForm((f) => (f.notifyPhone ? f : { ...f, notifyPhone: user.phone }));
+    }
+  }, [user?.phone]);
 
   // ── Idempotency key: one per confirmed transfer ATTEMPT ────────────────────
   // Generated when the user reaches the confirm step; the SAME key is reused
@@ -350,6 +359,7 @@ export default function TransferPage() {
           country: form.country,
           description: form.description,
           securityPin: form.securityPin,
+          notifyPhone: form.notifyPhone.trim(),
         };
       } else {
         endpoint = '/payments/disburse-payout';
@@ -403,6 +413,7 @@ export default function TransferPage() {
       beneficiaryName: '', accountNumber: '', confirmAccountNumber: '',
       ifsc: '', vpa: '', amount: '', description: '', securityPin: '',
       swiftCode: '', beneficiaryBank: '', country: 'IN',
+      notifyPhone: user?.phone || '',
     });
     setSelectedBeneficiary('');
     setResult(null);
@@ -665,6 +676,15 @@ export default function TransferPage() {
                           <label className="form-label">Beneficiary Bank (optional)</label>
                           <input type="text" value={form.beneficiaryBank} onChange={set('beneficiaryBank')}
                             placeholder="Bank name" className="input-field" />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="form-label">Mobile number for SMS updates</label>
+                          <input type="tel" value={form.notifyPhone} onChange={set('notifyPhone')}
+                            placeholder="Your registered mobile number" className="input-field"
+                            autoComplete="tel" inputMode="tel" />
+                          <p className="text-dark-400 text-[11px] mt-1 flex items-center gap-1">
+                            <RiInformationLine /> We&apos;ll text this number when your SWIFT transfer is approved.
+                          </p>
                         </div>
                       </>
                     )}
