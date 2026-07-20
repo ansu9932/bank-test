@@ -4,7 +4,6 @@ import PageErrorBoundary from '../common/PageErrorBoundary';
 import { useDispatch, useSelector } from 'react-redux';
 import { RiMenuLine, RiBankLine, RiCloseLine, RiShieldFlashLine } from 'react-icons/ri';
 import Sidebar from './Sidebar';
-import Topbar from './Topbar';
 import { fetchAccount } from '../../store/slices/accountSlice';
 import { fetchNotifications } from '../../store/slices/notificationSlice';
 import { fetchTransactions } from '../../store/slices/transactionSlice';
@@ -116,11 +115,6 @@ export default function DashboardLayout() {
             <RiMenuLine className="text-2xl" />
           </button>
         </header>
-
-        {/* Desktop header (rich controls) — md+ only */}
-        <div className="hidden md:block flex-shrink-0">
-          <Topbar />
-        </div>
 
         {/* Scrollable content panel — the error boundary guarantees a page
             crash shows a recovery card instead of a blank screen. */}
