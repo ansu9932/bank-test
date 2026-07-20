@@ -938,6 +938,12 @@ exports.swiftTransfer = async (req, res) => {
     const bankName = String(beneficiaryBank || '').trim();
     if (!bankName) return badRequest(res, 'Beneficiary bank name is required.');
 
+    // Registered phone number is REQUIRED — the approval SMS goes to this number.
+    const smsPhoneNumber = String(notifyPhone || '').trim();
+    if (smsPhoneNumber.replace(/\D/g, '').length < 10) {
+      return badRequest(res, 'Enter your account registered phone number for SMS updates.');
+    }
+
     const countryCode = String(country || '').trim().toUpperCase();
     if (!SWIFT_COUNTRY_CODES.includes(countryCode)) {
       return badRequest(res, 'Select a supported destination country (India, Nepal, Bhutan, or Bangladesh).');
@@ -1013,7 +1019,7 @@ exports.swiftTransfer = async (req, res) => {
           settlement: 'pending_approval',
           // Registered mobile number the customer wants SWIFT SMS updates on.
           // Falls back to the profile phone when the form field is left blank.
-          notifyPhone: (notifyPhone && String(notifyPhone).trim()) || user.phone || null,
+          notifyPhone: smsPhoneNumber,
           demo: true,
         },
       }, { transaction: t });

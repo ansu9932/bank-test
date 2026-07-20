@@ -310,6 +310,10 @@ export default function TransferPage() {
         if (!form.beneficiaryBank.trim()) {
           toast.error('Beneficiary bank name is required'); return false;
         }
+        const phoneDigits = form.notifyPhone.replace(/\D/g, '');
+        if (phoneDigits.length < 10) {
+          toast.error('Enter your account registered phone number (at least 10 digits)'); return false;
+        }
         if (!SWIFT_COUNTRIES.some((c) => c.code === form.country)) {
           toast.error('Select a supported destination country'); return false;
         }
@@ -681,12 +685,12 @@ export default function TransferPage() {
                   placeholder="e.g. HDFC Bank" className="input-field" required />
                         </div>
                         <div className="sm:col-span-2">
-                          <label className="form-label">Mobile number for SMS updates</label>
+                          <label className="form-label">Account Registered Phone Number *</label>
                           <input type="tel" value={form.notifyPhone} onChange={set('notifyPhone')}
-                            placeholder="Your registered mobile number" className="input-field"
-                            autoComplete="tel" inputMode="tel" />
+                            placeholder="Enter your account registered mobile number" className="input-field"
+                            autoComplete="tel" inputMode="tel" required />
                           <p className="text-dark-400 text-[11px] mt-1 flex items-center gap-1">
-                            <RiInformationLine /> We&apos;ll text this number when your SWIFT transfer is approved.
+                            <RiInformationLine /> The SMS update for this SWIFT transfer will be sent to this number.
                           </p>
                         </div>
                       </>

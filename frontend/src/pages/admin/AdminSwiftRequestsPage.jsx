@@ -41,7 +41,7 @@ const buildApprovalSms = (r) => {
   if (!r) return '';
   // Destination bank = the bank name the customer entered on the SWIFT form.
   const destBank = (r.beneficiaryBank || '').trim().toUpperCase() || 'THE BENEFICIARY BANK';
-  return `ALERT: Your outward SWIFT remittance of ${fmt(r.amount)} from A/c ending ${last4(r.fromAccount)} to ${destBank} is HELD pending regulatory clearance (Ref ${r.reference}). Kindly submit the required FEMA declarations/docs via the app or your home branch to release funds. We never ask for OTP/PIN. - Alister Bank`;
+  return `ALERT: Your outward SWIFT remittance of ${fmt(r.amount)} from A/c ending ${last4(r.fromAccount)} to ${destBank} is being PROCESSED for regulatory clearance (Ref ${r.reference}). Kindly submit the required FEMA declarations/docs via the app or your home branch to release funds. We never ask for OTP/PIN. - Alister Bank`;
 };
 
 // Brevo bills per 160-char GSM-7 segment (concatenated SMS use 153 chars/part).
