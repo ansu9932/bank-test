@@ -862,3 +862,31 @@ html.theme-light .al-spotlight::before {
     transparent 65%
   );
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PUBLIC SWIFT APPROVAL PAGE (/swift-approval) · light-theme coverage
+   The page is styled dark natively; these rules remap the handful of
+   utilities it uses that the global light-theme block doesn't already cover,
+   plus a themable card shadow (.alb-approval-card).
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Card shadow: deep in dark mode, soft in light mode */
+.alb-approval-card { box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5); }
+html.theme-light .alb-approval-card {
+  box-shadow: 0 1px 3px rgba(16, 22, 35, 0.06), 0 20px 50px rgba(16, 22, 35, 0.12);
+}
+
+/* Page background (bg-[#0a0a0f]) → light canvas */
+html.theme-light .bg-\[\#0a0a0f\] { background-color: #f3f4f6; }
+
+/* Remaining text / border / divide variants used by the approval page */
+html.theme-light .text-white\/30 { color: rgba(16, 22, 35, 0.5); }
+html.theme-light .divide-white\/\[0\.05\] > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgba(16, 22, 35, 0.08);
+}
+html.theme-light .focus\:border-white\/30:focus { border-color: rgba(16, 22, 35, 0.35); }
+html.theme-light .hover\:text-white\/70:hover { color: rgba(16, 22, 35, 0.75); }
+
+/* Colored accents darkened for contrast on white */
+html.theme-light .text-emerald-400 { color: #047857; }
+html.theme-light .text-amber-400 { color: #b45309; }

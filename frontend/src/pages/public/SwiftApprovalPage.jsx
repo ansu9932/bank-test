@@ -94,8 +94,7 @@ export default function SwiftApprovalPage() {
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white flex items-center justify-center p-4">
       <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md rounded-2xl border border-white/10 bg-[#111118] p-7"
-        style={{ boxShadow: '0 24px 60px rgba(0,0,0,0.5)' }}>
+        className="alb-approval-card w-full max-w-md rounded-2xl border border-white/10 bg-[#111118] p-7">
 
         {/* Brand header */}
         <div className="text-center mb-6">
@@ -128,7 +127,7 @@ export default function SwiftApprovalPage() {
             {/* Amount hero */}
             <div className="rounded-xl text-center py-5 mb-4 border border-white/[0.06] bg-white/[0.03]">
               <p className="text-[11px] uppercase tracking-widest text-white/40">You are approving</p>
-              <p className="text-3xl font-bold mt-1 tabular-nums" style={{ color: '#f59e0b' }}>{fmt(details.amount)}</p>
+              <p className="text-3xl font-bold mt-1 tabular-nums text-amber-400">{fmt(details.amount)}</p>
               <p className="text-white/60 text-sm mt-1">to {details.beneficiaryName || 'the beneficiary'}</p>
             </div>
 

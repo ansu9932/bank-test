@@ -104,16 +104,19 @@ const sendEmail = async ({ to, subject, html, text, attachments }) => {
 // email clients). A single small <style> block is kept ONLY for the responsive
 // @media fallback; if Gmail drops it the inline widths still render correctly.
 
+// LIGHT palette — light emails render consistently across every client
+// (Gmail/Outlook/Apple Mail, light AND dark mode). Dark-designed emails get
+// partially inverted by client dark modes, producing unreadable text.
 const BRAND = {
   crimson: '#c8102e',
   crimsonDark: '#8b0000',
-  ink: '#0d0d14',
-  panel: '#111118',
-  panelAlt: '#1a1a2e',
-  border: '#1e1e2e',
-  text: '#ffffff',
-  muted: '#a0a0b0',
-  faint: '#666666',
+  ink: '#f0f1f4',      // footer surface
+  panel: '#ffffff',    // main body surface
+  panelAlt: '#f7f8fa', // detail tables / callouts
+  border: '#e5e7eb',
+  text: '#101623',
+  muted: '#4b5563',
+  faint: '#6b7280',
 };
 
 /**
@@ -126,6 +129,8 @@ const baseTemplate = (content) => `<!DOCTYPE html>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+  <meta name="color-scheme" content="light"/>
+  <meta name="supported-color-schemes" content="light"/>
   <title>Alister Bank</title>
   <style>
     /* Responsive fallback only — all critical styling is inline below. */
@@ -136,9 +141,9 @@ const baseTemplate = (content) => `<!DOCTYPE html>
     }
   </style>
 </head>
-<body style="margin:0; padding:0; background-color:#0a0a0f; -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%;">
+<body style="margin:0; padding:0; background-color:#f4f5f7; -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%;">
   <!-- Preheader spacing + outer background -->
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#0a0a0f;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f5f7;">
     <tr>
       <td align="center" style="padding:24px 12px;">
         <table role="presentation" class="alb-wrap" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px; max-width:600px; font-family:'Segoe UI',Arial,Helvetica,sans-serif;">
@@ -157,8 +162,8 @@ const baseTemplate = (content) => `<!DOCTYPE html>
           <!-- Footer -->
           <tr>
             <td class="alb-pad" align="center" style="background-color:${BRAND.ink}; padding:24px 40px; border-radius:0 0 16px 16px; border:1px solid ${BRAND.border}; border-top:none;">
-              <p style="margin:0 0 6px; color:#555555; font-size:12px; line-height:1.6;">&copy; ${new Date().getFullYear()} Alister Bank. All rights reserved.</p>
-              <p style="margin:0 0 6px; color:#555555; font-size:12px; line-height:1.6;">This is an automated message. Please do not reply to this email.</p>
+              <p style="margin:0 0 6px; color:#6b7280; font-size:12px; line-height:1.6;">&copy; ${new Date().getFullYear()} Alister Bank. All rights reserved.</p>
+              <p style="margin:0 0 6px; color:#6b7280; font-size:12px; line-height:1.6;">This is an automated message. Please do not reply to this email.</p>
               <p style="margin:0 0 12px; font-size:12px;">
                 <a href="${process.env.FRONTEND_URL || '#'}/privacy" style="color:${BRAND.crimson}; text-decoration:none;">Privacy Policy</a>
                 &nbsp;|&nbsp;
@@ -168,8 +173,8 @@ const baseTemplate = (content) => `<!DOCTYPE html>
               </p>
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
-                  <td style="background-color:#0a0a0f; border:1px solid ${BRAND.border}; border-radius:8px; padding:12px 16px;">
-                    <p style="margin:0; color:#666666; font-size:11px; line-height:1.6;">&#128274; <strong style="color:#888;">Anti-Phishing Notice:</strong> Alister Bank will never ask for your password, PIN, or OTP via phone or email. If you did not request this email, please ignore it.</p>
+                  <td style="background-color:#ffffff; border:1px solid ${BRAND.border}; border-radius:8px; padding:12px 16px;">
+                    <p style="margin:0; color:#6b7280; font-size:11px; line-height:1.6;">&#128274; <strong style="color:#4b5563;">Anti-Phishing Notice:</strong> Alister Bank will never ask for your password, PIN, or OTP via phone or email. If you did not request this email, please ignore it.</p>
                   </td>
                 </tr>
               </table>
@@ -209,7 +214,7 @@ const button = (label, href) => `
 const infoBox = (innerHtml) => `
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0;"><tr>
     <td style="background-color:${BRAND.panelAlt}; border-left:3px solid ${BRAND.crimson}; border-radius:6px; padding:16px 20px;">
-      <p style="margin:0; color:#c0c0d0; font-size:14px; line-height:1.6;">${innerHtml}</p>
+      <p style="margin:0; color:#374151; font-size:14px; line-height:1.6;">${innerHtml}</p>
     </td>
   </tr></table>`;
 
@@ -217,10 +222,10 @@ const infoBox = (innerHtml) => `
 const detailRow = (label, value, valueColor) => `
   <tr>
     <td style="padding:10px 0; border-bottom:1px solid ${BRAND.border}; color:${BRAND.faint}; font-size:13px;">${label}</td>
-    <td align="right" style="padding:10px 0; border-bottom:1px solid ${BRAND.border}; color:${valueColor || '#ffffff'}; font-size:13px; font-weight:600;">${value}</td>
+    <td align="right" style="padding:10px 0; border-bottom:1px solid ${BRAND.border}; color:${valueColor || BRAND.text}; font-size:13px; font-weight:600;">${value}</td>
   </tr>`;
 
-const heading = (text) => `<h2 style="margin:0 0 16px; font-size:20px; color:#ffffff; font-weight:700; font-family:'Segoe UI',Arial,Helvetica,sans-serif;">${text}</h2>`;
+const heading = (text) => `<h2 style="margin:0 0 16px; font-size:20px; color:${BRAND.text}; font-weight:700; font-family:'Segoe UI',Arial,Helvetica,sans-serif;">${text}</h2>`;
 const para = (html) => `<p style="margin:0 0 14px; color:${BRAND.muted}; font-size:15px; line-height:1.7;">${html}</p>`;
 const hl = (text) => `<span style="color:${BRAND.crimson}; font-weight:600;">${text}</span>`;
 
