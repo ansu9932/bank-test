@@ -19,7 +19,7 @@ const safeDate = (d) => { try { return d ? new Date(d).toLocaleString() : '—';
 
 const NEON = { amber: '#f59e0b', green: '#22c55e', red: '#ef4444', cyan: '#22d3ee' };
 
-// Alphanumeric sender shown in the preview header (must match BREVO_SMS_SENDER).
+// Sender name shown in the preview header (SMS is sent via Twilio from TWILIO_FROM_NUMBER).
 const SMS_SENDER_ID = import.meta.env?.VITE_SMS_SENDER || 'ALSTER';
 
 const PRESET_REASONS = [
