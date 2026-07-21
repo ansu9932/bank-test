@@ -100,7 +100,11 @@ app.use(cors({
   origin: (origin, cb) => (isAllowedOrigin(origin) ? cb(null, true) : cb(new Error('Not allowed by CORS'))),
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Registration-Token', 'X-Chat-Token'],
+  // 'Cache-Control' MUST stay in this list: the SWIFT approval page sends it
+  // on its review request, and a preflight that doesn't allow the header makes
+  // the browser hard-block the call as a CORS error (seen as "invalid or
+  // expired link" even though the token was never checked).
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Registration-Token', 'X-Chat-Token', 'Cache-Control', 'Pragma'],
 }));
 
 // ─── Body Parsing ─────────────────────────────────────────────────────────────
