@@ -1180,6 +1180,111 @@ exports.adminListSwiftRequests = async (req, res) => {
   }
 };
 
+// ─── Shared SWIFT settlement helper ───────────────────────────────────────────
+// Completes a 'processing' SWIFT transfer: marks it success, notifies the user
+// (in-app + completion email) and sends the post-approval SMS to the phone
+// number the customer entered on the SWIFT form. Reused by BOTH approval
+// paths — the admin queue (manual approve) and the email self-approval flow —
+// so settlement behaviour can never drift between them.
+//
+// SMS policy (revised): NO SMS is sent at submission time. The SMS goes out
+// only here, after approval. For admin approvals the admin-composed message is
+// used when provided (same behaviour as before); for email self-approvals a
+// default confirmation is auto-sent.
+async function settleSwiftTransfer(txn, {
+  approvedByAdminId = null,
+  channel = 'admin',            // 'admin' | 'email'
+  smsMessage = null,
+  smsPhone = null,
+  ip = null,
+} = {}) {
+  const account = await Account.findByPk(txn.account_id);
+  const user = account ? await User.findByPk(account.user_id) : null;
+  const tags = txn.tags || {};
+  const countryName = tags.countryName || tags.country || '—';
+  const beneLabel = txn.to_account_name
+    ? `${txn.to_account_name} · ${txn.to_account_number}`
+    : (txn.to_account_number || 'beneficiary');
+  const amount = parseFloat(txn.amount);
+
+  await txn.update({
+    status: 'success',
+    processed_at: new Date(),
+    tags: {
+      ...tags,
+      settlement: 'settled',
+      approvedBy: approvedByAdminId,
+      approvalChannel: channel,
+      // Single-use: the emailed approval token can never be replayed.
+      approvalTokenHash: null,
+      approvalTokenExpiresAt: null,
+    },
+  });
+
+  if (account) {
+    await Notification.create({
+      user_id: account.user_id,
+      title: `SWIFT transfer of ${fmtINR(amount)} completed`,
+      message: `Your international SWIFT transfer to ${beneLabel} (${countryName}) (Ref: ${txn.reference_number}) has been processed successfully.`,
+      type: 'transaction',
+      priority: 'high',
+    }).catch(() => {});
+  }
+
+  if (user?.email) {
+    sendSwiftCompletedEmail(user.email, user.first_name || 'Customer', {
+      amount: amount.toFixed(2),
+      reference: txn.reference_number,
+      beneficiary: beneLabel,
+      bank: txn.to_bank_name || '—',
+      swiftCode: tags.swiftCode || '—',
+      country: countryName,
+      balance: account ? parseFloat(account.balance).toFixed(2) : null,
+      time: new Date().toLocaleString(),
+      disclaimer: SWIFT_DEMO_DISCLAIMER,
+    }).catch((e) => logger.error(`SWIFT completed email failed: ${e.message}`));
+  }
+
+  // ── Post-approval SMS to the number entered on the SWIFT form ─────────────
+  // Recipient priority: explicit override → the number the customer registered
+  // on the SWIFT form (tags.notifyPhone) → profile phone. Admin approvals send
+  // only when the admin supplied a message (as before); email self-approvals
+  // auto-send a default confirmation.
+  const smsRecipient = (smsPhone && String(smsPhone).trim())
+    || tags.notifyPhone
+    || user?.phone
+    || null;
+  const smsContent = (smsMessage && String(smsMessage).trim())
+    || (channel === 'email'
+      ? `Alister Bank: Your SWIFT transfer of ${fmtINR(amount)} to ${(txn.to_bank_name || 'the beneficiary bank').toUpperCase()} (Ref ${txn.reference_number}) has been APPROVED and is now processing for delivery. We never ask for OTP/PIN.`
+      : null);
+  if (smsContent && smsRecipient) {
+    sendSms({ recipient: smsRecipient, content: smsContent })
+      .then((r) => {
+        if (r.success) {
+          createAuditLog({
+            adminId: approvedByAdminId, userId: account?.user_id, action: 'SWIFT_APPROVAL_SMS_SENT',
+            entityType: 'Transaction', entityId: txn.reference_number, ipAddress: ip,
+            status: 'success', description: `Approval SMS sent to ${smsRecipient} for SWIFT ${txn.reference_number} (${channel} approval).`,
+          }).catch(() => {});
+        } else {
+          logger.error(`SWIFT approval SMS failed (${txn.reference_number}): ${r.error}`);
+        }
+      })
+      .catch((e) => logger.error(`SWIFT approval SMS threw: ${e.message}`));
+  }
+
+  createAuditLog({
+    adminId: approvedByAdminId, userId: account?.user_id,
+    action: channel === 'email' ? 'SWIFT_EMAIL_SELF_APPROVED' : 'SWIFT_APPROVED',
+    entityType: 'Transaction', entityId: txn.reference_number, ipAddress: ip,
+    status: 'success',
+    description: `SWIFT ${fmtINR(amount)} to ${beneLabel} (${countryName}) approved & completed via ${channel === 'email' ? 'email self-approval' : 'admin approval'}.`,
+  }).catch(() => {});
+
+  return { account, user, amount, beneLabel, countryName };
+}
+
 // ─── Admin: approve / reject a pending SWIFT transfer ─────────────────────────
 // POST /api/admin/swift-requests/:id/review   Body: { decision:'approve'|'reject', reason? }
 exports.adminReviewSwiftTransfer = async (req, res) => {
@@ -1207,66 +1312,16 @@ exports.adminReviewSwiftTransfer = async (req, res) => {
     const amount = parseFloat(txn.amount);
 
     // ── APPROVE → complete (already debited at creation) ─────────────────────
+    // Settlement is delegated to the shared settleSwiftTransfer helper (also
+    // used by the email self-approval flow) so both paths stay identical.
     if (decision === 'approve') {
-      await txn.update({
-        status: 'success',
-        processed_at: new Date(),
-        tags: { ...tags, settlement: 'settled', approvedBy: req.admin?.id || null },
+      await settleSwiftTransfer(txn, {
+        approvedByAdminId: req.admin?.id || null,
+        channel: 'admin',
+        smsMessage: smsMessage && String(smsMessage).trim() ? String(smsMessage).trim() : null,
+        smsPhone: smsPhone && String(smsPhone).trim() ? String(smsPhone).trim() : null,
+        ip: req.ip,
       });
-
-      if (account) {
-        await Notification.create({
-          user_id: account.user_id,
-          title: `SWIFT transfer of ${fmtINR(amount)} completed`,
-          message: `Your international SWIFT transfer to ${beneLabel} (${countryName}) (Ref: ${txn.reference_number}) has been processed successfully.`,
-          type: 'transaction',
-          priority: 'high',
-        }).catch(() => {});
-      }
-
-      if (user?.email) {
-        sendSwiftCompletedEmail(user.email, user.first_name || 'Customer', {
-          amount: amount.toFixed(2),
-          reference: txn.reference_number,
-          beneficiary: beneLabel,
-          bank: txn.to_bank_name || '—',
-          swiftCode: tags.swiftCode || '—',
-          country: countryName,
-          balance: account ? parseFloat(account.balance).toFixed(2) : null,
-          time: new Date().toLocaleString(),
-          disclaimer: SWIFT_DEMO_DISCLAIMER,
-        }).catch((e) => logger.error(`SWIFT completed email failed: ${e.message}`));
-      }
-
-      // ── Approval SMS (admin-composed, sent from Alister Bank sender ID) ──────
-      // The admin edits/confirms the message in the panel; we only send if they
-      // supplied text. Recipient priority: admin-entered number → the number the
-      // customer registered on the SWIFT form (tags.notifyPhone) → profile phone.
-      const smsRecipient = (smsPhone && String(smsPhone).trim())
-        || tags.notifyPhone
-        || user?.phone
-        || null;
-      if (smsMessage && String(smsMessage).trim() && smsRecipient) {
-        sendSms({ recipient: smsRecipient, content: smsMessage })
-          .then((r) => {
-            if (r.success) {
-              createAuditLog({
-                adminId: req.admin?.id, userId: account?.user_id, action: 'SWIFT_APPROVAL_SMS_SENT',
-                entityType: 'Transaction', entityId: txn.reference_number, ipAddress: req.ip,
-                status: 'success', description: `Approval SMS sent to ${smsRecipient} for SWIFT ${txn.reference_number}.`,
-              }).catch(() => {});
-            } else {
-              logger.error(`SWIFT approval SMS failed (${txn.reference_number}): ${r.error}`);
-            }
-          })
-          .catch((e) => logger.error(`SWIFT approval SMS threw: ${e.message}`));
-      }
-
-      createAuditLog({
-        adminId: req.admin?.id, userId: account?.user_id, action: 'SWIFT_APPROVED',
-        entityType: 'Transaction', entityId: txn.reference_number, ipAddress: req.ip,
-        status: 'success', description: `SWIFT ${fmtINR(amount)} to ${beneLabel} (${countryName}) approved & completed.`,
-      }).catch(() => {});
 
       return success(res, { id: txn.id, status: 'success' }, 'SWIFT transfer approved and completed.');
     }
