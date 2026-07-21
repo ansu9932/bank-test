@@ -32,6 +32,16 @@ const RAILS = [
 
 const RAIL_LABEL = { internal: 'Alister to Alister', upi: 'UPI', bank: 'Bank Transfer', swift: 'International (SWIFT)' };
 
+// Supported SWIFT destination countries — mirrors the website's TransferPage
+// (backend utils/swiftCountries.js is the source of truth; the server
+// re-validates the code on submit).
+const SWIFT_COUNTRIES = [
+  { code: 'IN', name: 'India', eta: '1–3 business days' },
+  { code: 'NP', name: 'Nepal', eta: '2–4 business days' },
+  { code: 'BT', name: 'Bhutan', eta: '3–5 business days' },
+  { code: 'BD', name: 'Bangladesh', eta: '2–4 business days' },
+];
+
 const newIdemKey = () =>
   (crypto.randomUUID && crypto.randomUUID()) || `idem-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 

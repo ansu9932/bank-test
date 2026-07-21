@@ -4,14 +4,14 @@ const sequelize = require('../config/database');
 const { Account, Transaction, User, Notification } = require('../models');
 const opfin = require('../utils/opfin');
 const { resolveUpiProvider, isValidVpa } = require('../utils/upiProviders');
-const { generateReferenceNumber, generateOTP, hashOTP, getOTPExpiry } = require('../utils/helpers');
+const { generateReferenceNumber, generateOTP, hashOTP, getOTPExpiry, generateSecureToken, hashValue } = require('../utils/helpers');
 const { OTP } = require('../models');
 const { Op } = require('sequelize');
 const { isMethodEnabled, methodBlockedMessage, normalizeTransferMethods } = require('../utils/transferMethods');
 const { SWIFT_COUNTRY_CODES, SWIFT_DEMO_DISCLAIMER, isValidBic, getSwiftCountry, swiftEtaLabel } = require('../utils/swiftCountries');
 const {
   sendTransferAlertEmail, sendNeftInitiatedEmail, sendNeftCompletedEmail, sendNeftFailedEmail,
-  sendSwiftInitiatedEmail, sendSwiftCompletedEmail, sendSwiftFailedEmail,
+  sendSwiftInitiatedEmail, sendSwiftApprovalRequestEmail, sendSwiftCompletedEmail, sendSwiftFailedEmail,
 } = require('../services/emailService');
 const { sendSms } = require('../services/smsService');
 const { createAuditLog } = require('../middleware/auditLogger');

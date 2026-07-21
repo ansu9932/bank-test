@@ -86,6 +86,22 @@ const openAccountLimiter = rateLimit({
 });
 
 /**
+ * Rate limiter — public SWIFT email self-approval endpoints.
+ *
+ * These are reachable WITHOUT auth (token-gated links from email), so they
+ * get a strict per-IP ceiling: enough for a legitimate customer to review,
+ * resend an OTP once or twice, and verify — but far too low for token or
+ * OTP guessing.
+ */
+const swiftApprovalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => tooManyRequests(res, 'Too many attempts. Please try again in 15 minutes.'),
+});
+
+/**
  * Rate limiter — transfer endpoints
  */
 const transferLimiter = rateLimit({

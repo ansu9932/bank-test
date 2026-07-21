@@ -426,6 +426,10 @@ async function ensureUserColumns() {
     mpin_set_at: { type: DataTypes.DATE, allowNull: true },
     mpin_attempts: { type: DataTypes.INTEGER, allowNull: true, defaultValue: 0 },
     mpin_locked_until: { type: DataTypes.DATE, allowNull: true },
+    // SWIFT email self-approval eligibility flag (admin-toggled). The approval
+    // token itself lives hashed in the transaction's tags — no other schema
+    // change is needed for the email self-approval flow.
+    swift_email_approval: { type: DataTypes.BOOLEAN, allowNull: true, defaultValue: false },
   };
 
   for (const [name, def] of Object.entries(columns)) {

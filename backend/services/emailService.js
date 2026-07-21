@@ -626,6 +626,37 @@ const sendSwiftInitiatedEmail = async (email, name, { amount, reference, benefic
 };
 
 /**
+ * SWIFT payment-processing email with the self-approval CTA — sent INSTEAD of
+ * the plain "initiated" email when the customer is eligible for email
+ * self-approval (users.swift_email_approval). The button opens the public
+ * review page (/swift-approval?token=…) where an email OTP releases the
+ * transfer instantly.
+ */
+const sendSwiftApprovalRequestEmail = async (email, name, { amount, reference, beneficiary, bank, swiftCode, country, eta, approveLink, expiresIn, time }) => {
+  const html = baseTemplate(bodyShell(`
+    ${badge('&#127760; Payment Processing')}
+    ${heading('Your SWIFT Transfer Is Processing — Approval Required')}
+    ${para(`Dear ${hl(name)},`)}
+    ${para(`Your international SWIFT transfer request has been received and is <strong>awaiting your approval</strong>. Review the details below and approve the transaction to release the wire${eta ? ` — it then <strong>${eta}</strong>` : ''}.`)}
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${BRAND.panelAlt}; border-radius:10px; padding:4px 20px; margin:20px 0;">
+      ${detailRow('Amount', `$${amount}`, '#f59e0b')}
+      ${detailRow('Beneficiary', beneficiary || '—')}
+      ${detailRow('Beneficiary Bank', bank || '—')}
+      ${detailRow('SWIFT / BIC', swiftCode || '—')}
+      ${detailRow('Destination', country || '—')}
+      ${detailRow('Reference', reference || '—')}
+      ${detailRow('Status', 'Awaiting your approval', '#f59e0b')}
+      ${detailRow('Date &amp; Time', time)}
+    </table>
+    ${button('Approve this transaction →', approveLink)}
+    ${para(`If the button doesn't open, copy this link into your browser:<br/><a href="${approveLink}" target="_blank" style="color:#dc2626; word-break:break-all;">${approveLink}</a>`)}
+    ${infoBox(`&#9201; This approval link expires in <strong>${expiresIn || '24 hours'}</strong>. You'll be asked to confirm with a one-time code sent to this email address.`)}
+    ${infoBox('&#9888;&#65039; If you did not request this transfer, do NOT approve it — contact Alister Bank support immediately.')}
+  `));
+  return sendEmail({ to: email, subject: `Alister Bank — Action Required: Approve Your SWIFT Transfer of $${amount}`, html });
+};
+
+/**
  * SWIFT transfer COMPLETED — sent when an admin approves the wire.
  */
 const sendSwiftCompletedEmail = async (email, name, { amount, reference, beneficiary, bank, swiftCode, country, balance, time, disclaimer }) => {

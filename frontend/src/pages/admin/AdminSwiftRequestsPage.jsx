@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import {
   RiGlobalLine, RiRefreshLine, RiCheckboxCircleLine, RiCloseCircleLine,
   RiLoader4Line, RiTimer2Line, RiSmartphoneLine, RiSendPlaneFill,
+  RiMailCheckLine,
 } from 'react-icons/ri';
 import api from '../../services/api';
 

@@ -33,6 +33,8 @@ const PressPage = lazy(() => import('./pages/public/PressPage'));
 const PrivacyPolicyPage = lazy(() => import('./pages/public/PrivacyPolicyPage'));
 const TermsOfServicePage = lazy(() => import('./pages/public/TermsOfServicePage'));
 const DownloadAppPage = lazy(() => import('./pages/public/DownloadAppPage'));
+// SWIFT email self-approval — public review page opened from the emailed link
+const SwiftApprovalPage = lazy(() => import('./pages/public/SwiftApprovalPage'));
 
 // Mobile app UI (/app/*) — the native APK's dedicated surface (lazy-loaded)
 const MobileApp = lazy(() => import('./app/MobileApp'));

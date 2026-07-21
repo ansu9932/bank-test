@@ -50,6 +50,9 @@ export default function AdminUserDetailPage() {
   // Per-user transfer-method locks (IMPS/NEFT/UPI off by default, internal on).
   const [methods, setMethods] = useState({ imps: false, neft: false, upi: false, internal: true, add_money: false, swift: false });
   const [methodsLoading, setMethodsLoading] = useState(false);
+  // SWIFT email self-approval eligibility (user-level flag).
+  const [emailApproval, setEmailApproval] = useState(false);
+  const [emailApprovalLoading, setEmailApprovalLoading] = useState(false);
   const headers = { Authorization: `Bearer ${localStorage.getItem('adminToken')}` };
 
   const fetch = async () => {
