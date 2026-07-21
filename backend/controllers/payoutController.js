@@ -1415,3 +1415,5 @@ exports.adminReviewSwiftTransfer = async (req, res) => {
 };
 
 exports.resumePendingNeftSettlements = resumePendingNeftSettlements;
+// Shared settle helper — reused by controllers/swiftApprovalController.js.
+exports.settleSwiftTransfer = settleSwiftTransfer;
