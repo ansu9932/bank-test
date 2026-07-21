@@ -704,6 +704,18 @@ exports.getAllTransactions = async (req, res) => {
     const { limit: lim, offset } = paginate(page, limit);
     const { count, rows } = await Transaction.findAndCountAll({
       where,
+      // Include the owning account + user so the admin detail view can show
+      // who the transaction belongs to without extra round-trips.
+      include: [{
+        model: Account,
+        as: 'account',
+        attributes: ['id', 'account_number', 'account_type'],
+        include: [{
+          model: User,
+          as: 'user',
+          attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'customer_id'],
+        }],
+      }],
       order: [['created_at', 'DESC']],
       limit: lim,
       offset,

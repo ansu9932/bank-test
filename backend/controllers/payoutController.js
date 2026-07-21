@@ -1143,6 +1143,14 @@ exports.adminListSwiftRequests = async (req, res) => {
 
     const requests = [];
     for (const txn of txns) {
+      const txnTags = txn.tags || {};
+      // Belt-and-braces guard: never list a transfer that has already been
+      // settled (e.g. approved by the customer via the email self-approval
+      // link) or rejected, even if the status column is somehow stale.
+      if (txnTags.settlement === 'settled' || txnTags.settlement === 'failed' || txnTags.approvalTokenUsedHash) {
+        // eslint-disable-next-line no-continue
+        continue;
+      }
       // eslint-disable-next-line no-await-in-loop
       const account = await Account.findByPk(txn.account_id);
       let user = null;

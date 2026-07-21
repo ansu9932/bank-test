@@ -70,19 +70,34 @@ export default function AdminSwiftRequestsPage() {
     setSmsPhone(r.notifyPhone || r.user?.phone || '');
   }, []);
 
-  const fetchRequests = useCallback(async () => {
-    setLoading(true);
+  const fetchRequests = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const { data } = await api.get('/admin/swift-requests', { headers: adminHeaders() });
       setRequests(data?.data?.requests || []);
     } catch (err) {
-      toast.error(err?.response?.data?.message || 'Failed to load SWIFT requests.');
+      if (!silent) toast.error(err?.response?.data?.message || 'Failed to load SWIFT requests.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => { fetchRequests(); }, [fetchRequests]);
+
+  // Auto-refresh so transfers the customer self-approves via the email link
+  // disappear from this queue without the admin having to press Refresh.
+  // Polls every 15s (silently) and refetches when the tab regains focus.
+  useEffect(() => {
+    const interval = setInterval(() => fetchRequests(true), 15000);
+    const onFocus = () => fetchRequests(true);
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [fetchRequests]);
 
   const act = useCallback(async (id, decision, extra = {}) => {
     setActingId(id);
