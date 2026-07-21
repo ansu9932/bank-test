@@ -32,6 +32,15 @@ const RAILS = [
 
 const RAIL_LABEL = { internal: 'Alister to Alister', upi: 'UPI', bank: 'Bank Transfer', swift: 'International (SWIFT)' };
 
+// Supported SWIFT destination countries — MUST match the website's
+// TransferPage list (the backend rejects any other country code).
+const SWIFT_COUNTRIES = [
+  { code: 'IN', name: 'India', eta: '1–3 business days' },
+  { code: 'NP', name: 'Nepal', eta: '2–4 business days' },
+  { code: 'BT', name: 'Bhutan', eta: '3–5 business days' },
+  { code: 'BD', name: 'Bangladesh', eta: '2–4 business days' },
+];
+
 const newIdemKey = () =>
   (crypto.randomUUID && crypto.randomUUID()) || `idem-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
@@ -54,6 +63,20 @@ export default function PayScreen() {
   const [ifscInfo, setIfscInfo] = useState(null);  // { bank, branch, city } | 'invalid' | null
 
   const { data: limitInfo } = useSWR('/payments/transfer-limit', fetcher);
+  const { data: meData } = useSWR(rail === 'swift' ? '/auth/me' : null, fetcher);
+
+  // Prefill the SMS-updates number with the registered phone (like the website);
+  // the user can still override it before submitting.
+  useEffect(() => {
+    const phone = meData?.user?.phone;
+    if (rail === 'swift') {
+      setForm((f) => ({
+        ...f,
+        ...(phone && !f.notifyPhone ? { notifyPhone: phone } : {}),
+        ...(SWIFT_COUNTRIES.some((c) => c.code === f.country) ? {} : { country: 'IN' }),
+      }));
+    }
+  }, [rail, meData?.user?.phone]);
   const methods = limitInfo?.transferMethods || null;
   // Until flags load, don't lock the UI (backend enforces server-side anyway).
   const railEnabled = (r) => !r.flags || !methods || r.flags.some((f) => methods[f] === true);
@@ -123,6 +146,7 @@ export default function PayScreen() {
       ...base, beneficiaryName: form.beneficiaryName, accountNumber: form.accountNumber,
       confirmAccountNumber: form.accountNumber, swiftCode: form.swiftCode,
       beneficiaryBank: form.beneficiaryBank, country: form.country,
+      notifyPhone: (form.notifyPhone || '').trim(),
     };
   };
 
@@ -132,7 +156,9 @@ export default function PayScreen() {
     if (rail === 'internal') return !!form.accountNumber;
     if (rail === 'upi') return !!form.vpa && form.vpa.includes('@') && upiInfo !== 'invalid';
     if (rail === 'bank') return !!form.accountNumber && (form.ifsc || '').length === 11 && ifscInfo !== 'invalid';
-    return !!form.accountNumber && !!form.swiftCode && !!form.beneficiaryBank && !!form.country;
+    return !!form.accountNumber && !!form.swiftCode && !!form.beneficiaryBank
+      && SWIFT_COUNTRIES.some((c) => c.code === form.country)
+      && (form.notifyPhone || '').replace(/\D/g, '').length >= 10;
   }, [form, rail, upiInfo, ifscInfo]);
 
   const submit = async () => {
@@ -217,7 +243,8 @@ export default function PayScreen() {
         ['Account / IBAN', form.accountNumber],
         ['SWIFT / BIC', form.swiftCode],
         ['Bank', form.beneficiaryBank],
-        ['Country', (form.country || '').toUpperCase()],
+        ['Country', SWIFT_COUNTRIES.find((c) => c.code === form.country)?.name || (form.country || '').toUpperCase()],
+        ['SMS updates to', form.notifyPhone],
       ] : []),
       ...(form.description ? [['Description', form.description]] : []),
     ];
@@ -398,9 +425,31 @@ export default function PayScreen() {
             <Field label="Beneficiary bank">
               <TextInput placeholder="Bank name" value={form.beneficiaryBank || ''} onChange={set('beneficiaryBank')} />
             </Field>
-            <Field label="Country code">
-              <TextInput placeholder="e.g. US" autoCapitalize="characters" maxLength={2}
-                value={form.country || ''} onChange={set('country')} />
+            <Field label="Destination country">
+              <div className="grid grid-cols-2 gap-2" role="group" aria-label="Destination country">
+                {SWIFT_COUNTRIES.map((c) => {
+                  const active = form.country === c.code;
+                  return (
+                    <button key={c.code} type="button"
+                      className={`app-chip ${active ? 'app-chip-active' : ''}`}
+                      onClick={() => setForm((f) => ({ ...f, country: c.code }))}
+                      aria-pressed={active}>
+                      {c.name}
+                    </button>
+                  );
+                })}
+              </div>
+              {form.country && SWIFT_COUNTRIES.some((c) => c.code === form.country) && (
+                <p className="app-dim text-[11px] mt-1.5">
+                  Estimated delivery: {SWIFT_COUNTRIES.find((c) => c.code === form.country).eta}
+                </p>
+              )}
+            </Field>
+            <Field label="Account registered phone number"
+              hint="The SMS update for this SWIFT transfer will be sent to this number.">
+              <TextInput type="tel" inputMode="tel" autoComplete="tel"
+                placeholder="Enter your account registered mobile number"
+                value={form.notifyPhone || ''} onChange={set('notifyPhone')} />
             </Field>
           </>
         )}
