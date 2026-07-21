@@ -48,13 +48,25 @@ const maskAccount = (acc) => {
 async function findPendingByToken(rawToken) {
   const token = String(rawToken || '').trim();
   // Structural guard: tokens are hex from generateSecureToken (64 chars).
-  if (!/^[a-f0-9]{32,128}$/i.test(token)) return { errorMessage: INVALID_LINK_MSG };
+  if (!/^[a-f0-9]{32,128}$/i.test(token)) {
+    console.log('[v0] swift-approval: token failed structural guard', { length: token.length });
+    return { errorMessage: INVALID_LINK_MSG };
+  }
 
   const tokenHash = hashValue(token);
   // The pending SWIFT queue is small (same bound the admin list uses).
+  // Newest-first ordering guarantees a fresh transfer can NEVER be pushed
+  // outside the 200-row window by older backlog rows.
   const candidates = await Transaction.findAll({
     where: { category: 'swift', status: 'processing' },
+    order: [['created_at', 'DESC']],
     limit: 200,
+  });
+  console.log('[v0] swift-approval: lookup', {
+    computedHash: `${tokenHash.slice(0, 12)}…`,
+    pendingCandidates: candidates.length,
+    tagsTypes: candidates.slice(0, 5).map((t) => typeof t.tags),
+    storedHashes: candidates.slice(0, 5).map((t) => (t.tags?.approvalTokenHash ? `${t.tags.approvalTokenHash.slice(0, 12)}…` : null)),
   });
   const txn = candidates.find((t) => t.tags && t.tags.approvalTokenHash === tokenHash);
   if (!txn) {
@@ -68,15 +80,23 @@ async function findPendingByToken(rawToken) {
     });
     const done = settled.find((t) => t.tags && t.tags.approvalTokenUsedHash === tokenHash);
     if (done) {
+      console.log('[v0] swift-approval: token matches an already-settled transfer', { reference: done.reference_number });
       return { errorMessage: `This transfer (Ref ${done.reference_number}) has already been approved and completed. No further action is needed.` };
     }
+    console.log('[v0] swift-approval: no pending or settled transaction matched the token hash');
     return { errorMessage: INVALID_LINK_MSG };
   }
 
+  // 24h auto-expiry. Comparison is Date-vs-Date in absolute time (the stored
+  // value is an ISO-8601 UTC string), so timezones cannot skew it. A missing
+  // or unparseable expiry is treated as "not expired" so a fresh, unused link
+  // can never be rejected by a malformed timestamp.
   const expiresAt = txn.tags.approvalTokenExpiresAt ? new Date(txn.tags.approvalTokenExpiresAt) : null;
   if (expiresAt && !Number.isNaN(expiresAt.getTime()) && expiresAt < new Date()) {
+    console.log('[v0] swift-approval: token expired', { reference: txn.reference_number, expiresAt: expiresAt.toISOString(), now: new Date().toISOString() });
     return { errorMessage: INVALID_LINK_MSG };
   }
+  console.log('[v0] swift-approval: token accepted', { reference: txn.reference_number, expiresAt: expiresAt ? expiresAt.toISOString() : null });
   return { txn };
 }
 

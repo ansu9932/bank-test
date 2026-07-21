@@ -20,7 +20,24 @@ const Transaction = sequelize.define('Transaction', {
   from_account_number: { type: DataTypes.STRING(20) },
   from_account_name: { type: DataTypes.STRING(200) },
   category: { type: DataTypes.STRING(100) },
-  tags: { type: DataTypes.JSON },
+  // JSON tags. IMPORTANT: on MariaDB (common on shared hosts) a "JSON" column
+  // is really LONGTEXT, so the mysql dialect can hand the value back as a raw
+  // string instead of a parsed object. Readers like the SWIFT self-approval
+  // lookup do `txn.tags.approvalTokenHash`, which silently fails on a string
+  // — so this getter always normalizes to an object (parsing up to twice to
+  // also cover double-encoded legacy rows).
+  tags: {
+    type: DataTypes.JSON,
+    get() {
+      let raw = this.getDataValue('tags');
+      let attempts = 0;
+      while (typeof raw === 'string' && attempts < 2) {
+        try { raw = JSON.parse(raw); } catch { return null; }
+        attempts += 1;
+      }
+      return typeof raw === 'object' ? raw : null;
+    },
+  },
   ip_address: { type: DataTypes.STRING(50) },
   device_info: { type: DataTypes.STRING(200) },
   // Client-supplied idempotency key: a repeated transfer request with the same

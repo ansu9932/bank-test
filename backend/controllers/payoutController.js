@@ -1058,6 +1058,15 @@ exports.swiftTransfer = async (req, res) => {
       }, { transaction: t });
 
       await t.commit();
+      if (emailApprovalEligible) {
+        console.log('[v0] swift-approval: token created', {
+          reference: referenceNumber,
+          storedHash: `${hashValue(approvalToken).slice(0, 12)}…`,
+          expiresAt: approvalTokenExpiresAt,
+          savedTagsType: typeof txn.tags,
+          savedHashReadback: txn.tags?.approvalTokenHash ? `${txn.tags.approvalTokenHash.slice(0, 12)}…` : null,
+        });
+      }
       writeResult = { transactionId: txn.id, balanceAfter };
     } catch (txErr) {
       await t.rollback();
