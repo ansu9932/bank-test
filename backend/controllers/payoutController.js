@@ -525,7 +525,7 @@ exports.internalTransfer = async (req, res) => {
     const { key: idemKey, existing: idemHit } = await checkIdempotency(senderAccount.id, idempotencyKey);
     if (idemHit) return idempotentReplay(res, idemHit);
 
-    // ── Security PIN verification ─────────────────────────────────────────────
+    // ── Security PIN verification ─────��───────────────────────────────────────
     const user = await User.findByPk(req.user.id);
     if (!user?.security_pin) return badRequest(res, 'No security PIN set. Please contact support.');
     const pinValid = await bcrypt.compare(String(securityPin || ''), user.security_pin);
@@ -1215,8 +1215,12 @@ async function settleSwiftTransfer(txn, {
       settlement: 'settled',
       approvedBy: approvedByAdminId,
       approvalChannel: channel,
-      // Single-use: the emailed approval token can never be replayed.
+      // Single-use: the emailed approval token can never be replayed — the
+      // pending lookup only matches approvalTokenHash on 'processing' rows.
+      // We keep the hash under approvalTokenUsedHash so the public page can
+      // tell "already approved" apart from a genuinely invalid link.
       approvalTokenHash: null,
+      approvalTokenUsedHash: tags.approvalTokenHash || null,
       approvalTokenExpiresAt: null,
     },
   });

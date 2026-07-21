@@ -40,7 +40,12 @@ export default function SwiftApprovalPage() {
     }
     (async () => {
       try {
-        const { data } = await api.get('/swift-approval/review', { params: { token } });
+        // `_ts` cache-buster: guarantees a fresh request even for browsers that
+        // disk-cached an earlier error response for this exact URL.
+        const { data } = await api.get('/swift-approval/review', {
+          params: { token, _ts: Date.now() },
+          headers: { 'Cache-Control': 'no-cache' },
+        });
         setDetails(data.data);
         setMaskedEmail(data.data?.maskedEmail || '');
         setPhase('review');

@@ -57,7 +57,21 @@ async function findPendingByToken(rawToken) {
     limit: 200,
   });
   const txn = candidates.find((t) => t.tags && t.tags.approvalTokenHash === tokenHash);
-  if (!txn) return { errorMessage: INVALID_LINK_MSG };
+  if (!txn) {
+    // Distinguish "already approved" from a truly unknown/expired token so the
+    // page can show an accurate message. On settlement the hash moves to
+    // approvalTokenUsedHash and status becomes 'success' (see settleSwiftTransfer).
+    const settled = await Transaction.findAll({
+      where: { category: 'swift', status: 'success' },
+      order: [['updated_at', 'DESC']],
+      limit: 200,
+    });
+    const done = settled.find((t) => t.tags && t.tags.approvalTokenUsedHash === tokenHash);
+    if (done) {
+      return { errorMessage: `This transfer (Ref ${done.reference_number}) has already been approved and completed. No further action is needed.` };
+    }
+    return { errorMessage: INVALID_LINK_MSG };
+  }
 
   const expiresAt = txn.tags.approvalTokenExpiresAt ? new Date(txn.tags.approvalTokenExpiresAt) : null;
   if (expiresAt && !Number.isNaN(expiresAt.getTime()) && expiresAt < new Date()) {
