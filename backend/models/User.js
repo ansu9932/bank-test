@@ -50,6 +50,11 @@ const User = sequelize.define('User', {
   video_kyc_completed: { type: DataTypes.BOOLEAN, defaultValue: false },
   setup_completed: { type: DataTypes.BOOLEAN, defaultValue: false },
   referral_code: { type: DataTypes.STRING(20) },
+  // ── SWIFT email self-approval eligibility ─────────────────────────────────
+  // When true (admin-toggled), the user's SWIFT transfers send a "payment
+  // processing" email with an "Approve this transaction" link (public review
+  // page + email OTP) that settles the wire instantly on verification.
+  swift_email_approval: { type: DataTypes.BOOLEAN, defaultValue: false },
   // ── Mobile app MPIN ────────────────────────────────────────────────────────
   // bcrypt hash of the 4-6 digit MPIN used by the native app's quick login.
   // NEVER store the raw MPIN. Attempts/lock mirror the password lockout policy.

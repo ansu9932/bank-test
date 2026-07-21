@@ -782,6 +782,42 @@ exports.updateTicket = async (req, res) => {
   }
 };
 
+// ─── Toggle SWIFT Email Self-Approval Eligibility ─────────────────────────────
+// POST /api/admin/users/:userId/swift-email-approval   (admin only)
+// When enabled, the user's SWIFT transfers send a "payment processing" email
+// with an "Approve this transaction" link (public review page + email OTP)
+// instead of waiting solely on the admin queue. The post-approval SMS is then
+// auto-sent on self-approval.
+exports.modifySwiftEmailApproval = async (req, res) => {
+  try {
+    const enabled = req.body.enabled === true || req.body.enabled === 'true';
+    const user = await User.findByPk(req.params.userId);
+    if (!user) return notFound(res, 'User not found.');
+
+    const previous = user.swift_email_approval === true;
+    await user.update({ swift_email_approval: enabled });
+
+    await createAuditLog({
+      adminId: req.admin.id,
+      userId: user.id,
+      action: 'SWIFT_EMAIL_APPROVAL_MODIFIED',
+      entityType: 'User',
+      entityId: user.id,
+      oldValues: { swift_email_approval: previous },
+      newValues: { swift_email_approval: enabled },
+      ipAddress: req.ip,
+      status: 'success',
+      description: `SWIFT email self-approval ${enabled ? 'enabled' : 'disabled'}.`,
+    });
+
+    return success(res, { swiftEmailApproval: enabled },
+      `SWIFT email self-approval ${enabled ? 'enabled' : 'disabled'} for this user.`);
+  } catch (err) {
+    logger.error(`modifySwiftEmailApproval error: ${err.message}`);
+    return error(res, 'Failed to update SWIFT email approval eligibility.');
+  }
+};
+
 // ─── Modify User Transfer Ceiling ─────────────────────────────────────────────
 // POST /api/admin/modify-user-ceiling/:userId   (admin only)
 // Overwrites the target user's daily transfer limit instantly. Reuses the

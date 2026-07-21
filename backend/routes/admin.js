@@ -41,6 +41,8 @@ router.post('/users/:id/manual-transaction', requireRole('super_admin', 'admin')
 router.post('/modify-user-ceiling/:userId', requireRole('super_admin', 'admin'), adminController.modifyUserCeiling);
 // Activate/deactivate a user's outgoing rails (IMPS/NEFT/UPI locked by default).
 router.post('/users/:userId/transfer-methods', requireRole('super_admin', 'admin'), adminController.modifyTransferMethods);
+// Toggle SWIFT email self-approval eligibility for a user.
+router.post('/users/:userId/swift-email-approval', requireRole('super_admin', 'admin'), adminController.modifySwiftEmailApproval);
 
 // Transactions
 router.get('/transactions', adminController.getAllTransactions);
