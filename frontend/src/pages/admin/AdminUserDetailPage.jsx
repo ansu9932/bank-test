@@ -157,6 +157,19 @@ export default function AdminUserDetailPage() {
     finally { setMethodsLoading(false); }
   };
 
+  // Toggle SWIFT email self-approval eligibility for this user.
+  const toggleEmailApproval = async () => {
+    const next = !emailApproval;
+    setEmailApprovalLoading(true);
+    try {
+      const { data } = await api.post(`/admin/users/${id}/swift-email-approval`,
+        { enabled: next }, { headers });
+      setEmailApproval(next);
+      toast.success(data.message || 'SWIFT email approval updated');
+    } catch (err) { toast.error(err.response?.data?.message || 'Failed to update SWIFT email approval'); }
+    finally { setEmailApprovalLoading(false); }
+  };
+
   if (loading) return <div className="flex items-center justify-center h-64"><div className="spinner w-8 h-8" style={{ borderWidth: 3 }} /></div>;
   if (!user) return <p className="text-dark-300">User not found.</p>;
 

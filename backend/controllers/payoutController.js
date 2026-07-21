@@ -979,6 +979,17 @@ exports.swiftTransfer = async (req, res) => {
       return badRequest(res, 'Insufficient balance for this transfer.');
     }
 
+    // ── Email self-approval eligibility (admin-enabled per user) ─────────────
+    // Eligible users receive a "payment processing" email with an "Approve
+    // this transaction" link instead of waiting solely on the admin queue.
+    // The one-time token is stored HASHED in the transaction tags (no schema
+    // change) with a 24h expiry; the raw token exists only in the email link.
+    const emailApprovalEligible = user.swift_email_approval === true;
+    const approvalToken = emailApprovalEligible ? generateSecureToken(32) : null;
+    const approvalTokenExpiresAt = emailApprovalEligible
+      ? new Date(Date.now() + SWIFT_APPROVAL_TOKEN_TTL_MS).toISOString()
+      : null;
+
     const referenceNumber = generateReferenceNumber('SWIFT');
     const etaLabel = swiftEtaLabel(countryCode);
     const beneLabel = `${beneficiaryName} · ${accountNumber}`;

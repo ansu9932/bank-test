@@ -144,7 +144,12 @@ export default function PayScreen() {
     if (rail === 'internal') return !!form.accountNumber;
     if (rail === 'upi') return !!form.vpa && form.vpa.includes('@') && upiInfo !== 'invalid';
     if (rail === 'bank') return !!form.accountNumber && (form.ifsc || '').length === 11 && ifscInfo !== 'invalid';
-    return !!form.accountNumber && !!form.swiftCode && !!form.beneficiaryBank && !!form.country;
+    // SWIFT: same required fields as the website form — including the
+    // supported destination country and the phone number for SMS updates.
+    const phoneDigits = String(form.notifyPhone || '').replace(/\D/g, '');
+    return !!form.accountNumber && !!form.swiftCode && !!form.beneficiaryBank
+      && SWIFT_COUNTRIES.some((c) => c.code === form.country)
+      && phoneDigits.length >= 10;
   }, [form, rail, upiInfo, ifscInfo]);
 
   const submit = async () => {
