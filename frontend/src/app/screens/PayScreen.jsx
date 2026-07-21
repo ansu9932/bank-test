@@ -234,7 +234,8 @@ export default function PayScreen() {
         ['Account / IBAN', form.accountNumber],
         ['SWIFT / BIC', form.swiftCode],
         ['Bank', form.beneficiaryBank],
-        ['Country', (form.country || '').toUpperCase()],
+        ['Country', SWIFT_COUNTRIES.find((c) => c.code === form.country)?.name || (form.country || '').toUpperCase()],
+        ['SMS updates to', form.notifyPhone],
       ] : []),
       ...(form.description ? [['Description', form.description]] : []),
     ];

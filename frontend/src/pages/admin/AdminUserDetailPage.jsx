@@ -445,6 +445,32 @@ export default function AdminUserDetailPage() {
               </div>
             </div>
           )}
+
+          {/* SWIFT Email Self-Approval eligibility (user-level flag) */}
+          <div className="glass-card p-4">
+            <p className="text-white font-semibold mb-1 text-sm">SWIFT Email Approval</p>
+            <p className="text-dark-400 text-xs mb-3">
+              When enabled, this user&apos;s SWIFT transfers email them an &quot;Approve this
+              transaction&quot; link (review page + email OTP) that completes the wire
+              instantly. The post-approval SMS is then sent automatically.
+            </p>
+            <button type="button" onClick={toggleEmailApproval} disabled={emailApprovalLoading}
+              className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl border transition-colors text-left ${emailApproval ? 'border-green-500/40 bg-green-500/10' : 'border-white/[0.08] bg-dark-700/40 hover:border-white/20'}`}>
+              <span>
+                <span className={`block text-sm font-medium ${emailApproval ? 'text-green-300' : 'text-white'}`}>
+                  Email self-approval {emailApproval ? 'enabled' : 'disabled'}
+                </span>
+                <span className="block text-dark-400 text-[11px] mt-0.5">
+                  {emailApproval
+                    ? 'User can approve SWIFT transfers from their email.'
+                    : 'SWIFT transfers wait in the admin queue only.'}
+                </span>
+              </span>
+              <span className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${emailApproval ? 'bg-green-500' : 'bg-dark-500'}`}>
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${emailApproval ? 'translate-x-4' : 'translate-x-0.5'}`} />
+              </span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

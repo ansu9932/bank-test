@@ -1035,7 +1035,16 @@ exports.swiftTransfer = async (req, res) => {
           settlement: 'pending_approval',
           // Registered mobile number the customer wants SWIFT SMS updates on.
           // Falls back to the profile phone when the form field is left blank.
+          // NOTE (revised SMS timing): no SMS is sent at submission — it goes
+          // out only after approval (admin queue or email self-approval).
           notifyPhone: smsPhoneNumber,
+          // Email self-approval (admin-enabled per user): the hashed one-time
+          // approval token lives in tags — no schema change required.
+          approvalChannel: emailApprovalEligible ? 'email' : 'manual',
+          ...(emailApprovalEligible ? {
+            approvalTokenHash: hashValue(approvalToken),
+            approvalTokenExpiresAt,
+          } : {}),
           demo: true,
         },
       }, { transaction: t });
