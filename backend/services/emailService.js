@@ -762,6 +762,7 @@ module.exports = {
   sendNeftCompletedEmail,
   sendNeftFailedEmail,
   sendSwiftInitiatedEmail,
+  sendSwiftApprovalRequestEmail,
   sendSwiftCompletedEmail,
   sendSwiftFailedEmail,
 };

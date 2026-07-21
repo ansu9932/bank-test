@@ -188,6 +188,7 @@ module.exports = {
   panVerifyLimiter,
   openAccountLimiter,
   transferLimiter,
+  swiftApprovalLimiter,
   securityHeaders,
   sanitizeRequest,
   securityResponseHeaders,

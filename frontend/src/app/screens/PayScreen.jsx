@@ -133,6 +133,8 @@ export default function PayScreen() {
       ...base, beneficiaryName: form.beneficiaryName, accountNumber: form.accountNumber,
       confirmAccountNumber: form.accountNumber, swiftCode: form.swiftCode,
       beneficiaryBank: form.beneficiaryBank, country: form.country,
+      // Phone number the post-approval SWIFT SMS goes to (matches the website form).
+      notifyPhone: (form.notifyPhone || '').trim(),
     };
   };
 

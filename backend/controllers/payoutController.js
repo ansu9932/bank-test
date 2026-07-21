@@ -33,6 +33,11 @@ const INSTANT_MODES = ['IMPS', 'UPI'];
 // is not instant. Override via env if operations target a different window.
 const NEFT_ETA_LABEL = process.env.NEFT_ETA_LABEL || 'within 2 hours (NEFT is processed in batches)';
 
+// SWIFT email self-approval: the emailed one-time approval link stays valid
+// for this long. Only the token's HASH (plus this expiry) is stored, inside
+// the transaction's tags — no schema change.
+const SWIFT_APPROVAL_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
 const fmtINR = (n) => `$${Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
 
 // ─── Shared transfer-security helpers (idempotency + large-transfer OTP) ─────

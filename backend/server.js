@@ -164,6 +164,9 @@ app.use('/api/admin', require('./routes/admin'));
 app.use('/api/chat', require('./routes/chat'));
 // QR-code login — scan on the website, approve with swipe + MPIN in the app.
 app.use('/api/qr-login', require('./routes/qrLogin'));
+// SWIFT email self-approval — public, token-gated review + OTP endpoints
+// (strictly rate-limited; the emailed one-time token is the credential).
+app.use('/api/swift-approval', require('./routes/swiftApproval'));
 
 // ─── Mobile App: version check + APK download ─────────────────────────────────
 // GET /api/version — the Android app calls this on launch and compares the

@@ -167,6 +167,8 @@ export default function App() {
         <Route path="/account-setup" element={withSuspense(<AccountSetupPage />)} />
         {/* Activation deposit (sandbox simulation) — emailed secure-token link */}
         <Route path="/activate-deposit" element={withSuspense(<ActivateDepositPage />)} />
+        {/* SWIFT email self-approval — public review page (?token=…) + email OTP */}
+        <Route path="/swift-approval" element={withSuspense(<SwiftApprovalPage />)} />
 
         {/* Dashboard */}
         <Route path="/dashboard" element={<PrivateRoute><DashboardLayout /></PrivateRoute>}>

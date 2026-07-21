@@ -190,6 +190,18 @@ export default function AdminSwiftRequestsPage() {
                         <RiGlobalLine /> {r.country}
                       </span>
                     )}
+                    {/* Approval channel: email self-approval vs manual admin queue */}
+                    {r.approvalChannel === 'email' ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full"
+                        style={{ background: `${NEON.green}1a`, color: NEON.green, border: `1px solid ${NEON.green}44` }}>
+                        <RiMailCheckLine /> Email approval
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full"
+                        style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.12)' }}>
+                        Manual approval
+                      </span>
+                    )}
                   </div>
                   <div className="text-sm text-white/70 space-y-0.5">
                     <p>Beneficiary: <span className="text-white">{r.beneficiaryName || '—'}</span> · A/C {r.beneficiaryAccount || '—'}</p>

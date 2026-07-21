@@ -73,6 +73,8 @@ export default function AdminUserDetailPage() {
         add_money: parsed?.add_money === true,
         swift: parsed?.swift === true,
       });
+      // SWIFT email self-approval eligibility lives on the USER (not account).
+      setEmailApproval(data.data.user?.swift_email_approval === true);
     } catch { toast.error('Failed to load user'); }
     finally { setLoading(false); }
   };
