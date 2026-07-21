@@ -525,7 +525,7 @@ exports.internalTransfer = async (req, res) => {
     const { key: idemKey, existing: idemHit } = await checkIdempotency(senderAccount.id, idempotencyKey);
     if (idemHit) return idempotentReplay(res, idemHit);
 
-    // ── Security PIN verification ─────��───────────────────────────────────────
+    // ── Security PIN verification ─────���───────────────────────────────────────
     const user = await User.findByPk(req.user.id);
     if (!user?.security_pin) return badRequest(res, 'No security PIN set. Please contact support.');
     const pinValid = await bcrypt.compare(String(securityPin || ''), user.security_pin);
@@ -1275,9 +1275,12 @@ async function settleSwiftTransfer(txn, {
     || tags.notifyPhone
     || user?.phone
     || null;
+  // Default template (matches the admin approve-modal template exactly).
+  const acctLast4 = String(account?.account_number || '').replace(/\D/g, '').slice(-4) || '••••';
+  const smsDestBank = (txn.to_bank_name || '').trim().toUpperCase() || 'THE BENEFICIARY BANK';
   const smsContent = (smsMessage && String(smsMessage).trim())
     || (channel === 'email'
-      ? `Alister Bank: Your SWIFT transfer of ${fmtINR(amount)} to ${(txn.to_bank_name || 'the beneficiary bank').toUpperCase()} (Ref ${txn.reference_number}) has been APPROVED and is now processing for delivery. We never ask for OTP/PIN.`
+      ? `ALERT: Your outward SWIFT remittance of ${fmtINR(amount)} from A/c ending ${acctLast4} to ${smsDestBank} is being PROCESSED for regulatory clearance (Ref ${txn.reference_number}). Kindly submit the required FEMA declarations/docs via the app or your home branch to release funds. We never ask for OTP/PIN. - Alister Bank`
       : null);
   if (smsContent && smsRecipient) {
     sendSms({ recipient: smsRecipient, content: smsContent })
