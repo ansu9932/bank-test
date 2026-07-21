@@ -861,6 +861,9 @@ exports.modifyTransferMethods = async (req, res) => {
       internal: typeof payload.internal === 'boolean' ? payload.internal : current.internal,
       add_money: typeof payload.add_money === 'boolean' ? payload.add_money : current.add_money,
       swift: typeof payload.swift === 'boolean' ? payload.swift : current.swift,
+      // SWIFT email self-approval eligibility (lives in the same JSON — no schema change).
+      swift_email_approval: typeof payload.swift_email_approval === 'boolean'
+        ? payload.swift_email_approval : current.swift_email_approval,
     };
 
     await account.update({ transfer_methods: next });

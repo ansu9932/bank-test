@@ -25,6 +25,11 @@ const DEFAULT_TRANSFER_METHODS = Object.freeze({
   add_money: false,
   // SWIFT international transfer — locked by default; admin enables per user.
   swift: false,
+  // SWIFT email self-approval eligibility — when true, the customer receives a
+  // "payment processing" email with an "Approve this transaction" button and
+  // can complete the SWIFT wire themselves via email-OTP (no admin needed).
+  // Stored alongside the rail flags so NO schema change is required.
+  swift_email_approval: false,
 });
 
 // Human-readable labels for messages / UI.
@@ -35,6 +40,7 @@ const METHOD_LABELS = Object.freeze({
   internal: 'Alister Internal',
   add_money: 'Add Money',
   swift: 'SWIFT',
+  swift_email_approval: 'SWIFT Email Self-Approval',
 });
 
 // The canonical method keys.
@@ -82,7 +88,20 @@ function normalizeTransferMethods(raw) {
     add_money: parsed.add_money === true,
     // SWIFT international transfer is locked unless explicitly enabled.
     swift: parsed.swift === true,
+    // SWIFT email self-approval is off unless explicitly enabled by an admin.
+    swift_email_approval: parsed.swift_email_approval === true,
   };
+}
+
+/**
+ * Whether this account's user may self-approve SWIFT transfers via the
+ * email-approval flow (admin-granted eligibility flag).
+ * @param {object} account
+ * @returns {boolean}
+ */
+function isSwiftEmailApprovalEnabled(account) {
+  const methods = normalizeTransferMethods(account && account.transfer_methods);
+  return methods.swift_email_approval === true;
 }
 
 /**
@@ -117,5 +136,6 @@ module.exports = {
   methodKeyFromMode,
   normalizeTransferMethods,
   isMethodEnabled,
+  isSwiftEmailApprovalEnabled,
   methodBlockedMessage,
 };

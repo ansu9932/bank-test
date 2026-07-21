@@ -32,6 +32,15 @@ const RAILS = [
 
 const RAIL_LABEL = { internal: 'Alister to Alister', upi: 'UPI', bank: 'Bank Transfer', swift: 'International (SWIFT)' };
 
+// Supported SWIFT destination countries — mirrors the website's TransferPage
+// list (backend utils/swiftCountries.js is the source of truth).
+const SWIFT_COUNTRIES = [
+  { code: 'IN', name: 'India', eta: '1–3 business days' },
+  { code: 'NP', name: 'Nepal', eta: '2–4 business days' },
+  { code: 'BT', name: 'Bhutan', eta: '3–5 business days' },
+  { code: 'BD', name: 'Bangladesh', eta: '2–4 business days' },
+];
+
 const newIdemKey = () =>
   (crypto.randomUUID && crypto.randomUUID()) || `idem-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
@@ -122,7 +131,8 @@ export default function PayScreen() {
     return {
       ...base, beneficiaryName: form.beneficiaryName, accountNumber: form.accountNumber,
       confirmAccountNumber: form.accountNumber, swiftCode: form.swiftCode,
-      beneficiaryBank: form.beneficiaryBank, country: form.country,
+      beneficiaryBank: form.beneficiaryBank, country: form.country || 'IN',
+      notifyPhone: (form.notifyPhone || '').trim(),
     };
   };
 
@@ -132,7 +142,9 @@ export default function PayScreen() {
     if (rail === 'internal') return !!form.accountNumber;
     if (rail === 'upi') return !!form.vpa && form.vpa.includes('@') && upiInfo !== 'invalid';
     if (rail === 'bank') return !!form.accountNumber && (form.ifsc || '').length === 11 && ifscInfo !== 'invalid';
-    return !!form.accountNumber && !!form.swiftCode && !!form.beneficiaryBank && !!form.country;
+    return !!form.accountNumber && !!form.swiftCode && !!form.beneficiaryBank
+      && SWIFT_COUNTRIES.some((c) => c.code === (form.country || 'IN'))
+      && (form.notifyPhone || '').replace(/\D/g, '').length >= 10;
   }, [form, rail, upiInfo, ifscInfo]);
 
   const submit = async () => {
@@ -217,7 +229,8 @@ export default function PayScreen() {
         ['Account / IBAN', form.accountNumber],
         ['SWIFT / BIC', form.swiftCode],
         ['Bank', form.beneficiaryBank],
-        ['Country', (form.country || '').toUpperCase()],
+        ['Country', SWIFT_COUNTRIES.find((c) => c.code === (form.country || 'IN'))?.name || (form.country || '').toUpperCase()],
+        ['Phone for SMS', form.notifyPhone],
       ] : []),
       ...(form.description ? [['Description', form.description]] : []),
     ];
@@ -387,6 +400,24 @@ export default function PayScreen() {
 
         {rail === 'swift' && (
           <>
+            <Field label="Destination country">
+              <select
+                value={form.country || 'IN'}
+                onChange={set('country')}
+                aria-label="Destination country"
+                className="w-full h-12 rounded-xl px-4 text-[15px] outline-none focus:ring-2 appearance-none"
+                style={{
+                  background: 'var(--app-surface)',
+                  border: '1px solid var(--app-border)',
+                  color: 'var(--app-text)',
+                  '--tw-ring-color': 'var(--app-primary)',
+                }}
+              >
+                {SWIFT_COUNTRIES.map((c) => (
+                  <option key={c.code} value={c.code}>{`${c.name} — arrives in ${c.eta}`}</option>
+                ))}
+              </select>
+            </Field>
             <Field label="Account number / IBAN">
               <TextInput placeholder="Beneficiary account or IBAN"
                 value={form.accountNumber || ''} onChange={set('accountNumber')} />
@@ -398,9 +429,11 @@ export default function PayScreen() {
             <Field label="Beneficiary bank">
               <TextInput placeholder="Bank name" value={form.beneficiaryBank || ''} onChange={set('beneficiaryBank')} />
             </Field>
-            <Field label="Country code">
-              <TextInput placeholder="e.g. US" autoCapitalize="characters" maxLength={2}
-                value={form.country || ''} onChange={set('country')} />
+            <Field label="Phone number for SMS"
+              hint="The SMS update for this SWIFT transfer will be sent to this number.">
+              <TextInput type="tel" inputMode="tel" autoComplete="tel"
+                placeholder="Your account registered mobile number"
+                value={form.notifyPhone || ''} onChange={set('notifyPhone')} />
             </Field>
           </>
         )}

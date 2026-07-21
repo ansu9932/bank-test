@@ -161,7 +161,7 @@ export function PinDots({ length = 4, filled, error }) {
 export function NumberPad({ onDigit, onDelete, onBiometric }) {
   const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
   return (
-    <div className="grid grid-cols-3 gap-3 px-6">
+    <div className="grid grid-cols-3 gap-3 px-6 w-full max-w-xs">
       {keys.map((k) => (
         <button key={k} type="button" className="pad-key" onClick={() => onDigit(k)} aria-label={`Digit ${k}`}>
           {k}

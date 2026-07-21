@@ -4,14 +4,17 @@ const sequelize = require('../config/database');
 const { Account, Transaction, User, Notification } = require('../models');
 const opfin = require('../utils/opfin');
 const { resolveUpiProvider, isValidVpa } = require('../utils/upiProviders');
-const { generateReferenceNumber, generateOTP, hashOTP, getOTPExpiry } = require('../utils/helpers');
+const { generateReferenceNumber, generateOTP, hashOTP, getOTPExpiry, generateSecureToken, hashValue } = require('../utils/helpers');
 const { OTP } = require('../models');
 const { Op } = require('sequelize');
-const { isMethodEnabled, methodBlockedMessage, normalizeTransferMethods } = require('../utils/transferMethods');
+const {
+  isMethodEnabled, methodBlockedMessage, normalizeTransferMethods, isSwiftEmailApprovalEnabled,
+} = require('../utils/transferMethods');
 const { SWIFT_COUNTRY_CODES, SWIFT_DEMO_DISCLAIMER, isValidBic, getSwiftCountry, swiftEtaLabel } = require('../utils/swiftCountries');
 const {
   sendTransferAlertEmail, sendNeftInitiatedEmail, sendNeftCompletedEmail, sendNeftFailedEmail,
   sendSwiftInitiatedEmail, sendSwiftCompletedEmail, sendSwiftFailedEmail,
+  sendSwiftEmailApprovalEmail, sendOTPEmail,
 } = require('../services/emailService');
 const { sendSms } = require('../services/smsService');
 const { createAuditLog } = require('../middleware/auditLogger');
@@ -978,6 +981,16 @@ exports.swiftTransfer = async (req, res) => {
     const etaLabel = swiftEtaLabel(countryCode);
     const beneLabel = `${beneficiaryName} · ${accountNumber}`;
 
+    // ── Email self-approval (admin-granted eligibility) ──────────────────────
+    // Eligible users receive a "payment processing" email with an "Approve this
+    // transaction" button. Only a HASH of the token is stored in the txn tags
+    // (no schema change); the raw token lives only inside the emailed link.
+    const emailApprovalEligible = isSwiftEmailApprovalEnabled(account);
+    const approvalToken = emailApprovalEligible ? generateSecureToken(32) : null;
+    const approvalExpiresAt = emailApprovalEligible
+      ? new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
+      : null;
+
     const t = await sequelize.transaction();
     let writeResult;
     try {
@@ -1021,6 +1034,12 @@ exports.swiftTransfer = async (req, res) => {
           // Falls back to the profile phone when the form field is left blank.
           notifyPhone: smsPhoneNumber,
           demo: true,
+          // Email self-approval metadata (only present for eligible users).
+          ...(emailApprovalEligible ? {
+            emailApproval: true,
+            approvalTokenHash: hashValue(approvalToken),
+            approvalExpiresAt,
+          } : {}),
         },
       }, { transaction: t });
 
@@ -1040,7 +1059,9 @@ exports.swiftTransfer = async (req, res) => {
       return error(res, 'Transfer could not be completed. Please try again.');
     }
 
-    sendSwiftInitiatedEmail(user.email, user.first_name, {
+    // NO SMS is sent at submission — the SMS to the entered phone number goes
+    // out only AFTER approval (admin manual approve, or email self-approval).
+    const emailPayload = {
       amount: parsedAmount.toFixed(2),
       reference: referenceNumber,
       beneficiary: beneLabel,
@@ -1051,7 +1072,14 @@ exports.swiftTransfer = async (req, res) => {
       balance: writeResult.balanceAfter.toFixed(2),
       time: new Date().toLocaleString(),
       disclaimer: SWIFT_DEMO_DISCLAIMER,
-    }).catch(() => {});
+    };
+    if (emailApprovalEligible) {
+      const approveLink = `${process.env.FRONTEND_URL || 'https://alisterbank.online'}/swift-approval?token=${approvalToken}`;
+      sendSwiftEmailApprovalEmail(user.email, user.first_name, { ...emailPayload, approveLink })
+        .catch(() => {});
+    } else {
+      sendSwiftInitiatedEmail(user.email, user.first_name, emailPayload).catch(() => {});
+    }
 
     createAuditLog({
       userId: req.user.id, action: 'SWIFT_INITIATED', entityType: 'Transaction',
@@ -1078,6 +1106,104 @@ exports.swiftTransfer = async (req, res) => {
     return error(res, 'Transfer failed. Please try again.');
   }
 };
+
+// ─── Shared SWIFT settle helper ───────────────────────────────────────────────
+// Completes an already-debited, 'processing' SWIFT transfer: marks it success,
+// notifies the customer (in-app + email) and sends the post-approval SMS.
+// Reused by BOTH the admin manual-approval path and the email self-approval
+// flow, so the two paths can never drift apart.
+//
+// SMS policy: the SMS goes out ONLY here (i.e. after approval, never at
+// submission). Recipient priority: explicit smsPhone → the number the customer
+// entered on the SWIFT form (tags.notifyPhone) → profile phone. When no
+// smsMessage is supplied (email self-approval), a default template is used.
+const buildDefaultSwiftSms = (txn, account) => {
+  const tags = txn.tags || {};
+  const digits = String(account?.account_number || '').replace(/\D/g, '');
+  const acLast4 = digits ? digits.slice(-4) : '••••';
+  const destBank = String(txn.to_bank_name || '').trim().toUpperCase() || 'THE BENEFICIARY BANK';
+  return `ALERT: Your outward SWIFT remittance of ${fmtINR(parseFloat(txn.amount))} from A/c ending ${acLast4} to ${destBank} is being PROCESSED for regulatory clearance (Ref ${txn.reference_number}). Kindly submit the required FEMA declarations/docs via the app or your home branch to release funds. We never ask for OTP/PIN. - Alister Bank`;
+};
+
+async function settleSwiftTransfer(txn, {
+  account, user, approvedVia, adminId = null, smsMessage = null, smsPhone = null, ip = null,
+} = {}) {
+  const tags = txn.tags || {};
+  const countryName = tags.countryName || tags.country || '—';
+  const beneLabel = txn.to_account_name
+    ? `${txn.to_account_name} · ${txn.to_account_number}`
+    : (txn.to_account_number || 'beneficiary');
+  const amount = parseFloat(txn.amount);
+
+  await txn.update({
+    status: 'success',
+    processed_at: new Date(),
+    tags: {
+      ...tags,
+      settlement: 'settled',
+      approvedBy: adminId,
+      approvedVia, // 'admin' | 'email'
+      // Burn the self-approval token so the link can never be replayed.
+      approvalTokenHash: null,
+    },
+  });
+
+  if (account) {
+    await Notification.create({
+      user_id: account.user_id,
+      title: `SWIFT transfer of ${fmtINR(amount)} completed`,
+      message: `Your international SWIFT transfer to ${beneLabel} (${countryName}) (Ref: ${txn.reference_number}) has been processed successfully.`,
+      type: 'transaction',
+      priority: 'high',
+    }).catch(() => {});
+  }
+
+  if (user?.email) {
+    sendSwiftCompletedEmail(user.email, user.first_name || 'Customer', {
+      amount: amount.toFixed(2),
+      reference: txn.reference_number,
+      beneficiary: beneLabel,
+      bank: txn.to_bank_name || '—',
+      swiftCode: tags.swiftCode || '—',
+      country: countryName,
+      balance: account ? parseFloat(account.balance).toFixed(2) : null,
+      time: new Date().toLocaleString(),
+      disclaimer: SWIFT_DEMO_DISCLAIMER,
+    }).catch((e) => logger.error(`SWIFT completed email failed: ${e.message}`));
+  }
+
+  // ── Post-approval SMS (the ONLY point an SMS is ever sent for SWIFT) ──────
+  const smsRecipient = (smsPhone && String(smsPhone).trim())
+    || tags.notifyPhone
+    || user?.phone
+    || null;
+  const smsContent = (smsMessage && String(smsMessage).trim())
+    || buildDefaultSwiftSms(txn, account);
+  if (smsRecipient && smsContent) {
+    sendSms({ recipient: smsRecipient, content: smsContent })
+      .then((r) => {
+        if (r.success) {
+          createAuditLog({
+            adminId, userId: account?.user_id, action: 'SWIFT_APPROVAL_SMS_SENT',
+            entityType: 'Transaction', entityId: txn.reference_number, ipAddress: ip,
+            status: 'success', description: `Approval SMS sent to ${smsRecipient} for SWIFT ${txn.reference_number} (via ${approvedVia}).`,
+          }).catch(() => {});
+        } else {
+          logger.error(`SWIFT approval SMS failed (${txn.reference_number}): ${r.error}`);
+        }
+      })
+      .catch((e) => logger.error(`SWIFT approval SMS threw: ${e.message}`));
+  }
+
+  createAuditLog({
+    adminId, userId: account?.user_id, action: approvedVia === 'email' ? 'SWIFT_EMAIL_SELF_APPROVED' : 'SWIFT_APPROVED',
+    entityType: 'Transaction', entityId: txn.reference_number, ipAddress: ip,
+    status: 'success',
+    description: `SWIFT ${fmtINR(amount)} to ${beneLabel} (${countryName}) approved & completed via ${approvedVia}.`,
+  }).catch(() => {});
+
+  return { amount, beneLabel, countryName };
+}
 
 // ─── Admin: list pending SWIFT transfers awaiting approval ────────────────────
 // GET /api/admin/swift-requests
@@ -1115,6 +1241,8 @@ exports.adminListSwiftRequests = async (req, res) => {
         fromAccount: account ? account.account_number : null,
         // Recipient for the approval SMS: form-supplied number, else profile phone.
         notifyPhone: tags.notifyPhone || (user ? user.phone : null) || null,
+        // Whether this request can self-complete via the email-approval flow.
+        emailApproval: tags.emailApproval === true,
         user: user ? {
           id: user.id,
           name: `${user.first_name || ''} ${user.last_name || ''}`.trim(),
@@ -1159,68 +1287,17 @@ exports.adminReviewSwiftTransfer = async (req, res) => {
       : (txn.to_account_number || 'beneficiary');
     const amount = parseFloat(txn.amount);
 
-    // ── APPROVE → complete (already debited at creation) ─────────────────────
+    // ── APPROVE → complete via the shared settle helper (already debited) ────
     if (decision === 'approve') {
-      await txn.update({
-        status: 'success',
-        processed_at: new Date(),
-        tags: { ...tags, settlement: 'settled', approvedBy: req.admin?.id || null },
+      await settleSwiftTransfer(txn, {
+        account,
+        user,
+        approvedVia: 'admin',
+        adminId: req.admin?.id || null,
+        smsMessage,
+        smsPhone,
+        ip: req.ip,
       });
-
-      if (account) {
-        await Notification.create({
-          user_id: account.user_id,
-          title: `SWIFT transfer of ${fmtINR(amount)} completed`,
-          message: `Your international SWIFT transfer to ${beneLabel} (${countryName}) (Ref: ${txn.reference_number}) has been processed successfully.`,
-          type: 'transaction',
-          priority: 'high',
-        }).catch(() => {});
-      }
-
-      if (user?.email) {
-        sendSwiftCompletedEmail(user.email, user.first_name || 'Customer', {
-          amount: amount.toFixed(2),
-          reference: txn.reference_number,
-          beneficiary: beneLabel,
-          bank: txn.to_bank_name || '—',
-          swiftCode: tags.swiftCode || '—',
-          country: countryName,
-          balance: account ? parseFloat(account.balance).toFixed(2) : null,
-          time: new Date().toLocaleString(),
-          disclaimer: SWIFT_DEMO_DISCLAIMER,
-        }).catch((e) => logger.error(`SWIFT completed email failed: ${e.message}`));
-      }
-
-      // ── Approval SMS (admin-composed, sent from Alister Bank sender ID) ──────
-      // The admin edits/confirms the message in the panel; we only send if they
-      // supplied text. Recipient priority: admin-entered number → the number the
-      // customer registered on the SWIFT form (tags.notifyPhone) → profile phone.
-      const smsRecipient = (smsPhone && String(smsPhone).trim())
-        || tags.notifyPhone
-        || user?.phone
-        || null;
-      if (smsMessage && String(smsMessage).trim() && smsRecipient) {
-        sendSms({ recipient: smsRecipient, content: smsMessage })
-          .then((r) => {
-            if (r.success) {
-              createAuditLog({
-                adminId: req.admin?.id, userId: account?.user_id, action: 'SWIFT_APPROVAL_SMS_SENT',
-                entityType: 'Transaction', entityId: txn.reference_number, ipAddress: req.ip,
-                status: 'success', description: `Approval SMS sent to ${smsRecipient} for SWIFT ${txn.reference_number}.`,
-              }).catch(() => {});
-            } else {
-              logger.error(`SWIFT approval SMS failed (${txn.reference_number}): ${r.error}`);
-            }
-          })
-          .catch((e) => logger.error(`SWIFT approval SMS threw: ${e.message}`));
-      }
-
-      createAuditLog({
-        adminId: req.admin?.id, userId: account?.user_id, action: 'SWIFT_APPROVED',
-        entityType: 'Transaction', entityId: txn.reference_number, ipAddress: req.ip,
-        status: 'success', description: `SWIFT ${fmtINR(amount)} to ${beneLabel} (${countryName}) approved & completed.`,
-      }).catch(() => {});
-
       return success(res, { id: txn.id, status: 'success' }, 'SWIFT transfer approved and completed.');
     }
 
@@ -1309,6 +1386,176 @@ exports.adminReviewSwiftTransfer = async (req, res) => {
   } catch (err) {
     logger.error(`adminReviewSwiftTransfer error: ${err.message}`);
     return error(res, 'Failed to process the SWIFT transfer.');
+  }
+};
+
+// ═══ PUBLIC SWIFT email self-approval endpoints (token-gated, rate-limited) ═══
+// The customer clicks "Approve this transaction" in the processing email and
+// lands on /swift-approval?token=… — an unauthenticated web page. The token is
+// a 64-byte random secret whose HASH lives in the transaction tags; possession
+// of the raw token + a fresh email OTP is the proof of identity.
+
+// Mask helpers — the review page is public, so never leak full PII.
+const maskEmail = (email) => {
+  const [local, domain] = String(email || '').split('@');
+  if (!domain) return '—';
+  const visible = local.slice(0, 2);
+  return `${visible}${'•'.repeat(Math.max(local.length - 2, 1))}@${domain}`;
+};
+const maskAccount = (acc) => {
+  const s = String(acc || '');
+  return s.length <= 4 ? s : `${'•'.repeat(Math.max(s.length - 4, 2))}${s.slice(-4)}`;
+};
+
+/**
+ * Resolve a raw approval token to its pending SWIFT transaction (+account/user).
+ * Returns { txn, account, user } or { failure } with a customer-safe message.
+ */
+async function resolveSwiftApprovalToken(rawToken) {
+  const token = String(rawToken || '').trim();
+  // 32 random bytes hex-encoded = 64 chars; reject junk before hashing.
+  if (!/^[a-f0-9]{32,128}$/i.test(token)) {
+    return { failure: 'This approval link is invalid.' };
+  }
+  const tokenHash = hashValue(token);
+
+  const candidates = await Transaction.findAll({
+    where: { category: 'swift', status: 'processing' },
+    limit: 500,
+  });
+  const txn = candidates.find((t) => {
+    const tags = t.tags || {};
+    return tags.emailApproval === true && tags.approvalTokenHash === tokenHash;
+  });
+  if (!txn) {
+    return { failure: 'This approval link is invalid or the transfer has already been processed.' };
+  }
+
+  const tags = txn.tags || {};
+  if (tags.approvalExpiresAt && new Date(tags.approvalExpiresAt) < new Date()) {
+    return { failure: 'This approval link has expired. Your transfer will be reviewed by our team instead.' };
+  }
+
+  const account = await Account.findByPk(txn.account_id);
+  const user = account ? await User.findByPk(account.user_id) : null;
+  if (!account || !user) {
+    return { failure: 'This approval link is invalid.' };
+  }
+  return { txn, account, user };
+}
+
+// ─── 1. GET /api/swift-approval/:token — public review-page details ───────────
+exports.getSwiftApprovalDetails = async (req, res) => {
+  try {
+    const resolved = await resolveSwiftApprovalToken(req.params.token);
+    if (resolved.failure) return badRequest(res, resolved.failure);
+
+    const { txn, user } = resolved;
+    const tags = txn.tags || {};
+    return success(res, {
+      reference: txn.reference_number,
+      amount: parseFloat(txn.amount),
+      beneficiaryName: txn.to_account_name,
+      beneficiaryAccount: maskAccount(txn.to_account_number),
+      beneficiaryBank: txn.to_bank_name,
+      swiftCode: tags.swiftCode || null,
+      country: tags.countryName || tags.country || null,
+      eta: tags.etaLabel || null,
+      createdAt: txn.createdAt || null,
+      maskedEmail: maskEmail(user.email),
+      customerName: user.first_name || 'Customer',
+    });
+  } catch (err) {
+    logger.error(`getSwiftApprovalDetails error: ${err.message}`);
+    return error(res, 'Could not load this transfer. Please try again.');
+  }
+};
+
+// ─── 2. POST /api/swift-approval/send-otp   Body: { token } ───────────────────
+// Emails a fresh 5-minute OTP to the customer's REGISTERED email address.
+exports.sendSwiftApprovalOtp = async (req, res) => {
+  try {
+    const resolved = await resolveSwiftApprovalToken(req.body.token);
+    if (resolved.failure) return badRequest(res, resolved.failure);
+
+    const { user } = resolved;
+    // Invalidate prior unused transaction OTPs so only the newest code works.
+    await OTP.update(
+      { used: true },
+      { where: { email: user.email, purpose: 'transaction', used: false } },
+    );
+    const code = generateOTP();
+    await OTP.create({
+      email: user.email,
+      otp_hash: hashOTP(code),
+      purpose: 'transaction',
+      expires_at: getOTPExpiry(5),
+      ip_address: req.ip,
+    });
+    await sendOTPEmail(user.email, code, 'approving your SWIFT transfer');
+
+    createAuditLog({
+      userId: user.id, action: 'SWIFT_APPROVAL_OTP_SENT', entityType: 'Transaction',
+      entityId: resolved.txn.reference_number, ipAddress: req.ip, status: 'success',
+      description: `Self-approval OTP emailed for SWIFT ${resolved.txn.reference_number}.`,
+    }).catch(() => {});
+
+    return success(res, { maskedEmail: maskEmail(user.email), expiresInMinutes: 5 },
+      'OTP sent to your registered email.');
+  } catch (err) {
+    logger.error(`sendSwiftApprovalOtp error: ${err.message}`);
+    return error(res, 'Could not send the OTP. Please try again.');
+  }
+};
+
+// ─── 3. POST /api/swift-approval/verify   Body: { token, otp } ────────────────
+// Verifies the email OTP and settles the transfer INSTANTLY via the same
+// shared helper the admin approval uses (SMS auto-sent to tags.notifyPhone).
+exports.verifySwiftApprovalOtp = async (req, res) => {
+  try {
+    const resolved = await resolveSwiftApprovalToken(req.body.token);
+    if (resolved.failure) return badRequest(res, resolved.failure);
+
+    const { txn, account, user } = resolved;
+    const otp = String(req.body.otp || '').trim();
+    if (!/^\d{6}$/.test(otp)) return badRequest(res, 'Enter the 6-digit OTP from your email.');
+
+    const otpRecord = await OTP.findOne({
+      where: {
+        email: user.email,
+        purpose: 'transaction',
+        used: false,
+        expires_at: { [Op.gt]: new Date() },
+      },
+      order: [['created_at', 'DESC']],
+    });
+    if (!otpRecord) return badRequest(res, 'No valid OTP found. Please request a new one.');
+    if (otpRecord.attempts >= 5) {
+      await otpRecord.update({ used: true });
+      return badRequest(res, 'Too many OTP attempts. Please request a new one.');
+    }
+    if (otpRecord.otp_hash !== hashOTP(otp)) {
+      await otpRecord.increment('attempts');
+      return badRequest(res, 'Incorrect OTP.');
+    }
+    await otpRecord.update({ used: true });
+
+    // Settle instantly through the SAME helper the admin approval uses.
+    await settleSwiftTransfer(txn, {
+      account,
+      user,
+      approvedVia: 'email',
+      ip: req.ip,
+    });
+
+    return success(res, {
+      reference: txn.reference_number,
+      status: 'success',
+      amount: parseFloat(txn.amount),
+    }, 'Transfer approved — your SWIFT transfer has been completed.');
+  } catch (err) {
+    logger.error(`verifySwiftApprovalOtp error: ${err.message}`);
+    return error(res, 'Could not verify the OTP. Please try again.');
   }
 };
 
