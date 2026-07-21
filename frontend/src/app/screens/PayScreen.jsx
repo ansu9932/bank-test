@@ -416,9 +416,31 @@ export default function PayScreen() {
             <Field label="Beneficiary bank">
               <TextInput placeholder="Bank name" value={form.beneficiaryBank || ''} onChange={set('beneficiaryBank')} />
             </Field>
-            <Field label="Country code">
-              <TextInput placeholder="e.g. US" autoCapitalize="characters" maxLength={2}
-                value={form.country || ''} onChange={set('country')} />
+            {/* Proper country selector — same supported corridors as the website form */}
+            <Field label="Destination country">
+              <select
+                value={form.country || ''}
+                onChange={set('country')}
+                className="w-full h-12 rounded-xl px-4 text-[15px] outline-none focus:ring-2"
+                style={{
+                  background: 'var(--app-surface)',
+                  border: '1px solid var(--app-border)',
+                  color: 'var(--app-text)',
+                  '--tw-ring-color': 'var(--app-primary)',
+                }}
+              >
+                <option value="" disabled>Select country</option>
+                {SWIFT_COUNTRIES.map((c) => (
+                  <option key={c.code} value={c.code}>{c.name} — arrives in {c.eta}</option>
+                ))}
+              </select>
+            </Field>
+            {/* Phone number for SMS — the post-approval SMS goes to this number */}
+            <Field label="Phone number for SMS"
+              hint="The SMS update for this SWIFT transfer will be sent to this number.">
+              <TextInput type="tel" inputMode="tel" autoComplete="tel"
+                placeholder="Your account registered mobile number"
+                value={form.notifyPhone || ''} onChange={set('notifyPhone')} />
             </Field>
           </>
         )}

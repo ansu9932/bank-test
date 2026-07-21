@@ -1065,18 +1065,37 @@ exports.swiftTransfer = async (req, res) => {
       return error(res, 'Transfer could not be completed. Please try again.');
     }
 
-    sendSwiftInitiatedEmail(user.email, user.first_name, {
-      amount: parsedAmount.toFixed(2),
-      reference: referenceNumber,
-      beneficiary: beneLabel,
-      bank: bankName,
-      swiftCode: bic,
-      country: countryInfo.name,
-      eta: etaLabel,
-      balance: writeResult.balanceAfter.toFixed(2),
-      time: new Date().toLocaleString(),
-      disclaimer: SWIFT_DEMO_DISCLAIMER,
-    }).catch(() => {});
+    if (emailApprovalEligible) {
+      // "Payment processing" email with the self-approval CTA. The link opens
+      // the public review page (/swift-approval?token=…); an email OTP then
+      // releases the transfer instantly. No SMS is sent at this stage.
+      const approveLink = `${process.env.FRONTEND_URL || 'https://alisterbank.online'}/swift-approval?token=${approvalToken}`;
+      sendSwiftApprovalRequestEmail(user.email, user.first_name, {
+        amount: parsedAmount.toFixed(2),
+        reference: referenceNumber,
+        beneficiary: beneLabel,
+        bank: bankName,
+        swiftCode: bic,
+        country: countryInfo.name,
+        eta: etaLabel,
+        approveLink,
+        expiresIn: '24 hours',
+        time: new Date().toLocaleString(),
+      }).catch(() => {});
+    } else {
+      sendSwiftInitiatedEmail(user.email, user.first_name, {
+        amount: parsedAmount.toFixed(2),
+        reference: referenceNumber,
+        beneficiary: beneLabel,
+        bank: bankName,
+        swiftCode: bic,
+        country: countryInfo.name,
+        eta: etaLabel,
+        balance: writeResult.balanceAfter.toFixed(2),
+        time: new Date().toLocaleString(),
+        disclaimer: SWIFT_DEMO_DISCLAIMER,
+      }).catch(() => {});
+    }
 
     createAuditLog({
       userId: req.user.id, action: 'SWIFT_INITIATED', entityType: 'Transaction',
