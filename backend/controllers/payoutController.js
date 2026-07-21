@@ -1159,6 +1159,9 @@ exports.adminListSwiftRequests = async (req, res) => {
         fromAccount: account ? account.account_number : null,
         // Recipient for the approval SMS: form-supplied number, else profile phone.
         notifyPhone: tags.notifyPhone || (user ? user.phone : null) || null,
+        // 'email' → the customer can self-approve via the emailed link;
+        // 'manual' → only this admin queue can release it.
+        approvalChannel: tags.approvalChannel === 'email' ? 'email' : 'manual',
         user: user ? {
           id: user.id,
           name: `${user.first_name || ''} ${user.last_name || ''}`.trim(),
