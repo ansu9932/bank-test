@@ -551,16 +551,91 @@ const findVerifiedUserForReset = async (userId, accountNumber, dateOfBirth) => {
   return user;
 };
 
-// ─── Step 1: Verify User ID ──────────────────────────────────────────────────
+// ─── Forgot-password wizard: advanced anti-abuse protections ─────────────────
+// Progressive per-target lockout (in addition to the per-IP authLimiter):
+// failures are tracked per `ip|userId` key so an attacker cycling User IDs
+// from one IP, or hammering one victim's User ID, gets locked out after
+// MAX_RESET_ATTEMPTS failures for RESET_LOCKOUT_MS. In-memory (single-node),
+// self-pruning.
+const MAX_RESET_ATTEMPTS = 5;
+const RESET_LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
+const RESET_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
+const resetAttempts = new Map(); // key → { count, first, lockedUntil }
+
+function resetAttemptKey(req, userId) {
+  return `${req.ip}|${String(userId || '').trim().toLowerCase()}`;
+}
+
+function checkResetLock(req, userId) {
+  const rec = resetAttempts.get(resetAttemptKey(req, userId));
+  if (!rec) return null;
+  if (rec.lockedUntil && Date.now() < rec.lockedUntil) {
+    return Math.ceil((rec.lockedUntil - Date.now()) / 60000);
+  }
+  return null;
+}
+
+function recordResetFailure(req, userId) {
+  const k = resetAttemptKey(req, userId);
+  const now = Date.now();
+  let rec = resetAttempts.get(k);
+  if (!rec || now - rec.first > RESET_ATTEMPT_WINDOW_MS) rec = { count: 0, first: now, lockedUntil: 0 };
+  rec.count += 1;
+  if (rec.count >= MAX_RESET_ATTEMPTS) rec.lockedUntil = now + RESET_LOCKOUT_MS;
+  resetAttempts.set(k, rec);
+  // Opportunistic prune so the map can't grow unbounded.
+  if (resetAttempts.size > 5000) {
+    for (const [key, r] of resetAttempts) {
+      if (now - r.first > RESET_ATTEMPT_WINDOW_MS && (!r.lockedUntil || now > r.lockedUntil)) resetAttempts.delete(key);
+    }
+  }
+  return rec.lockedUntil ? 0 : MAX_RESET_ATTEMPTS - rec.count;
+}
+
+function clearResetFailures(req, userId) {
+  resetAttempts.delete(resetAttemptKey(req, userId));
+}
+
+const RESET_LOCKED_MSG = (mins) => `Too many failed attempts. Please try again in ${mins} minute(s).`;
+
+// Resend cooldown: one reset email per user per RESEND_COOLDOWN_MS.
+const RESEND_COOLDOWN_MS = 60 * 1000;
+const lastResetEmailAt = new Map(); // user.id → timestamp
+
+// ─── Step 1: Verify User ID (CAPTCHA + progressive lockout) ──────────────────
 exports.verifyUserId = async (req, res) => {
   try {
-    const { userId } = req.body;
+    const { userId, captchaToken, captchaAnswer, website } = req.body;
     if (!userId) return badRequest(res, 'User ID is required.');
 
-    const user = await User.findOne({ where: { username: String(userId).trim() } });
-    if (!user) return badRequest(res, 'User ID not found. Please check and try again.');
-    if (user.account_status === 'closed') {
+    // Honeypot: real users never fill this hidden field — bots do.
+    if (website) {
+      logger.warn(`Forgot-password honeypot triggered from ${req.ip}`);
       return badRequest(res, 'User ID not found. Please check and try again.');
+    }
+
+    // Bot protection: self-hosted CAPTCHA is mandatory before any DB lookup.
+    if (!verifyCaptcha(captchaToken, captchaAnswer)) {
+      return badRequest(res, 'Captcha verification failed. Please try again.');
+    }
+
+    const lockedMins = checkResetLock(req, userId);
+    if (lockedMins) return badRequest(res, RESET_LOCKED_MSG(lockedMins));
+
+    const user = await User.findOne({ where: { username: String(userId).trim() } });
+    if (!user || user.account_status === 'closed') {
+      const remaining = recordResetFailure(req, userId);
+      await createAuditLog({
+        userId: user?.id || null,
+        action: 'PASSWORD_RESET_STEP_FAILED',
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        status: 'failure',
+        description: `Forgot-password Step 1 failed for User ID "${String(userId).trim().slice(0, 50)}"`,
+      });
+      return badRequest(res, remaining > 0
+        ? 'User ID not found. Please check and try again.'
+        : RESET_LOCKED_MSG(Math.ceil(RESET_LOCKOUT_MS / 60000)));
     }
 
     return success(res, {}, 'User ID verified.');
@@ -570,7 +645,7 @@ exports.verifyUserId = async (req, res) => {
   }
 };
 
-// ─── Step 2: Verify Account Number + Date of Birth ───────────────────────────
+// ─── Step 2: Verify Account Number + Date of Birth (progressive lockout) ─────
 exports.verifyAccountDetails = async (req, res) => {
   try {
     const { userId, accountNumber, dateOfBirth } = req.body;
@@ -578,8 +653,27 @@ exports.verifyAccountDetails = async (req, res) => {
       return badRequest(res, IDENTITY_MISMATCH_MSG);
     }
 
+    const lockedMins = checkResetLock(req, userId);
+    if (lockedMins) return badRequest(res, RESET_LOCKED_MSG(lockedMins));
+
     const user = await findVerifiedUserForReset(userId, accountNumber, dateOfBirth);
-    if (!user) return badRequest(res, IDENTITY_MISMATCH_MSG);
+    if (!user) {
+      const remaining = recordResetFailure(req, userId);
+      await createAuditLog({
+        userId: null,
+        action: 'PASSWORD_RESET_STEP_FAILED',
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        status: 'failure',
+        description: `Forgot-password Step 2 identity mismatch for User ID "${String(userId).trim().slice(0, 50)}"`,
+      });
+      return badRequest(res, remaining > 0
+        ? IDENTITY_MISMATCH_MSG
+        : RESET_LOCKED_MSG(Math.ceil(RESET_LOCKOUT_MS / 60000)));
+    }
+
+    // Full identity verified — reset the failure counter for this target.
+    clearResetFailures(req, userId);
 
     return success(res, { maskedEmail: maskEmail(user.email) }, 'Identity verified.');
   } catch (err) {
@@ -596,9 +690,30 @@ exports.sendResetLink = async (req, res) => {
       return badRequest(res, IDENTITY_MISMATCH_MSG);
     }
 
+    const lockedMins = checkResetLock(req, userId);
+    if (lockedMins) return badRequest(res, RESET_LOCKED_MSG(lockedMins));
+
     // Re-verify from scratch — never trust that Step 2 already passed.
     const user = await findVerifiedUserForReset(userId, accountNumber, dateOfBirth);
-    if (!user) return badRequest(res, IDENTITY_MISMATCH_MSG);
+    if (!user) {
+      recordResetFailure(req, userId);
+      return badRequest(res, IDENTITY_MISMATCH_MSG);
+    }
+
+    // Resend cooldown — max one reset email per user per 60 seconds, so the
+    // flow can't be abused to email-bomb a customer.
+    const lastSent = lastResetEmailAt.get(user.id) || 0;
+    if (Date.now() - lastSent < RESEND_COOLDOWN_MS) {
+      const waitSecs = Math.ceil((RESEND_COOLDOWN_MS - (Date.now() - lastSent)) / 1000);
+      return badRequest(res, `Please wait ${waitSecs} second(s) before requesting another reset link.`);
+    }
+
+    // Single-active-link policy: invalidate every previous unused reset link
+    // for this user so only the newest emailed link works.
+    await SecureLink.update(
+      { used: true, used_at: new Date() },
+      { where: { user_id: user.id, purpose: 'password_reset', used: false } }
+    );
 
     const token = generateSecureToken();
     const expiresAt = getSecureLinkExpiry(5);
@@ -613,6 +728,7 @@ exports.sendResetLink = async (req, res) => {
 
     const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
     await sendPasswordResetEmail(user.email, user.first_name, resetLink);
+    lastResetEmailAt.set(user.id, Date.now());
 
     await createAuditLog({
       userId: user.id,
@@ -738,7 +854,7 @@ exports.verifySetup = async (req, res) => {
   }
 };
 
-// ─── Regenerate Onboarding Link (self-service) ────────────────────────────────
+// ─── Regenerate Onboarding Link (self-service) ──────────────────────────���─────
 // Lets a user whose Video KYC / Account Setup link expired safely request a
 // fresh one by proving identity with BOTH their registered email AND Customer
 // ID. Anti-enumeration: a non-match returns a single generic error.

@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RiCheckLine } from 'react-icons/ri';
+import { RiCheckLine, RiRefreshLine } from 'react-icons/ri';
 import BackToHome from '../../components/common/BackToHome';
 import api from '../../services/api';
 
@@ -34,6 +34,12 @@ export default function ForgotPasswordPage() {
   // Step 1
   const [userId, setUserId] = useState('');
 
+  // Step 1 security: self-hosted CAPTCHA + hidden honeypot field.
+  const [captcha, setCaptcha] = useState({ svg: '', token: '' });
+  const [captchaAnswer, setCaptchaAnswer] = useState('');
+  const [captchaLoading, setCaptchaLoading] = useState(false);
+  const [honeypot, setHoneypot] = useState('');
+
   // Step 2
   const [accountNumber, setAccountNumber] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
@@ -41,15 +47,49 @@ export default function ForgotPasswordPage() {
   // Success
   const [maskedEmail, setMaskedEmail] = useState('');
 
+  // Resend cooldown (seconds remaining) on the success screen.
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  // Fetch a fresh CAPTCHA image + single-use token from the backend.
+  const loadCaptcha = useCallback(async () => {
+    setCaptchaLoading(true);
+    setCaptchaAnswer('');
+    try {
+      const { data } = await api.get('/auth/captcha');
+      setCaptcha({ svg: data.data.svg, token: data.data.token });
+    } catch {
+      setCaptcha({ svg: '', token: '' });
+    } finally {
+      setCaptchaLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadCaptcha(); }, [loadCaptcha]);
+
+  // Tick down the resend cooldown once per second.
+  useEffect(() => {
+    if (resendCooldown <= 0) return undefined;
+    const t = setInterval(() => setResendCooldown((s) => (s > 0 ? s - 1 : 0)), 1000);
+    return () => clearInterval(t);
+  }, [resendCooldown]);
+
   // ── Step 1: verify the NetBanking User ID ─────────────────────────────────
   const verifyUserId = async () => {
+    if (!captchaAnswer.trim()) { setError('Please enter the characters shown in the image.'); return; }
     setIsLoading(true);
     setError('');
     try {
-      await api.post('/auth/verify-userid', { userId });
+      await api.post('/auth/verify-userid', {
+        userId,
+        captchaToken: captcha.token,
+        captchaAnswer,
+        website: honeypot, // honeypot — always empty for real users
+      });
       setCurrentStep(2);
     } catch (err) {
       setError(err.response?.data?.message || 'User ID not found. Please check and try again.');
+      // CAPTCHA tokens are effectively single-use — always refresh on failure.
+      loadCaptcha();
     } finally {
       setIsLoading(false);
     }
@@ -76,6 +116,7 @@ export default function ForgotPasswordPage() {
     setError('');
     try {
       await api.post('/auth/send-reset-link', { userId, accountNumber, dateOfBirth });
+      setResendCooldown(60); // matches the backend's 60s resend cooldown
       setCurrentStep('success');
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to send reset link. Please try again.');
@@ -231,14 +272,64 @@ export default function ForgotPasswordPage() {
                         className="fp-input"
                         placeholder="Enter your User ID"
                         value={userId}
+                        autoComplete="username"
+                        maxLength={50}
                         onChange={(e) => setUserId(e.target.value)}
+                      />
+                    </div>
+
+                    {/* Honeypot — hidden from real users, bots auto-fill it. */}
+                    <input
+                      type="text"
+                      name="website"
+                      value={honeypot}
+                      onChange={(e) => setHoneypot(e.target.value)}
+                      tabIndex={-1}
+                      autoComplete="off"
+                      aria-hidden="true"
+                      style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }}
+                    />
+
+                    {/* Self-hosted CAPTCHA challenge */}
+                    <div className="mb-[18px]">
+                      <label className="block text-[13px] font-medium mb-[7px]" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                        Security Check <span style={{ color: '#CC0000' }}>*</span>
+                      </label>
+                      <div className="flex items-center gap-3 mb-2">
+                        <div
+                          className="rounded-[10px] overflow-hidden flex items-center justify-center"
+                          style={{ width: 170, height: 56, flexShrink: 0, border: '1px solid rgba(255,255,255,0.09)', background: '#141414' }}
+                          dangerouslySetInnerHTML={{ __html: captcha.svg }}
+                        />
+                        <button
+                          type="button"
+                          onClick={loadCaptcha}
+                          disabled={captchaLoading}
+                          title="Get a new image"
+                          aria-label="Refresh captcha"
+                          className="p-2.5 rounded-[10px] cursor-pointer transition-colors disabled:opacity-50"
+                          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)', color: 'rgba(255,255,255,0.6)' }}
+                        >
+                          <RiRefreshLine className={captchaLoading ? 'animate-spin' : ''} />
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        className="fp-input"
+                        placeholder="Type the characters shown above"
+                        value={captchaAnswer}
+                        autoComplete="off"
+                        autoCapitalize="characters"
+                        maxLength={8}
+                        style={{ letterSpacing: '0.2em', textTransform: 'uppercase' }}
+                        onChange={(e) => setCaptchaAnswer(e.target.value)}
                       />
                     </div>
 
                     <motion.button
                       type="button"
                       onClick={verifyUserId}
-                      disabled={isLoading}
+                      disabled={isLoading || !captcha.token || !captchaAnswer.trim()}
                       whileHover={{ y: -2, boxShadow: '0 8px 25px rgba(204,0,0,0.35)' }}
                       whileTap={{ scale: 0.97 }}
                       className={PRIMARY_BTN}
@@ -264,10 +355,13 @@ export default function ForgotPasswordPage() {
                       </label>
                       <input
                         type="text"
+                        inputMode="numeric"
                         className="fp-input"
                         placeholder="Enter your Account Number"
                         value={accountNumber}
-                        onChange={(e) => setAccountNumber(e.target.value)}
+                        autoComplete="off"
+                        maxLength={20}
+                        onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ''))}
                       />
                     </div>
 
@@ -279,6 +373,7 @@ export default function ForgotPasswordPage() {
                         type="date"
                         className="fp-input"
                         value={dateOfBirth}
+                        max={new Date().toISOString().split('T')[0]}
                         onChange={(e) => setDateOfBirth(e.target.value)}
                       />
                     </div>
@@ -403,14 +498,20 @@ export default function ForgotPasswordPage() {
                     </motion.button>
 
                     <p className="text-[13px] mt-3" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                      Didn't receive it?{' '}
-                      <span
-                        onClick={() => setCurrentStep(3)}
-                        className="cursor-pointer font-medium hover:underline"
-                        style={{ color: '#CC0000' }}
-                      >
-                        Resend Link
-                      </span>
+                      Didn&apos;t receive it?{' '}
+                      {resendCooldown > 0 ? (
+                        <span style={{ color: 'rgba(255,255,255,0.35)' }}>
+                          Resend available in {resendCooldown}s
+                        </span>
+                      ) : (
+                        <span
+                          onClick={() => setCurrentStep(3)}
+                          className="cursor-pointer font-medium hover:underline"
+                          style={{ color: '#CC0000' }}
+                        >
+                          Resend Link
+                        </span>
+                      )}
                     </p>
                   </div>
                 )}
