@@ -66,18 +66,24 @@ router.post('/forgot-password', authLimiter, [
 router.get('/captcha', authController.getCaptcha);
 router.post('/verify-userid', authLimiter, [
   body('userId').notEmpty().withMessage('User ID is required'),
+  body('captchaToken').notEmpty().withMessage('CAPTCHA token is required'),
+  body('captchaAnswer').notEmpty().withMessage('CAPTCHA answer is required'),
 ], validate, authController.verifyUserId);
 
 router.post('/verify-account-details', authLimiter, [
   body('userId').notEmpty(),
   body('accountNumber').notEmpty().withMessage('Account number is required'),
   body('dateOfBirth').isISO8601().withMessage('A valid date of birth is required'),
+  body('captchaToken').notEmpty().withMessage('CAPTCHA token is required'),
+  body('captchaAnswer').notEmpty().withMessage('CAPTCHA answer is required'),
 ], validate, authController.verifyAccountDetails);
 
 router.post('/send-reset-link', authLimiter, [
   body('userId').notEmpty(),
   body('accountNumber').notEmpty(),
   body('dateOfBirth').isISO8601(),
+  body('captchaToken').notEmpty().withMessage('CAPTCHA token is required'),
+  body('captchaAnswer').notEmpty().withMessage('CAPTCHA answer is required'),
 ], validate, authController.sendResetLink);
 
 // Final reset step — public + unauthenticated, so it's rate-limited with

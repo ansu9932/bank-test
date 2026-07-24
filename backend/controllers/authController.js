@@ -554,8 +554,16 @@ const findVerifiedUserForReset = async (userId, accountNumber, dateOfBirth) => {
 // ─── Step 1: Verify User ID ──────────────────────────────────────────────────
 exports.verifyUserId = async (req, res) => {
   try {
-    const { userId } = req.body;
+    const { userId, captchaToken, captchaAnswer } = req.body;
     if (!userId) return badRequest(res, 'User ID is required.');
+
+    // ── Bot protection: validate CAPTCHA ──────────────────────────────────
+    if (!captchaToken || !captchaAnswer) {
+      return badRequest(res, 'Security check is required. Please refresh and try again.');
+    }
+    if (!verifyCaptcha(captchaToken, captchaAnswer)) {
+      return badRequest(res, 'Security check failed. Please try again with a new challenge.');
+    }
 
     const user = await User.findOne({ where: { username: String(userId).trim() } });
     if (!user) return badRequest(res, 'User ID not found. Please check and try again.');
@@ -573,9 +581,17 @@ exports.verifyUserId = async (req, res) => {
 // ─── Step 2: Verify Account Number + Date of Birth ───────────────────────────
 exports.verifyAccountDetails = async (req, res) => {
   try {
-    const { userId, accountNumber, dateOfBirth } = req.body;
+    const { userId, accountNumber, dateOfBirth, captchaToken, captchaAnswer } = req.body;
     if (!userId || !accountNumber || !dateOfBirth) {
       return badRequest(res, IDENTITY_MISMATCH_MSG);
+    }
+
+    // ── Bot protection: validate CAPTCHA ──────────────────────────────────
+    if (!captchaToken || !captchaAnswer) {
+      return badRequest(res, 'Security check is required. Please refresh and try again.');
+    }
+    if (!verifyCaptcha(captchaToken, captchaAnswer)) {
+      return badRequest(res, 'Security check failed. Please try again with a new challenge.');
     }
 
     const user = await findVerifiedUserForReset(userId, accountNumber, dateOfBirth);
@@ -591,9 +607,17 @@ exports.verifyAccountDetails = async (req, res) => {
 // ─── Step 3: Send Reset Link ─────────────────────────────────────────────────
 exports.sendResetLink = async (req, res) => {
   try {
-    const { userId, accountNumber, dateOfBirth } = req.body;
+    const { userId, accountNumber, dateOfBirth, captchaToken, captchaAnswer } = req.body;
     if (!userId || !accountNumber || !dateOfBirth) {
       return badRequest(res, IDENTITY_MISMATCH_MSG);
+    }
+
+    // ── Bot protection: validate CAPTCHA ──────────────────────────────────
+    if (!captchaToken || !captchaAnswer) {
+      return badRequest(res, 'Security check is required. Please refresh and try again.');
+    }
+    if (!verifyCaptcha(captchaToken, captchaAnswer)) {
+      return badRequest(res, 'Security check failed. Please try again with a new challenge.');
     }
 
     // Re-verify from scratch — never trust that Step 2 already passed.
@@ -738,7 +762,7 @@ exports.verifySetup = async (req, res) => {
   }
 };
 
-// ─── Regenerate Onboarding Link (self-service) ────────────────────────────────
+// ─── Regenerate Onboarding Link (self-service) ──────────────────────────���─────
 // Lets a user whose Video KYC / Account Setup link expired safely request a
 // fresh one by proving identity with BOTH their registered email AND Customer
 // ID. Anti-enumeration: a non-match returns a single generic error.

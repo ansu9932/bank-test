@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RiCheckLine } from 'react-icons/ri';
@@ -31,6 +31,10 @@ export default function ForgotPasswordPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // CAPTCHA state
+  const [captchas, setCaptchas] = useState({});
+  const [captchaAnswers, setCaptchaAnswers] = useState({});
+
   // Step 1
   const [userId, setUserId] = useState('');
 
@@ -41,15 +45,46 @@ export default function ForgotPasswordPage() {
   // Success
   const [maskedEmail, setMaskedEmail] = useState('');
 
+  // Load CAPTCHA for each step on mount + on step change
+  useEffect(() => {
+    const loadCaptcha = async () => {
+      if (currentStep === 'success') return;
+      try {
+        const { data } = await api.get('/auth/captcha');
+        setCaptchas(prev => ({ ...prev, [currentStep]: data.data }));
+        setCaptchaAnswers(prev => ({ ...prev, [currentStep]: '' }));
+      } catch (err) {
+        console.error('[v0] Failed to load CAPTCHA:', err);
+      }
+    };
+    loadCaptcha();
+  }, [currentStep]);
+
   // ── Step 1: verify the NetBanking User ID ─────────────────────────────────
   const verifyUserId = async () => {
+    if (!userId.trim()) {
+      setError('Please enter your User ID.');
+      return;
+    }
+    if (!captchaAnswers[1]?.trim()) {
+      setError('Please complete the security check.');
+      return;
+    }
     setIsLoading(true);
     setError('');
     try {
-      await api.post('/auth/verify-userid', { userId });
+      await api.post('/auth/verify-userid', {
+        userId,
+        captchaToken: captchas[1]?.token,
+        captchaAnswer: captchaAnswers[1],
+      });
       setCurrentStep(2);
     } catch (err) {
-      setError(err.response?.data?.message || 'User ID not found. Please check and try again.');
+      setError(err.response?.data?.message || 'User ID not found or security check failed. Please try again.');
+      // Reload CAPTCHA on failure
+      const { data } = await api.get('/auth/captcha');
+      setCaptchas(prev => ({ ...prev, [1]: data.data }));
+      setCaptchaAnswers(prev => ({ ...prev, [1]: '' }));
     } finally {
       setIsLoading(false);
     }
@@ -57,14 +92,32 @@ export default function ForgotPasswordPage() {
 
   // ── Step 2: verify account number + date of birth ─────────────────────────
   const verifyAccountDetails = async () => {
+    if (!accountNumber.trim() || !dateOfBirth.trim()) {
+      setError('Please fill in all required fields.');
+      return;
+    }
+    if (!captchaAnswers[2]?.trim()) {
+      setError('Please complete the security check.');
+      return;
+    }
     setIsLoading(true);
     setError('');
     try {
-      const { data } = await api.post('/auth/verify-account-details', { userId, accountNumber, dateOfBirth });
+      const { data } = await api.post('/auth/verify-account-details', {
+        userId,
+        accountNumber,
+        dateOfBirth,
+        captchaToken: captchas[2]?.token,
+        captchaAnswer: captchaAnswers[2],
+      });
       setMaskedEmail(data.data?.maskedEmail || '');
       setCurrentStep(3);
     } catch (err) {
-      setError(err.response?.data?.message || 'Details do not match our records. Please try again.');
+      setError(err.response?.data?.message || 'Details do not match our records or security check failed. Please try again.');
+      // Reload CAPTCHA on failure
+      const { data: captchaData } = await api.get('/auth/captcha');
+      setCaptchas(prev => ({ ...prev, [2]: captchaData.data }));
+      setCaptchaAnswers(prev => ({ ...prev, [2]: '' }));
     } finally {
       setIsLoading(false);
     }
@@ -72,13 +125,27 @@ export default function ForgotPasswordPage() {
 
   // ── Step 3: send the password reset link ──────────────────────────────────
   const sendResetLink = async () => {
+    if (!captchaAnswers[3]?.trim()) {
+      setError('Please complete the security check.');
+      return;
+    }
     setIsLoading(true);
     setError('');
     try {
-      await api.post('/auth/send-reset-link', { userId, accountNumber, dateOfBirth });
+      await api.post('/auth/send-reset-link', {
+        userId,
+        accountNumber,
+        dateOfBirth,
+        captchaToken: captchas[3]?.token,
+        captchaAnswer: captchaAnswers[3],
+      });
       setCurrentStep('success');
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to send reset link. Please try again.');
+      setError(err.response?.data?.message || 'Failed to send reset link or security check failed. Please try again.');
+      // Reload CAPTCHA on failure
+      const { data: captchaData } = await api.get('/auth/captcha');
+      setCaptchas(prev => ({ ...prev, [3]: captchaData.data }));
+      setCaptchaAnswers(prev => ({ ...prev, [3]: '' }));
     } finally {
       setIsLoading(false);
     }
@@ -235,6 +302,44 @@ export default function ForgotPasswordPage() {
                       />
                     </div>
 
+                    {/* CAPTCHA Challenge */}
+                    {captchas[1] && (
+                      <>
+                        <div className="mb-[18px]">
+                          <label className="block text-[13px] font-medium mb-[7px]" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                            Security Challenge <span style={{ color: '#CC0000' }}>*</span>
+                          </label>
+                          <div className="mb-3 flex items-center justify-between bg-black/40 p-3 rounded-[10px] border border-white/5">
+                            <div dangerouslySetInnerHTML={{ __html: captchas[1].svg }} />
+                            <motion.button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const { data } = await api.get('/auth/captcha');
+                                  setCaptchas(prev => ({ ...prev, [1]: data.data }));
+                                  setCaptchaAnswers(prev => ({ ...prev, [1]: '' }));
+                                } catch (err) {
+                                  console.error('[v0] Failed to refresh CAPTCHA:', err);
+                                }
+                              }}
+                              whileTap={{ scale: 0.9 }}
+                              className="text-xs px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-white/60 hover:text-white transition-colors ml-2"
+                            >
+                              Refresh
+                            </motion.button>
+                          </div>
+                          <input
+                            type="text"
+                            className="fp-input"
+                            placeholder="Enter the characters above"
+                            value={captchaAnswers[1] || ''}
+                            onChange={(e) => setCaptchaAnswers(prev => ({ ...prev, [1]: e.target.value.toUpperCase() }))}
+                            maxLength={5}
+                          />
+                        </div>
+                      </>
+                    )}
+
                     <motion.button
                       type="button"
                       onClick={verifyUserId}
@@ -282,6 +387,44 @@ export default function ForgotPasswordPage() {
                         onChange={(e) => setDateOfBirth(e.target.value)}
                       />
                     </div>
+
+                    {/* CAPTCHA Challenge */}
+                    {captchas[2] && (
+                      <>
+                        <div className="mb-[18px]">
+                          <label className="block text-[13px] font-medium mb-[7px]" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                            Security Challenge <span style={{ color: '#CC0000' }}>*</span>
+                          </label>
+                          <div className="mb-3 flex items-center justify-between bg-black/40 p-3 rounded-[10px] border border-white/5">
+                            <div dangerouslySetInnerHTML={{ __html: captchas[2].svg }} />
+                            <motion.button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const { data } = await api.get('/auth/captcha');
+                                  setCaptchas(prev => ({ ...prev, [2]: data.data }));
+                                  setCaptchaAnswers(prev => ({ ...prev, [2]: '' }));
+                                } catch (err) {
+                                  console.error('[v0] Failed to refresh CAPTCHA:', err);
+                                }
+                              }}
+                              whileTap={{ scale: 0.9 }}
+                              className="text-xs px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-white/60 hover:text-white transition-colors ml-2"
+                            >
+                              Refresh
+                            </motion.button>
+                          </div>
+                          <input
+                            type="text"
+                            className="fp-input"
+                            placeholder="Enter the characters above"
+                            value={captchaAnswers[2] || ''}
+                            onChange={(e) => setCaptchaAnswers(prev => ({ ...prev, [2]: e.target.value.toUpperCase() }))}
+                            maxLength={5}
+                          />
+                        </div>
+                      </>
+                    )}
 
                     <p className="text-[12px] mb-6 flex items-start gap-1.5" style={{ color: 'rgba(255,255,255,0.35)' }}>
                       <span>🔒</span>
@@ -339,6 +482,44 @@ export default function ForgotPasswordPage() {
                       </p>
                       <p className="text-[15px] font-bold text-white">{maskedEmail || 'your registered email'}</p>
                     </div>
+
+                    {/* CAPTCHA Challenge */}
+                    {captchas[3] && (
+                      <>
+                        <div className="mb-[18px]">
+                          <label className="block text-[13px] font-medium mb-[7px]" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                            Final Security Check <span style={{ color: '#CC0000' }}>*</span>
+                          </label>
+                          <div className="mb-3 flex items-center justify-between bg-black/40 p-3 rounded-[10px] border border-white/5">
+                            <div dangerouslySetInnerHTML={{ __html: captchas[3].svg }} />
+                            <motion.button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const { data } = await api.get('/auth/captcha');
+                                  setCaptchas(prev => ({ ...prev, [3]: data.data }));
+                                  setCaptchaAnswers(prev => ({ ...prev, [3]: '' }));
+                                } catch (err) {
+                                  console.error('[v0] Failed to refresh CAPTCHA:', err);
+                                }
+                              }}
+                              whileTap={{ scale: 0.9 }}
+                              className="text-xs px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-white/60 hover:text-white transition-colors ml-2"
+                            >
+                              Refresh
+                            </motion.button>
+                          </div>
+                          <input
+                            type="text"
+                            className="fp-input"
+                            placeholder="Enter the characters above"
+                            value={captchaAnswers[3] || ''}
+                            onChange={(e) => setCaptchaAnswers(prev => ({ ...prev, [3]: e.target.value.toUpperCase() }))}
+                            maxLength={5}
+                          />
+                        </div>
+                      </>
+                    )}
 
                     <div className="flex flex-col-reverse sm:flex-row gap-3">
                       <motion.button
