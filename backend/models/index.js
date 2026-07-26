@@ -18,6 +18,7 @@ const AdminDevice = require('./AdminDevice');
 const EmailCampaign = require('./EmailCampaign');
 const ChatOTP = require('./ChatOTP');
 const QrLoginSession = require('./QrLoginSession');
+const AppSetting = require('./AppSetting');
 
 // Associations
 User.hasOne(Account, { foreignKey: 'user_id', as: 'account' });
@@ -65,4 +66,5 @@ module.exports = {
   EmailCampaign,
   ChatOTP,
   QrLoginSession,
+  AppSetting,
 };

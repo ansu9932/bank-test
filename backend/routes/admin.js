@@ -68,6 +68,11 @@ router.post('/email-campaigns', requireRole('super_admin', 'admin'), adminContro
 router.get('/email-campaigns', requireRole('super_admin', 'admin'), adminController.getEmailCampaigns);
 router.post('/send-email', requireRole('super_admin', 'admin'), adminController.sendManualEmail);
 
+// SMS Settings — switch the transactional SMS sender provider (Twilio / Brevo).
+// The selected provider is used for EVERY user SMS from the moment it is saved.
+router.get('/sms-settings', requireRole('super_admin', 'admin'), adminController.getSmsSettings);
+router.put('/sms-settings', requireRole('super_admin', 'admin'), adminController.updateSmsSettings);
+
 // Audit & Tickets
 router.get('/audit-logs', requireRole('super_admin', 'admin'), adminController.getAuditLogs);
 router.get('/tickets', adminController.getAdminTickets);

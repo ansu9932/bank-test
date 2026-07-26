@@ -77,6 +77,7 @@ const AdminTicketsPage = lazy(() => import('./pages/admin/AdminTicketsPage'));
 const AdminApprovedCardsPage = lazy(() => import('./pages/admin/AdminApprovedCardsPage'));
 const AdminSendEmailPage = lazy(() => import('./pages/admin/AdminSendEmailPage'));
 const AdminMailHistoryPage = lazy(() => import('./pages/admin/AdminMailHistoryPage'));
+const AdminSmsSettingsPage = lazy(() => import('./pages/admin/AdminSmsSettingsPage'));
 
 // Wraps a lazy page element in a Suspense boundary with the shared loader.
 const withSuspense = (element) => (
@@ -210,6 +211,8 @@ export default function App() {
           <Route path="send-email" element={withSuspense(<AdminSendEmailPage />)} />
           {/* Mail history — log of every manual email campaign sent from the panel */}
           <Route path="mail-history" element={withSuspense(<AdminMailHistoryPage />)} />
+          {/* SMS settings — switch the transactional SMS sender provider (Twilio/Brevo) */}
+          <Route path="sms-settings" element={withSuspense(<AdminSmsSettingsPage />)} />
         </Route>
 
         {/* 404 */}

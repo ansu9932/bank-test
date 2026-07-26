@@ -7,7 +7,7 @@ import {
   RiLogoutBoxLine, RiBankLine, RiShieldLine,
   RiShieldCheckLine, RiMenuLine, RiCloseLine,
   RiBankCard2Line, RiUserFollowLine, RiShieldKeyholeLine, RiGlobalLine,
-  RiMailSendLine, RiMailLine,
+  RiMailSendLine, RiMailLine, RiMessage2Line,
 } from 'react-icons/ri';
 
 const navItems = [
@@ -23,6 +23,7 @@ const navItems = [
   { to: '/admin/tickets', icon: RiCustomerService2Line, label: 'Tickets' },
   { to: '/admin/send-email', icon: RiMailSendLine, label: 'Send Email' },
   { to: '/admin/mail-history', icon: RiMailLine, label: 'Mail History' },
+  { to: '/admin/sms-settings', icon: RiMessage2Line, label: 'SMS Settings' },
   { to: '/admin/audit', icon: RiFileShield2Line, label: 'Audit Logs' },
 ];
 

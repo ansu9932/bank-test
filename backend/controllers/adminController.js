@@ -2,7 +2,8 @@ const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const { Op } = require('sequelize');
-const { User, Account, Transaction, KYCDocument, AdminUser, AuditLog, Notification, SupportTicket, SecureLink, CardRequest, ApprovedCard, OTP, AdminDevice, EmailCampaign } = require('../models');
+const { User, Account, Transaction, KYCDocument, AdminUser, AuditLog, Notification, SupportTicket, SecureLink, CardRequest, ApprovedCard, OTP, AdminDevice, EmailCampaign, AppSetting } = require('../models');
+const { getActiveSmsProvider, invalidateSmsProviderCache, SMS_PROVIDERS, SMS_PROVIDER_SETTING_KEY } = require('../services/smsService');
 const { generateAdminToken } = require('../middleware/auth');
 const {
   generateAccountNumber, generateIFSC, generateSecureToken, getSecureLinkExpiry, getOnboardingLinkExpiry,
@@ -794,7 +795,7 @@ exports.updateTicket = async (req, res) => {
   }
 };
 
-// ─── Toggle SWIFT Email Self-Approval Eligibility ─────────────────────────────
+// ─── Toggle SWIFT Email Self-Approval Eligibility ─────────────────────────���───
 // POST /api/admin/users/:userId/swift-email-approval   (admin only)
 // When enabled, the user's SWIFT transfers send a "payment processing" email
 // with an "Approve this transaction" link (public review page + email OTP)
@@ -1668,6 +1669,68 @@ exports.sendManualEmail = async (req, res) => {
   } catch (err) {
     logger.error(`Manual email error: ${err.message}`);
     return error(res, 'Failed to send the email batch.');
+  }
+};
+
+// ─── SMS Settings (provider switch: Twilio / Brevo) ──────────────────────────
+// GET /api/admin/sms-settings — the active provider + per-provider config state
+exports.getSmsSettings = async (req, res) => {
+  try {
+    const activeProvider = await getActiveSmsProvider();
+    return success(res, {
+      provider: activeProvider,
+      providers: {
+        twilio: {
+          configured: Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
+            && (process.env.TWILIO_MESSAGING_SERVICE_SID || process.env.TWILIO_FROM_NUMBER)),
+          sender: process.env.TWILIO_MESSAGING_SERVICE_SID
+            ? 'Messaging Service'
+            : (process.env.TWILIO_FROM_NUMBER || null),
+        },
+        brevo: {
+          configured: Boolean(process.env.BREVO_API_KEY),
+          sender: process.env.BREVO_SMS_SENDER || 'ALSTER',
+        },
+      },
+    });
+  } catch (err) {
+    logger.error(`Get SMS settings error: ${err.message}`);
+    return error(res, 'Failed to fetch SMS settings.');
+  }
+};
+
+// PUT /api/admin/sms-settings — Body: { provider: 'twilio' | 'brevo' }
+// From the moment this saves, EVERY user SMS is sent through the chosen provider.
+exports.updateSmsSettings = async (req, res) => {
+  try {
+    const provider = String(req.body.provider || '').toLowerCase();
+    if (!SMS_PROVIDERS.includes(provider)) {
+      return badRequest(res, `provider must be one of: ${SMS_PROVIDERS.join(', ')}.`);
+    }
+
+    const [row, createdNew] = await AppSetting.findOrCreate({
+      where: { key: SMS_PROVIDER_SETTING_KEY },
+      defaults: { value: provider, updated_by: req.admin?.id || null },
+    });
+    if (!createdNew && row.value !== provider) {
+      row.value = provider;
+      row.updated_by = req.admin?.id || null;
+      await row.save();
+    }
+    // Bust the smsService cache so the very next SMS uses the new provider.
+    invalidateSmsProviderCache();
+
+    createAuditLog({
+      adminId: req.admin?.id, action: 'SMS_PROVIDER_CHANGED',
+      entityType: 'AppSetting', entityId: SMS_PROVIDER_SETTING_KEY,
+      ipAddress: req.ip, status: 'success',
+      description: `SMS sender provider switched to "${provider}".`,
+    }).catch(() => {});
+
+    return success(res, { provider }, `SMS provider set to ${provider === 'twilio' ? 'Twilio' : 'Brevo'}. All user SMS will now be sent through it.`);
+  } catch (err) {
+    logger.error(`Update SMS settings error: ${err.message}`);
+    return error(res, 'Failed to update SMS settings.');
   }
 };
 
