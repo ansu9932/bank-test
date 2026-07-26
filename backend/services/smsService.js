@@ -1,3 +1,4 @@
+const axios = require('axios');
 const logger = require('../utils/logger');
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -141,14 +142,14 @@ const buildTwilioRequest = ({ to, content, sender }) => {
 
   return {
     endpoint,
-    fetchOptions: {
+    requestOptions: {
       method: 'POST',
       headers: {
         Authorization: authHeader,
         'content-type': 'application/x-www-form-urlencoded',
         accept: 'application/json',
       },
-      body: params.toString(),
+      data: params.toString(),
     },
     parseMessageId: (data) => data?.sid || null,
   };
@@ -166,19 +167,19 @@ const buildBrevoRequest = ({ to, content, sender }) => {
 
   return {
     endpoint: 'https://api.brevo.com/v3/transactionalSMS/sms',
-    fetchOptions: {
+    requestOptions: {
       method: 'POST',
       headers: {
         'api-key': apiKey,
         'content-type': 'application/json',
         accept: 'application/json',
       },
-      body: JSON.stringify({
+      data: {
         type: 'transactional',
         sender: brevoSender,
         recipient: to, // E.164 with leading '+' is accepted by Brevo.
         content,
-      }),
+      },
     },
     parseMessageId: (data) => (data?.messageId != null ? String(data.messageId) : null),
   };
@@ -217,20 +218,31 @@ const sendSms = async ({ recipient, content, sender, provider } = {}) => {
   let lastError;
   for (let attempt = 1; attempt <= MAX_SMS_ATTEMPTS; attempt += 1) {
     try {
-      const resp = await fetch(request.endpoint, request.fetchOptions);
+      // NOTE: axios (not global fetch) is used deliberately. Global fetch only
+      // exists on Node 18+ — on older runtimes it threw "fetch is not defined"
+      // BEFORE any network request left the server, so nothing ever reached
+      // Twilio/Brevo and their dashboards showed zero events. axios is already
+      // used for every other outbound HTTP call in this backend.
+      // validateStatus: () => true → non-2xx never throws; we inspect status
+      // manually to keep the retry / early-bail semantics identical.
+      const resp = await axios({
+        url: request.endpoint,
+        timeout: 15000,
+        validateStatus: () => true,
+        ...request.requestOptions,
+      });
 
-      if (resp.ok) {
+      if (resp.status >= 200 && resp.status < 300) {
         let messageId = null;
         try {
-          const data = await resp.json();
-          messageId = request.parseMessageId(data);
+          messageId = request.parseMessageId(resp.data);
         } catch { /* body may be empty on 2xx — that's fine */ }
         logger.info(`[SMS] Sent to ${to} via ${activeProvider} (attempt ${attempt}/${MAX_SMS_ATTEMPTS})${messageId ? `: ${messageId}` : ''}`);
         return { success: true, provider: activeProvider, messageId, attempts: attempt };
       }
 
       // Non-2xx → capture the error body for diagnostics and retry.
-      const errText = await resp.text().catch(() => '');
+      const errText = typeof resp.data === 'string' ? resp.data : JSON.stringify(resp.data || '');
       lastError = `HTTP ${resp.status} ${errText}`.trim();
       logger.error(`[SMS] ${activeProvider} attempt ${attempt}/${MAX_SMS_ATTEMPTS} to ${to} failed: ${lastError}`);
 

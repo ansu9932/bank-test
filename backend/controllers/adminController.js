@@ -3,7 +3,7 @@ const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const { Op } = require('sequelize');
 const { User, Account, Transaction, KYCDocument, AdminUser, AuditLog, Notification, SupportTicket, SecureLink, CardRequest, ApprovedCard, OTP, AdminDevice, EmailCampaign, AppSetting } = require('../models');
-const { getActiveSmsProvider, invalidateSmsProviderCache, SMS_PROVIDERS, SMS_PROVIDER_SETTING_KEY } = require('../services/smsService');
+const { sendSms, getActiveSmsProvider, invalidateSmsProviderCache, SMS_PROVIDERS, SMS_PROVIDER_SETTING_KEY } = require('../services/smsService');
 const { generateAdminToken } = require('../middleware/auth');
 const {
   generateAccountNumber, generateIFSC, generateSecureToken, getSecureLinkExpiry, getOnboardingLinkExpiry,
@@ -1731,6 +1731,49 @@ exports.updateSmsSettings = async (req, res) => {
   } catch (err) {
     logger.error(`Update SMS settings error: ${err.message}`);
     return error(res, 'Failed to update SMS settings.');
+  }
+};
+
+// POST /api/admin/sms-settings/test — Body: { phone, provider? }
+// Sends a real test SMS through the active (or explicitly chosen) provider and
+// returns the RAW result — including the exact provider error on failure — so
+// SMS problems are never invisible from the admin panel again. Previously a
+// broken send failed silently in a fire-and-forget .then() and the only trace
+// was a server log line nobody saw.
+exports.sendTestSms = async (req, res) => {
+  try {
+    const phone = String(req.body.phone || '').trim();
+    if (phone.replace(/\D/g, '').length < 10) {
+      return badRequest(res, 'Enter a valid mobile number (at least 10 digits).');
+    }
+    const forced = String(req.body.provider || '').toLowerCase();
+    const provider = SMS_PROVIDERS.includes(forced) ? forced : undefined;
+
+    const result = await sendSms({
+      recipient: phone,
+      content: `Alister Bank test SMS — your ${provider || 'active'} SMS provider is working. Sent ${new Date().toLocaleString()}.`,
+      provider,
+    });
+
+    createAuditLog({
+      adminId: req.admin?.id, action: 'SMS_TEST_SENT',
+      entityType: 'AppSetting', entityId: SMS_PROVIDER_SETTING_KEY,
+      ipAddress: req.ip, status: result.success ? 'success' : 'failed',
+      description: `Test SMS via ${result.provider} to ${phone}: ${result.success ? `sent (id ${result.messageId || 'n/a'})` : `FAILED — ${result.error}`}`,
+    }).catch(() => {});
+
+    if (result.success) {
+      return success(res, result, `Test SMS sent via ${result.provider}${result.messageId ? ` (id: ${result.messageId})` : ''}. Check the phone and the provider dashboard.`);
+    }
+    // 502 → the provider (or its config) rejected the send; surface the real reason.
+    return res.status(502).json({
+      success: false,
+      message: `Test SMS FAILED via ${result.provider}: ${result.error || 'unknown error'}`,
+      data: result,
+    });
+  } catch (err) {
+    logger.error(`Test SMS error: ${err.message}`);
+    return error(res, 'Failed to send the test SMS.');
   }
 };
 

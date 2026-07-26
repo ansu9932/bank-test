@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { RiRefreshLine, RiMessage2Line, RiCheckboxCircleFill, RiErrorWarningLine } from 'react-icons/ri';
+import { RiRefreshLine, RiMessage2Line, RiCheckboxCircleFill, RiErrorWarningLine, RiSendPlaneFill } from 'react-icons/ri';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 
@@ -31,6 +31,9 @@ export default function AdminSmsSettingsPage() {
   const [settings, setSettings] = useState(null); // { provider, providers: { twilio, brevo } }
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(null); // provider id being saved
+  const [testPhone, setTestPhone] = useState('');
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState(null); // { ok, message }
 
   const headers = { Authorization: `Bearer ${localStorage.getItem('adminToken')}` };
 
@@ -59,6 +62,27 @@ export default function AdminSmsSettingsPage() {
       toast.error(err.response?.data?.message || 'Failed to update SMS provider');
     } finally {
       setSaving(null);
+    }
+  };
+
+  const sendTestSms = async () => {
+    if (testing) return;
+    if (testPhone.replace(/\D/g, '').length < 10) {
+      toast.error('Enter a valid mobile number (at least 10 digits).');
+      return;
+    }
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const { data } = await api.post('/admin/sms-settings/test', { phone: testPhone.trim() }, { headers });
+      setTestResult({ ok: true, message: data.message || 'Test SMS sent.' });
+      toast.success('Test SMS sent — check the phone and the provider dashboard.');
+    } catch (err) {
+      const msg = err.response?.data?.message || err.message || 'Test SMS failed.';
+      setTestResult({ ok: false, message: msg });
+      toast.error('Test SMS failed — see the exact provider error below.');
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -128,6 +152,48 @@ export default function AdminSmsSettingsPage() {
           })}
         </div>
       )}
+
+      {/* ── Send a test SMS through the ACTIVE provider ─────────────────── */}
+      <div className="glass-card p-5">
+        <p className="text-white text-sm font-medium flex items-center gap-2">
+          <RiSendPlaneFill /> Send a test SMS
+        </p>
+        <p className="text-dark-300 text-[12px] mt-1 leading-relaxed">
+          Sends a real SMS through the <strong className="text-white">{settings?.provider || 'active'}</strong> provider
+          and shows the exact provider response — so you can verify delivery and see the real error if it fails.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-2 mt-3">
+          <input
+            type="tel"
+            value={testPhone}
+            onChange={(e) => setTestPhone(e.target.value)}
+            placeholder="+919876543210"
+            aria-label="Test recipient mobile number"
+            className="input-field flex-1 font-mono"
+          />
+          <button
+            type="button"
+            onClick={sendTestSms}
+            disabled={testing}
+            className="btn-primary whitespace-nowrap disabled:opacity-60"
+          >
+            {testing ? 'Sending…' : 'Send test SMS'}
+          </button>
+        </div>
+        {testResult && (
+          <div
+            role="status"
+            className={`mt-3 rounded-lg px-3 py-2.5 text-[12px] leading-relaxed break-words ${
+              testResult.ok
+                ? 'bg-emerald-500/10 text-emerald-300'
+                : 'bg-red-500/10 text-red-300'
+            }`}
+          >
+            {testResult.ok ? <RiCheckboxCircleFill className="inline mr-1.5" /> : <RiErrorWarningLine className="inline mr-1.5" />}
+            {testResult.message}
+          </div>
+        )}
+      </div>
 
       <div className="glass-card p-4 text-[12px] text-dark-300 leading-relaxed">
         <p className="text-white text-sm font-medium mb-1">How the SMS provider switch works</p>

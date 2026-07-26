@@ -72,6 +72,8 @@ router.post('/send-email', requireRole('super_admin', 'admin'), adminController.
 // The selected provider is used for EVERY user SMS from the moment it is saved.
 router.get('/sms-settings', requireRole('super_admin', 'admin'), adminController.getSmsSettings);
 router.put('/sms-settings', requireRole('super_admin', 'admin'), adminController.updateSmsSettings);
+// Send a real test SMS and surface the raw provider result/error to the panel.
+router.post('/sms-settings/test', requireRole('super_admin', 'admin'), adminController.sendTestSms);
 
 // Audit & Tickets
 router.get('/audit-logs', requireRole('super_admin', 'admin'), adminController.getAuditLogs);
