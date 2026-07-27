@@ -2,13 +2,16 @@ const router = require('express').Router();
 const { body } = require('express-validator');
 const txController = require('../controllers/transactionController');
 const { protect, requireActiveAccount } = require('../middleware/auth');
-const { transferLimiter, otpLimiter } = require('../middleware/security');
+const { transferLimiter, otpLimiter, receiptLimiter } = require('../middleware/security');
 
 router.use(protect);
 
 router.get('/', txController.getTransactions);
 router.get('/mini-statement', txController.getMiniStatement);
 router.get('/download-statement', txController.downloadStatement);
+// Receipt PDF — auth (router-level protect) + ownership check in controller
+// + per-IP rate limit against transaction-ID enumeration.
+router.get('/:id/receipt', receiptLimiter, txController.downloadReceipt);
 
 router.post('/transfer', requireActiveAccount, transferLimiter, [
   body('toAccountNumber').notEmpty().withMessage('Recipient account number is required'),

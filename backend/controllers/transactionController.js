@@ -469,6 +469,141 @@ exports.downloadStatement = async (req, res) => {
   }
 };
 
+// ─── Download Transaction Receipt (PDF) ──────────────────────────────────────
+// GET /transactions/:id/receipt — :id accepts the transaction UUID OR its
+// reference number. SECURITY: the lookup is ALWAYS scoped to the logged-in
+// user's own account (account_id), so one customer can never fetch another
+// customer's receipt even with a guessed/leaked transaction ID. The route is
+// additionally rate-limited (receiptLimiter) to block bulk enumeration.
+exports.downloadReceipt = async (req, res) => {
+  try {
+    const rawId = String(req.params.id || '').trim();
+    // Tight input validation: UUIDs and reference numbers are alphanumeric
+    // with hyphens only, max 40 chars. Anything else is rejected outright.
+    if (!rawId || rawId.length > 40 || !/^[A-Za-z0-9-]+$/.test(rawId)) {
+      return badRequest(res, 'Invalid receipt identifier.');
+    }
+
+    const account = await Account.findOne({ where: { user_id: req.user.id } });
+    if (!account) return notFound(res, 'Account not found.');
+
+    // Ownership-scoped lookup — account_id filter is the security boundary.
+    const tx = await Transaction.findOne({
+      where: {
+        account_id: account.id,
+        [Op.or]: [{ id: rawId }, { reference_number: rawId }],
+      },
+    });
+    if (!tx) return notFound(res, 'Transaction not found.');
+
+    const user = await User.findByPk(req.user.id);
+    const isCredit = tx.transaction_type === 'credit';
+    const money = (n) => `$${parseFloat(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+
+    // Fire-and-forget audit trail of every receipt download.
+    createAuditLog({
+      userId: req.user.id,
+      action: 'RECEIPT_DOWNLOADED',
+      entityType: 'Transaction',
+      entityId: tx.reference_number,
+      ipAddress: req.ip,
+      status: 'success',
+    }).catch(() => {});
+
+    const doc = new PDFDocument({ margin: 0, size: 'A4' });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=receipt-${tx.reference_number}.pdf`);
+    // Receipts contain account data — never let intermediaries cache them.
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    doc.pipe(res);
+
+    const PAGE_W = 595.28;
+    const CARD_X = 60, CARD_W = PAGE_W - 120;
+
+    // ── Header band ──────────────────────────────────────────────────────────
+    doc.rect(0, 0, PAGE_W, 130).fill('#0f0f1a');
+    doc.rect(0, 126, PAGE_W, 4).fill('#c8102e');
+    doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(26).text('ALISTER BANK', 60, 40);
+    doc.fillColor('#c8102e').fontSize(10).font('Helvetica-Bold').text('TRANSACTION RECEIPT', 60, 74, { characterSpacing: 2 });
+    doc.fillColor('#9ca3af').font('Helvetica').fontSize(8)
+      .text('SWIFT: ALSTINBB  ·  www.alisterbank.online', 60, 92);
+    doc.fillColor('#9ca3af').fontSize(8)
+      .text(`Generated: ${moment().format('DD MMM YYYY, HH:mm:ss')}`, 60, 40, { width: PAGE_W - 120, align: 'right' });
+
+    // ── Status + amount hero ─────────────────────────────────────────────────
+    const statusMap = {
+      success: { label: 'SUCCESSFUL', color: '#16a34a', bg: '#f0fdf4' },
+      pending: { label: 'PENDING', color: '#d97706', bg: '#fffbeb' },
+      processing: { label: 'PROCESSING', color: '#d97706', bg: '#fffbeb' },
+      failed: { label: 'FAILED', color: '#dc2626', bg: '#fef2f2' },
+      reversed: { label: 'REVERSED', color: '#dc2626', bg: '#fef2f2' },
+    };
+    const st = statusMap[tx.status] || statusMap.pending;
+
+    let y = 170;
+    doc.roundedRect(CARD_X, y, CARD_W, 110, 10).fill(st.bg);
+    doc.fillColor(st.color).font('Helvetica-Bold').fontSize(9)
+      .text(`●  ${st.label}`, CARD_X, y + 20, { width: CARD_W, align: 'center', characterSpacing: 1.5 });
+    doc.fillColor('#111827').font('Helvetica-Bold').fontSize(30)
+      .text(`${isCredit ? '+' : '-'} ${money(tx.amount)}`, CARD_X, y + 38, { width: CARD_W, align: 'center' });
+    doc.fillColor('#6b7280').font('Helvetica').fontSize(9)
+      .text(`${isCredit ? 'Credited to' : 'Debited from'} A/c ${maskAccountNumber(account.account_number)}  ·  ${moment(tx.created_at).format('DD MMM YYYY [at] HH:mm')}`,
+        CARD_X, y + 78, { width: CARD_W, align: 'center' });
+
+    // ── Details card ─────────────────────────────────────────────────────────
+    y = 310;
+    const rows = [
+      ['Reference Number', tx.reference_number],
+      ['Date & Time', moment(tx.created_at).format('DD MMM YYYY, HH:mm:ss')],
+      ['Transfer Mode', tx.transfer_mode || '—'],
+      ['Transaction Type', isCredit ? 'Credit' : 'Debit'],
+      ['Account Holder', `${user.first_name} ${user.last_name}`],
+      ['Account Number', maskAccountNumber(account.account_number)],
+      ...(tx.to_account_name ? [['Beneficiary Name', tx.to_account_name]] : []),
+      ...(tx.to_account_number ? [['Beneficiary A/c', tx.to_account_number]] : []),
+      ...(tx.to_bank_name ? [['Beneficiary Bank', tx.to_bank_name]] : []),
+      ...(tx.to_ifsc ? [['IFSC / SWIFT', tx.to_ifsc]] : []),
+      ...(tx.description ? [['Remarks', String(tx.description).slice(0, 80)]] : []),
+      ['Balance After', money(tx.balance_after)],
+    ];
+
+    const ROW_H = 26;
+    const cardH = rows.length * ROW_H + 44;
+    doc.roundedRect(CARD_X, y, CARD_W, cardH, 10).lineWidth(1).strokeColor('#e5e7eb').stroke();
+    doc.fillColor('#0f0f1a').font('Helvetica-Bold').fontSize(11).text('PAYMENT DETAILS', CARD_X + 24, y + 18, { characterSpacing: 1 });
+    doc.moveTo(CARD_X + 24, y + 36).lineTo(CARD_X + CARD_W - 24, y + 36).strokeColor('#c8102e').lineWidth(1.5).stroke();
+
+    let ry = y + 48;
+    rows.forEach(([label, value], i) => {
+      if (i > 0) doc.moveTo(CARD_X + 24, ry - 5).lineTo(CARD_X + CARD_W - 24, ry - 5).strokeColor('#f3f4f6').lineWidth(0.5).stroke();
+      doc.fillColor('#6b7280').font('Helvetica').fontSize(9).text(label, CARD_X + 24, ry, { width: 170 });
+      doc.fillColor('#111827').font('Helvetica-Bold').fontSize(9)
+        .text(String(value), CARD_X + 200, ry, { width: CARD_W - 224, align: 'right' });
+      ry += ROW_H;
+    });
+
+    // ── Footer ───────────────────────────────────────────────────────────────
+    let fy = y + cardH + 28;
+    doc.roundedRect(CARD_X, fy, CARD_W, 46, 8).fill('#f9fafb');
+    doc.fillColor('#6b7280').font('Helvetica').fontSize(7.5).text(
+      'SECURITY NOTICE: Alister Bank never asks for your OTP, PIN or password. This receipt is digitally generated and requires no signature. '
+      + 'Verify any transaction by matching the reference number in your account statement.',
+      CARD_X + 16, fy + 10, { width: CARD_W - 32, align: 'center', lineGap: 2 }
+    );
+
+    doc.fillColor('#9ca3af').fontSize(7).text(
+      `© ${new Date().getFullYear()} Alister Bank · This is a system-generated receipt for reference number ${tx.reference_number}.`,
+      CARD_X, fy + 62, { width: CARD_W, align: 'center' }
+    );
+
+    doc.end();
+  } catch (err) {
+    logger.error(`Receipt download error: ${err.message}`);
+    return error(res, 'Failed to generate receipt.');
+  }
+};
+
 // ─── Get Mini Statement ───────────────────────────────────────────────────────
 exports.getMiniStatement = async (req, res) => {
   try {
