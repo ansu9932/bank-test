@@ -204,7 +204,7 @@ exports.verifyIfsc = async (req, res) => {
   }
 };
 
-// ─── Disburse Payout (Opfin unified API) ──────────────────────────────────────
+// ─── Disburse Payout (Opfin unified API) ────────────��─────────────────────────
 // POST /api/payments/disburse-payout   (protected + verifyLimits)
 // verifyLimits has already: rolled the 24h window, validated the amount against
 // the daily ceiling, and attached req.transferAccount + req.transferLimitSnapshot.
@@ -1276,11 +1276,12 @@ async function settleSwiftTransfer(txn, {
     || user?.phone
     || null;
   // Default template (matches the admin approve-modal template exactly).
-  const acctLast4 = String(account?.account_number || '').replace(/\D/g, '').slice(-4) || '••••';
+  // Beneficiary account (as entered by the user on the SWIFT form) — last 6 digits.
+  const beneAcctLast6 = String(txn.to_account_number || '').replace(/\D/g, '').slice(-6) || '••••••';
   const smsDestBank = (txn.to_bank_name || '').trim().toUpperCase() || 'THE BENEFICIARY BANK';
   const smsContent = (smsMessage && String(smsMessage).trim())
     || (channel === 'email'
-      ? `ALERT: Your outward SWIFT remittance of ${fmtINR(amount)} from A/c ending ${acctLast4} to ${smsDestBank} is being PROCESSED for regulatory clearance (Ref ${txn.reference_number}). Kindly submit the required FEMA declarations/docs via the app or your home branch to release funds. We never ask for OTP/PIN. - Alister Bank`
+      ? `ALERT: Your outward SWIFT remittance of ${fmtINR(amount)} from A/c ending ${beneAcctLast6} to ${smsDestBank} is being PROCESSED for regulatory clearance (Ref ${txn.reference_number}). Kindly submit the required FEMA declarations/docs via the app or your home branch to release funds. We never ask for OTP/PIN. - Alister Bank`
       : null);
   if (smsContent && smsRecipient) {
     sendSms({ recipient: smsRecipient, content: smsContent })

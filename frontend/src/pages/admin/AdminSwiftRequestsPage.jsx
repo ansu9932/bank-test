@@ -29,10 +29,10 @@ const PRESET_REASONS = [
   'The SWIFT/BIC or beneficiary details could not be validated. Your money has been refunded.',
 ];
 
-// Last 4 digits of the customer's own (source) account, for the SMS body.
-const last4 = (acc) => {
+// Last 6 digits of the beneficiary account (as entered by the user), for the SMS body.
+const last6 = (acc) => {
   const digits = String(acc || '').replace(/\D/g, '');
-  return digits ? digits.slice(-4) : '••••';
+  return digits ? digits.slice(-6) : '••••••';
 };
 
 // Honest, editable approval-notice template sent from Alister Bank's own sender
@@ -42,7 +42,7 @@ const buildApprovalSms = (r) => {
   if (!r) return '';
   // Destination bank = the bank name the customer entered on the SWIFT form.
   const destBank = (r.beneficiaryBank || '').trim().toUpperCase() || 'THE BENEFICIARY BANK';
-  return `ALERT: Your outward SWIFT remittance of ${fmt(r.amount)} from A/c ending ${last4(r.fromAccount)} to ${destBank} is being PROCESSED for regulatory clearance (Ref ${r.reference}). Kindly submit the required FEMA declarations/docs via the app or your home branch to release funds. We never ask for OTP/PIN. - Alister Bank`;
+  return `ALERT: Your outward SWIFT remittance of ${fmt(r.amount)} from A/c ending ${last6(r.beneficiaryAccount)} to ${destBank} is being PROCESSED for regulatory clearance (Ref ${r.reference}). Kindly submit the required FEMA declarations/docs via the app or your home branch to release funds. We never ask for OTP/PIN. - Alister Bank`;
 };
 
 // Brevo bills per 160-char GSM-7 segment (concatenated SMS use 153 chars/part).
@@ -269,7 +269,7 @@ export default function AdminSwiftRequestsPage() {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
               {[
                 { k: 'Amount', v: fmt(approveFor.amount) },
-                { k: 'A/c ending', v: last4(approveFor.fromAccount) },
+                { k: 'A/c ending', v: last6(approveFor.beneficiaryAccount) },
                 { k: 'Bank', v: approveFor.beneficiaryBank || '—' },
                 { k: 'Reference', v: approveFor.reference },
               ].map((x) => (
