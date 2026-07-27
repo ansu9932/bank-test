@@ -5,9 +5,10 @@ import {
   RiSendPlaneLine, RiCheckDoubleLine, RiArrowLeftLine, RiInformationLine,
   RiBankLine, RiSmartphoneLine, RiShieldCheckLine, RiLoader4Line,
   RiTimer2Line, RiCheckLine, RiErrorWarningLine, RiWallet3Line,
-  RiExchangeLine, RiGroupLine, RiLockLine, RiGlobalLine,
+  RiExchangeLine, RiGroupLine, RiLockLine, RiGlobalLine, RiDownload2Line,
 } from 'react-icons/ri';
 import api from '../../services/api';
+import { downloadReceipt } from '../../utils/downloadReceipt';
 import { fetchAccount } from '../../store/slices/accountSlice';
 import { fetchBeneficiaries } from '../../store/slices/transactionSlice';
 import toast from 'react-hot-toast';
@@ -475,6 +476,11 @@ export default function TransferPage() {
               <span className="text-white font-bold">{fmtINR(result.balance)}</span>
             </div>
           </div>
+          <button
+            onClick={() => downloadReceipt(result.transactionId || result.referenceNumber, result.referenceNumber)}
+            className="btn-secondary w-full justify-center mb-3">
+            <RiDownload2Line /> Download Receipt
+          </button>
           <button onClick={resetAll} className="btn-primary w-full justify-center">New Transfer</button>
         </motion.div>
       </div>

@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useSelector, useDispatch } from 'react-redux';
 import {
   RiSearchLine, RiFilterLine, RiArrowDownLine, RiArrowUpLine,
-  RiDownloadLine, RiRefreshLine,
+  RiDownloadLine, RiRefreshLine, RiCloseLine, RiFileList3Line,
+  RiDownload2Line,
 } from 'react-icons/ri';
 import { fetchTransactions } from '../../store/slices/transactionSlice';
 import { safeFormat, safeCurrency } from '../../utils/dateHelpers';
+import { downloadReceipt } from '../../utils/downloadReceipt';
 
 const modeColor = { NEFT: 'badge-info', RTGS: 'badge-brand', IMPS: 'badge-warning', INTERNAL: 'badge-success', SALARY: 'badge-success', INTEREST: 'badge-info', SYSTEM: 'badge-info', CHARGE: 'badge-danger' };
 
@@ -16,6 +18,7 @@ export default function TransactionsPage() {
   const [filters, setFilters] = useState({ search: '', type: '', mode: '', startDate: '', endDate: '' });
   const [page, setPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
+  const [selectedTx, setSelectedTx] = useState(null); // transaction detail modal
 
   useEffect(() => {
     dispatch(fetchTransactions({ ...filters, page, limit: 25 }));
@@ -119,7 +122,11 @@ export default function TransactionsPage() {
                 <motion.div key={tx.id}
                   initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: idx * 0.02 }}
-                  className="flex sm:grid sm:grid-cols-12 gap-4 items-center px-5 py-3.5 border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition-colors"
+                  onClick={() => setSelectedTx(tx)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedTx(tx); } }}
+                  className="flex sm:grid sm:grid-cols-12 gap-4 items-center px-5 py-3.5 border-b border-white/[0.04] last:border-0 hover:bg-white/[0.03] transition-colors cursor-pointer"
                 >
                   {/* Icon */}
                   <div className="sm:col-span-1 flex-shrink-0">
@@ -179,6 +186,89 @@ export default function TransactionsPage() {
           </div>
         )}
       </div>
+
+      {/* Transaction detail modal + receipt download */}
+      <AnimatePresence>
+        {selectedTx && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+            onClick={() => setSelectedTx(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.94, opacity: 0, y: 12 }} animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.94, opacity: 0, y: 12 }}
+              onClick={(e) => e.stopPropagation()}
+              role="dialog" aria-modal="true" aria-label="Transaction details"
+              className="glass-card w-full max-w-md max-h-[85vh] overflow-y-auto"
+            >
+              {(() => {
+                const tx = selectedTx;
+                const isCredit = tx.transaction_type === 'credit';
+                const rows = [
+                  ['Reference', tx.reference_number],
+                  ['Date & Time', `${safeFormat(tx.created_at, 'dd MMM yyyy')} · ${safeFormat(tx.created_at, 'HH:mm:ss', '')}`],
+                  ['Mode', tx.transfer_mode],
+                  ['Status', (tx.status || '').toUpperCase()],
+                  ...(tx.to_account_name ? [['Beneficiary', tx.to_account_name]] : []),
+                  ...(tx.to_account_number ? [['Beneficiary A/c', tx.to_account_number]] : []),
+                  ...(tx.to_bank_name ? [['Bank', tx.to_bank_name]] : []),
+                  ...(tx.to_ifsc ? [['IFSC / SWIFT', tx.to_ifsc]] : []),
+                  ...(tx.description ? [['Remarks', tx.description]] : []),
+                  ['Balance After', `$${safeCurrency(tx.balance_after)}`],
+                ];
+                return (
+                  <div className="p-6">
+                    {/* Modal header */}
+                    <div className="flex items-start justify-between mb-5">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-11 h-11 rounded-2xl flex items-center justify-center ${isCredit ? 'bg-green-500/10' : 'bg-red-500/10'}`}>
+                          <RiFileList3Line className={isCredit ? 'text-green-400 text-xl' : 'text-red-400 text-xl'} />
+                        </div>
+                        <div>
+                          <h2 className="text-white font-bold text-base">Transaction Details</h2>
+                          <p className="text-dark-400 text-xs mt-0.5">{isCredit ? 'Money received' : 'Money sent'}</p>
+                        </div>
+                      </div>
+                      <button onClick={() => setSelectedTx(null)} className="btn-ghost p-2" aria-label="Close details">
+                        <RiCloseLine className="text-lg" />
+                      </button>
+                    </div>
+
+                    {/* Amount hero */}
+                    <div className={`rounded-2xl p-5 text-center mb-5 border ${isCredit ? 'bg-green-500/[0.06] border-green-500/20' : 'bg-red-500/[0.06] border-red-500/20'}`}>
+                      <p className={`text-3xl font-bold ${isCredit ? 'text-green-400' : 'text-red-400'}`}>
+                        {isCredit ? '+' : '-'}${safeCurrency(tx.amount)}
+                      </p>
+                      <span className={`badge ${modeColor[tx.transfer_mode] || 'badge-info'} text-[10px] mt-2`}>
+                        {tx.transfer_mode}
+                      </span>
+                    </div>
+
+                    {/* Details */}
+                    <div className="bg-dark-700/50 rounded-xl p-4 space-y-2.5 mb-5">
+                      {rows.map(([label, value]) => (
+                        <div key={label} className="flex justify-between gap-4 text-sm">
+                          <span className="text-dark-300 flex-shrink-0">{label}</span>
+                          <span className="text-white font-medium text-right break-all">{value}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Actions */}
+                    <button
+                      onClick={() => downloadReceipt(tx.id || tx.reference_number, tx.reference_number)}
+                      className="btn-primary w-full justify-center"
+                    >
+                      <RiDownload2Line /> Download Receipt (PDF)
+                    </button>
+                  </div>
+                );
+              })()}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

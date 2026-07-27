@@ -111,6 +111,19 @@ const transferLimiter = rateLimit({
 });
 
 /**
+ * Rate limiter — transaction receipt downloads.
+ * Generous enough for a real customer saving a few receipts, but low enough
+ * to stop bulk scraping / transaction-ID enumeration attempts.
+ */
+const receiptLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => tooManyRequests(res, 'Too many receipt downloads. Please try again in a few minutes.'),
+});
+
+/**
  * Helmet security headers
  */
 const securityHeaders = helmet({
@@ -189,6 +202,7 @@ module.exports = {
   openAccountLimiter,
   transferLimiter,
   swiftApprovalLimiter,
+  receiptLimiter,
   securityHeaders,
   sanitizeRequest,
   securityResponseHeaders,
