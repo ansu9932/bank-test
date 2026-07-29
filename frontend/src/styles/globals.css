@@ -439,17 +439,19 @@ html.theme-light .skeleton {
 }
 html.theme-light .modal-overlay { background-color: rgba(15, 23, 42, 0.4); }
 
-/* ── Text remapping ─────────────────��────────────────────────────────────── */
+/* ── Text remapping ───────────────��─��────────────────────────────────────── */
 html.theme-light .text-white { color: #101623; }
 html.theme-light .text-slate-200 { color: #2c3444; }
 html.theme-light .text-slate-300 { color: #3d4657; }
 html.theme-light .text-slate-400 { color: #5a6272; }
 html.theme-light .text-slate-500 { color: #6b7280; }
 html.theme-light .text-slate-600 { color: #7d8595; }
+html.theme-light .text-dark-100 { color: #2c3444; }
 html.theme-light .text-dark-200 { color: #4b5563; }
 html.theme-light .text-dark-300 { color: #5a6272; }
 html.theme-light .text-dark-400 { color: #6b7280; }
 html.theme-light .text-dark-500 { color: #8a93a3; }
+html.theme-light .text-dark-600 { color: #9aa1ad; }
 html.theme-light .text-gray-400 { color: #5a6272; }
 html.theme-light .text-gray-500 { color: #6b7280; }
 /* Colored accents darken one notch so they pass contrast on white */
@@ -504,7 +506,9 @@ html.theme-light .al-range { background: #d7dbe2; }
 
 /* ── White-opacity text variants → ink with boosted contrast ─────────────── */
 html.theme-light .text-white\/25 { color: rgba(16, 22, 35, 0.45); }
+html.theme-light .text-white\/35 { color: rgba(16, 22, 35, 0.52); }
 html.theme-light .text-white\/40 { color: rgba(16, 22, 35, 0.55); }
+html.theme-light .text-white\/45 { color: rgba(16, 22, 35, 0.58); }
 html.theme-light .text-white\/50 { color: rgba(16, 22, 35, 0.6); }
 html.theme-light .text-white\/55 { color: rgba(16, 22, 35, 0.62); }
 html.theme-light .text-white\/60 { color: rgba(16, 22, 35, 0.66); }
@@ -514,12 +518,16 @@ html.theme-light .text-white\/80 { color: rgba(16, 22, 35, 0.8); }
 html.theme-light .text-white\/85 { color: rgba(16, 22, 35, 0.85); }
 html.theme-light .text-white\/90 { color: rgba(16, 22, 35, 0.9); }
 html.theme-light .hover\:text-white:hover { color: #101623; }
+html.theme-light .hover\:text-white\/80:hover { color: rgba(16, 22, 35, 0.85); }
+html.theme-light .hover\:text-white\/90:hover { color: rgba(16, 22, 35, 0.9); }
 html.theme-light .placeholder-dark-300::placeholder { color: #9aa1ad; }
 
 /* ── Inline white-alpha text (public site uses style={{color:'rgba(255,…)'}}
       exclusively for muted copy — ~84 usages). Browsers serialize inline
       styles with spaces, so match the serialized form; !important beats
       the inline attribute. ─────────────────────────────────────────────── */
+html.theme-light [style*="color: rgba(255, 255, 255, 0.3)"] { color: rgba(16, 22, 35, 0.5) !important; }
+html.theme-light [style*="color: rgba(255, 255, 255, 0.35)"] { color: rgba(16, 22, 35, 0.52) !important; }
 html.theme-light [style*="color: rgba(255, 255, 255, 0.4)"] { color: rgba(16, 22, 35, 0.55) !important; }
 html.theme-light [style*="color: rgba(255, 255, 255, 0.45)"] { color: rgba(16, 22, 35, 0.58) !important; }
 html.theme-light [style*="color: rgba(255, 255, 255, 0.5)"] { color: rgba(16, 22, 35, 0.6) !important; }
@@ -528,6 +536,13 @@ html.theme-light [style*="color: rgba(255, 255, 255, 0.6)"] { color: rgba(16, 22
 html.theme-light [style*="color: rgba(255, 255, 255, 0.65)"] { color: rgba(16, 22, 35, 0.7) !important; }
 html.theme-light [style*="color: rgba(255, 255, 255, 0.7)"] { color: rgba(16, 22, 35, 0.74) !important; }
 html.theme-light [style*="color: rgba(255, 255, 255, 0.75)"] { color: rgba(16, 22, 35, 0.78) !important; }
+/* ── Pale inline accent colors (designed for dark surfaces) → darker on white.
+      React serializes hex → rgb() in the style attribute. ─────────────────── */
+html.theme-light [style*="color: rgb(252, 211, 77)"] { color: #a16207 !important; }   /* #fcd34d amber   */
+html.theme-light [style*="color: rgba(100, 255, 180, 0.9)"] { color: #15803d !important; } /* mint success */
+html.theme-light [style*="color: rgb(255, 128, 144)"] { color: #be123c !important; }  /* #ff8090 pink    */
+html.theme-light [style*="color: rgb(255, 179, 191)"] { color: #be123c !important; }  /* #ffb3bf pink    */
+html.theme-light [style*="color: rgb(203, 213, 225)"] { color: #475569 !important; }  /* #cbd5e1 slate   */
 /* …but inside red-painted sections they stay white-ish for contrast */
 html.theme-light .al-red-gradient [style*="color: rgba(255, 255, 255"],
 html.theme-light .bg-card-gradient [style*="color: rgba(255, 255, 255"],
@@ -890,3 +905,18 @@ html.theme-light .hover\:text-white\/70:hover { color: rgba(16, 22, 35, 0.75); }
 /* Colored accents darkened for contrast on white */
 html.theme-light .text-emerald-400 { color: #047857; }
 html.theme-light .text-amber-400 { color: #b45309; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   RECHARTS (EMI / SIP calculators, analytics) · light-theme coverage
+   Axis ticks are painted via SVG fill attributes (rgba(255,255,255,0.4))
+   which CSS attribute selectors can't catch — override the SVG text fill.
+   ══════════════════════════════════════════════════════════════════════════ */
+html.theme-light .recharts-cartesian-axis-tick text,
+html.theme-light .recharts-polar-angle-axis-tick text,
+html.theme-light .recharts-pie-label-text {
+  fill: rgba(16, 22, 35, 0.62) !important;
+}
+html.theme-light .recharts-cartesian-grid line {
+  stroke: rgba(16, 22, 35, 0.08) !important;
+}
+html.theme-light .recharts-legend-item-text { color: #4b5563 !important; }

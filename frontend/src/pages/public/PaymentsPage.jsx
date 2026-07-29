@@ -66,12 +66,12 @@ export default function PaymentsPage() {
             <button
               key={c}
               onClick={() => setActiveBill(c)}
-              className="px-5 py-2.5 rounded-full text-sm font-medium transition-all"
-              style={{
-                background: activeBill === c ? 'linear-gradient(135deg, #CC0000, #FF3333)' : 'rgba(255,255,255,0.05)',
-                color: '#fff',
-                border: `1px solid ${activeBill === c ? 'transparent' : 'rgba(255,255,255,0.12)'}`,
-              }}
+              className={`px-5 py-2.5 rounded-full text-sm font-medium transition-all ${activeBill === c ? '' : 'bg-white/5 border border-white/10 text-white'}`}
+              style={
+                activeBill === c
+                  ? { background: 'linear-gradient(135deg, #CC0000, #FF3333)', color: '#fff', border: '1px solid transparent' }
+                  : undefined
+              }
             >
               {c}
             </button>

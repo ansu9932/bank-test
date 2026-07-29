@@ -116,8 +116,8 @@ function Result({ label, value, muted, accent, big }) {
     >
       <span className="text-xs uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.5)' }}>{label}</span>
       <span
-        className={big ? 'text-lg font-bold' : 'text-sm font-bold'}
-        style={{ color: accent ? '#FF3333' : muted ? 'rgba(255,255,255,0.8)' : '#fff' }}
+        className={`${big ? 'text-lg font-bold' : 'text-sm font-bold'} ${accent ? '' : muted ? 'text-white/80' : 'text-white'}`}
+        style={accent ? { color: '#FF3333' } : undefined}
       >
         {value}
       </span>
