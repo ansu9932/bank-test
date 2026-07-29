@@ -134,7 +134,7 @@ export default function CareersPage() {
       </Section>
 
       {/* Legal compliance statements */}
-      <section className="relative" style={{ background: '#0E0E0E', borderTop: '1px solid rgba(255,255,255,0.06)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+      <section className="relative al-keep-dark" style={{ background: '#0E0E0E', borderTop: '1px solid rgba(255,255,255,0.06)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
         <div className="max-w-4xl mx-auto px-4 sm:px-8 lg:px-12 py-14 lg:py-20 text-center">
           <SectionTitle eyebrow="Equal Opportunity" title="Legal Compliance Statements" />
           <div className="space-y-5">

@@ -439,7 +439,7 @@ html.theme-light .skeleton {
 }
 html.theme-light .modal-overlay { background-color: rgba(15, 23, 42, 0.4); }
 
-/* ── Text remapping ───────────────��─��────────────────────────────────────── */
+/* ── Text remapping ───────────────���─��────────────────────────────────────── */
 html.theme-light .text-white { color: #101623; }
 html.theme-light .text-slate-200 { color: #2c3444; }
 html.theme-light .text-slate-300 { color: #3d4657; }
@@ -559,7 +559,16 @@ html.theme-light .al-keep-dark .text-white\/70 { color: rgba(255, 255, 255, 0.7)
 html.theme-light .al-keep-dark .text-white\/60 { color: rgba(255, 255, 255, 0.6); }
 html.theme-light .al-keep-dark .text-white\/40 { color: rgba(255, 255, 255, 0.4); }
 html.theme-light .al-keep-dark .text-white\/25 { color: rgba(255, 255, 255, 0.25); }
-html.theme-light .al-keep-dark [style*="color: rgba(255, 255, 255"] { color: unset; }
+/* Inline-style remaps above use !important, so the revert must too. `unset`
+   would inherit rather than restore the inline value, so approximate with a
+   readable white-alpha for muted copy on the kept-dark surface. */
+html.theme-light .al-keep-dark [style*="color: rgba(255, 255, 255, 0.3"],
+html.theme-light .al-keep-dark [style*="color: rgba(255, 255, 255, 0.4"],
+html.theme-light .al-keep-dark [style*="color: rgba(255, 255, 255, 0.5"] { color: rgba(255, 255, 255, 0.55) !important; }
+html.theme-light .al-keep-dark [style*="color: rgba(255, 255, 255, 0.6"],
+html.theme-light .al-keep-dark [style*="color: rgba(255, 255, 255, 0.7"] { color: rgba(255, 255, 255, 0.75) !important; }
+html.theme-light .al-keep-dark [style*="color: rgba(255, 255, 255, 0.8"],
+html.theme-light .al-keep-dark [style*="color: rgba(255, 255, 255, 0.9"] { color: rgba(255, 255, 255, 0.88) !important; }
 
 /* ── Brand-red containers KEEP white text (must come after remaps) ───────── */
 /* Catch-all: every text-white* variant inside a red-painted container stays
@@ -679,7 +688,7 @@ html.theme-light .theme-toggle-fab {
    ALISTER BANK · ADVANCED ANIMATION UTILITIES (v2 polish pass)
    Aurora drift · animated gradient borders · button shine · text shimmer ·
    spotlight cards · icon micro-interactions · marquee · responsive helpers
-   ══════════════════════════════════════════════════════════════════════════ */
+   ════════════════════════════════════════════════════════���═════════════════ */
 
 /* ── Aurora: slow drifting red glow blobs for hero backgrounds ──────────── */
 @keyframes al-aurora {

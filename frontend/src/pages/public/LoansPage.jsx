@@ -75,7 +75,7 @@ function Row({ k, v, accent }) {
   return (
     <div className="flex items-center justify-between">
       <dt style={{ color: 'rgba(255,255,255,0.5)' }}>{k}</dt>
-      <dd className="font-semibold" style={{ color: accent ? '#FF3333' : '#fff' }}>{v}</dd>
+      <dd className={`font-semibold ${accent ? '' : 'text-white'}`} style={accent ? { color: '#FF3333' } : undefined}>{v}</dd>
     </div>
   );
 }

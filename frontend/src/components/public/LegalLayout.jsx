@@ -93,10 +93,10 @@ export default function LegalLayout({ eyebrow, title, highlight, banner, section
                   <button
                     key={s.id}
                     onClick={() => jumpTo(s.id)}
-                    className="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors"
+                    className={`w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${isActive ? 'text-white' : ''}`}
                     style={{
                       background: isActive ? 'rgba(204,0,0,0.12)' : 'transparent',
-                      color: isActive ? '#fff' : 'rgba(255,255,255,0.55)',
+                      ...(isActive ? {} : { color: 'rgba(255,255,255,0.55)' }),
                     }}
                   >
                     <span
