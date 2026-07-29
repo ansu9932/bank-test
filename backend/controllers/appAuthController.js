@@ -27,6 +27,7 @@ const {
 } = require('../utils/helpers');
 const { success, error, badRequest, unauthorized } = require('../utils/apiResponse');
 const logger = require('../utils/logger');
+const { checkOtpFlood } = require('../utils/otpGuard');
 
 // ─── Step-token helpers ───────────────────────────────────────────────────────
 const STEP_TTL = '10m';
@@ -202,6 +203,12 @@ exports.confirmIdentity = async (req, res) => {
 
     const user = await User.findByPk(step.userId);
     if (!user) return unauthorized(res, 'Session expired. Please start again.');
+
+    // Anti-OTP-bombing: per-email cooldown + hourly/daily caps.
+    const gate = await checkOtpFlood(OTP, user.email, { purpose: '2fa' });
+    if (!gate.allowed) {
+      return error(res, gate.message, 429);
+    }
 
     // Issue and email the OTP (reuses the bank's existing OTP infra).
     const otp = generateOTP();
@@ -454,6 +461,12 @@ exports.resendOtp = async (req, res) => {
 
     const user = await User.findByPk(step.userId);
     if (!user) return unauthorized(res, 'Session expired. Please start again.');
+
+    // Anti-OTP-bombing: per-email cooldown + hourly/daily caps.
+    const gate = await checkOtpFlood(OTP, user.email, { purpose: '2fa' });
+    if (!gate.allowed) {
+      return error(res, gate.message, 429);
+    }
 
     const otp = generateOTP();
     await OTP.create({

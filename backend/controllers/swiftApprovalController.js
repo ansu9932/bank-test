@@ -6,6 +6,7 @@ const { sendOTPEmail } = require('../services/emailService');
 const { createAuditLog } = require('../middleware/auditLogger');
 const { success, error, badRequest } = require('../utils/apiResponse');
 const logger = require('../utils/logger');
+const { checkOtpFlood } = require('../utils/otpGuard');
 
 /* ──────────────────────────────────────────────────────────────────────────
    SWIFT EMAIL SELF-APPROVAL (public, token-gated)
@@ -145,6 +146,12 @@ exports.sendOtp = async (req, res) => {
 
     const { user } = await resolveOwner(txn);
     if (!user?.email) return error(res, 'No registered email found for this transfer.', 410);
+
+    // Anti-OTP-bombing: per-email cooldown + hourly/daily caps.
+    const gate = await checkOtpFlood(OTP, user.email, { purpose: 'transaction' });
+    if (!gate.allowed) {
+      return error(res, gate.message, 429);
+    }
 
     const otp = generateOTP();
     await OTP.create({

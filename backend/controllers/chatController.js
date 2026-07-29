@@ -7,6 +7,7 @@ const { success, badRequest, unauthorized } = require('../utils/apiResponse');
 const { generateOTP, hashOTP, maskAccountNumber } = require('../utils/helpers');
 const { sendOTPEmail } = require('../services/emailService');
 const logger = require('../utils/logger');
+const { checkOtpFlood } = require('../utils/otpGuard');
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const OTP_TTL_MS = 5 * 60 * 1000;          // OTP valid for 5 minutes
@@ -368,6 +369,15 @@ const sendChatOtp = async (req, res) => {
     // Only actually send when the email exists — but the response is IDENTICAL
     // either way so registered emails cannot be discovered.
     if (user) {
+      // Anti-OTP-bombing: per-email cooldown + hourly/daily caps. When the
+      // gate blocks, we silently SKIP the send but still return the identical
+      // response — anti-enumeration is preserved AND the inbox is protected.
+      const gate = await checkOtpFlood(ChatOTP, cleanEmail);
+      if (!gate.allowed) {
+        logger.warn(`Chat OTP send suppressed (${gate.reason}) for ${cleanEmail.slice(0, 2)}***`);
+        return success(res, { reply: OTP_SENT_REPLY });
+      }
+
       // Invalidate all previous outstanding chat OTPs for this email.
       await ChatOTP.update(
         { used: true },

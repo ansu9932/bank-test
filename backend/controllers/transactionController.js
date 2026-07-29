@@ -9,6 +9,7 @@ const { sendTransferAlertEmail, sendOTPEmail } = require('../services/emailServi
 const { createAuditLog } = require('../middleware/auditLogger');
 const { success, error, badRequest, notFound, forbidden } = require('../utils/apiResponse');
 const logger = require('../utils/logger');
+const { checkOtpFlood } = require('../utils/otpGuard');
 const moment = require('moment');
 
 // ─── Get Transactions ─────────────────────────────────────────────────────────
@@ -245,6 +246,12 @@ exports.requestTransferOTP = async (req, res) => {
   try {
     const user = await User.findByPk(req.user.id);
     if (!user) return notFound(res, 'User not found.');
+
+    // Anti-OTP-bombing: per-email cooldown + hourly/daily caps.
+    const gate = await checkOtpFlood(OTP, user.email, { purpose: 'transaction' });
+    if (!gate.allowed) {
+      return error(res, gate.message, 429);
+    }
 
     await OTP.update(
       { used: true },

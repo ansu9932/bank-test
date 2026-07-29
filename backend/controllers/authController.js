@@ -13,6 +13,7 @@ const { success, error, badRequest, unauthorized, notFound, linkError } = requir
 const logger = require('../utils/logger');
 const { SecureLink } = require('../models');
 const { issueHandshake, consumeHandshake } = require('../utils/loginHandshake');
+const { checkOtpFlood } = require('../utils/otpGuard');
 const { issueCaptcha, verifyCaptcha } = require('../utils/simpleCaptcha');
 
 // generateSecureToken() = crypto.randomBytes(64).toString('hex') → 128 hex chars.
@@ -363,6 +364,12 @@ exports.sendOTP = async (req, res) => {
   try {
     const { email, purpose } = req.body;
     if (!email || !purpose) return badRequest(res, 'Email and purpose are required.');
+
+    // Anti-OTP-bombing: per-email cooldown + hourly/daily caps.
+    const gate = await checkOtpFlood(OTP, email, { purpose });
+    if (!gate.allowed) {
+      return error(res, gate.message, 429);
+    }
 
     // Invalidate old OTPs
     await OTP.update({ used: true }, { where: { email, purpose, used: false } });
@@ -726,7 +733,7 @@ exports.resetPassword = async (req, res) => {
   }
 };
 
-// ─── Verify Setup Link ────────────────────────────────────────────────────────
+// ─── Verify Setup Link ───────────��────────────────────────────────────────────
 exports.verifySetup = async (req, res) => {
   try {
     const { token } = req.params;
