@@ -522,6 +522,18 @@ html.theme-light .hover\:text-white\/80:hover { color: rgba(16, 22, 35, 0.85); }
 html.theme-light .hover\:text-white\/90:hover { color: rgba(16, 22, 35, 0.9); }
 html.theme-light .placeholder-dark-300::placeholder { color: #9aa1ad; }
 
+/* ── Form inputs authored for dark surfaces (login, forgot-password, contact,
+      loans). They hardcode white text + white-alpha placeholders, which are
+      invisible on white — remap both for light mode. ─────────────────────── */
+html.theme-light .placeholder\:text-white\/30::placeholder { color: rgba(16, 22, 35, 0.45); }
+html.theme-light .fp-input,
+html.theme-light .al-cinput,
+html.theme-light .al-input { color: #101623 !important; }
+html.theme-light .fp-input::placeholder,
+html.theme-light .al-cinput::placeholder,
+html.theme-light .al-input::placeholder { color: rgba(16, 22, 35, 0.45) !important; }
+html.theme-light .fp-input[type="date"] { color-scheme: light; }
+
 /* ── Inline white-alpha text (public site uses style={{color:'rgba(255,…)'}}
       exclusively for muted copy — ~84 usages). Browsers serialize inline
       styles with spaces, so match the serialized form; !important beats
