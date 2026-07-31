@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { RiUploadCloud2Line, RiCheckLine, RiLoader4Line, RiShieldCheckLine } from 'react-icons/ri';
-import api from '../../../services/api';
 import toast from 'react-hot-toast';
 import { compressImage } from '../../../utils/imageCompress';
+import { verifyPanCached, getCachedPanResult } from '../../../utils/panVerifyCache';
 import {
   getDocsForCountry, getCountryByCode, applyTransform, formatAadhaar,
 } from '../../../config/kycRequirements';
@@ -110,6 +110,26 @@ export default function StepDocuments({ form, update, errors = {}, nameLocked = 
     }
     if (pan === dispatchedPan.current) return;
 
+    // ── Cached result (user came Back and returned, or reloaded the tab) ────
+    // Restore the verified state instantly with ZERO API calls — every
+    // Cashfree lookup is billed, so a PAN is only ever verified once per session.
+    const cached = getCachedPanResult(pan);
+    if (cached) {
+      dispatchedPan.current = pan;
+      if (cached.verified && cached.name) {
+        const parts = String(cached.name).trim().split(/\s+/);
+        update({ firstName: parts.shift() || '', lastName: parts.join(' ') });
+        if (setNameLocked) setNameLocked(true);
+        setPanVerifyOk(true);
+        setPanVerifyMsg(`Verified: ${cached.name}`);
+      } else {
+        if (setNameLocked) setNameLocked(false);
+        setPanVerifyOk(false);
+        setPanVerifyMsg(cached.message || 'This PAN could not be verified. Please re-check the number.');
+      }
+      return;
+    }
+
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       dispatchedPan.current = pan;
@@ -117,9 +137,8 @@ export default function StepDocuments({ form, update, errors = {}, nameLocked = 
       setPanVerifyOk(false);
       setPanVerifyMsg('Verifying your identity with income tax registry…');
       try {
-        const { data } = await api.post('/kyc/verify-pan', { pan });
+        const result = await verifyPanCached(pan);
         if (pan !== (form.panNumber || '').toUpperCase()) return;
-        const result = data?.data || {};
         if (result.verified && result.name) {
           const parts = String(result.name).trim().split(/\s+/);
           const firstName = parts.shift() || '';
@@ -130,7 +149,6 @@ export default function StepDocuments({ form, update, errors = {}, nameLocked = 
           setPanVerifyMsg(`Verified: ${result.name}`);
           toast.success('PAN verified — name auto-filled from income tax registry.');
         } else {
-          dispatchedPan.current = '';
           if (setNameLocked) setNameLocked(false);
           setPanVerifyOk(false);
           setPanVerifyMsg(result.message || 'This PAN could not be verified. Please re-check the number.');

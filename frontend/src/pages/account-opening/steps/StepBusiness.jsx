@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { RiUploadCloud2Line, RiCheckLine, RiLoader4Line, RiBuilding2Line } from 'react-icons/ri';
+import { RiUploadCloud2Line, RiCheckLine, RiLoader4Line, RiBuilding2Line, RiShieldCheckLine } from 'react-icons/ri';
+import toast from 'react-hot-toast';
 import { compressImage } from '../../../utils/imageCompress';
+import { verifyPanCached, getCachedPanResult } from '../../../utils/panVerifyCache';
 
 // ── Business entity types recognised for Indian current accounts ─────────────
 export const BUSINESS_TYPES = [
@@ -143,6 +145,80 @@ export default function StepBusiness({ form, update, errors = {} }) {
 
   const ring = (k) => (errors[k] ? ' !border-brand-500 focus:!border-brand-500' : '');
 
+  // ── Business PAN → registered company-name auto-fetch ──────────────────────
+  // Same Cashfree lookup as the personal PAN, via the shared panVerifyCache so
+  // the PAID API is hit at most ONCE per PAN per session — navigating Back and
+  // returning to this step restores the verified state from cache with zero
+  // network calls.
+  const [bizPanVerifying, setBizPanVerifying] = useState(false);
+  const [bizPanMsg, setBizPanMsg] = useState('');
+  const [bizPanOk, setBizPanOk] = useState(false);
+  const dispatchedBizPan = useRef('');
+  const bizDebounceRef = useRef(null);
+
+  // Apply a definitive verification result to the UI + form.
+  const applyBizPanResult = useCallback((result) => {
+    if (result.verified && result.name) {
+      // The registry's registered_name for a business PAN IS the legal entity
+      // name — auto-fill the company name so the account is titled exactly as
+      // registered with the income tax department.
+      update({ companyName: String(result.name).trim() });
+      setBizPanOk(true);
+      setBizPanMsg(`Verified: ${result.name}`);
+    } else {
+      setBizPanOk(false);
+      setBizPanMsg(result.message || 'This PAN could not be verified. Please re-check the number.');
+    }
+  }, [update]);
+
+  useEffect(() => {
+    const pan = (form.businessPan || '').toUpperCase();
+
+    if (!BIZ_PAN_RE.test(pan)) {
+      if (bizDebounceRef.current) clearTimeout(bizDebounceRef.current);
+      if (bizPanMsg) { setBizPanMsg(''); setBizPanOk(false); }
+      return;
+    }
+    if (pan === dispatchedBizPan.current) return;
+
+    // Cached (user came Back, or already verified the same PAN elsewhere) —
+    // restore instantly, NO paid API call.
+    const cached = getCachedPanResult(pan);
+    if (cached) {
+      dispatchedBizPan.current = pan;
+      applyBizPanResult(cached);
+      return;
+    }
+
+    if (bizDebounceRef.current) clearTimeout(bizDebounceRef.current);
+    bizDebounceRef.current = setTimeout(async () => {
+      dispatchedBizPan.current = pan;
+      setBizPanVerifying(true);
+      setBizPanOk(false);
+      setBizPanMsg('Verifying business PAN with income tax registry…');
+      try {
+        const result = await verifyPanCached(pan);
+        if (pan !== (form.businessPan || '').toUpperCase()) return;
+        applyBizPanResult(result);
+        if (result.verified && result.name) {
+          toast.success('Business PAN verified — company name auto-filled from registry.');
+        }
+      } catch (err) {
+        if (pan === (form.businessPan || '').toUpperCase()) dispatchedBizPan.current = '';
+        setBizPanOk(false);
+        setBizPanMsg(
+          err?.response?.data?.message
+          || 'Verification is temporarily unavailable. Please try again shortly.'
+        );
+      } finally {
+        setBizPanVerifying(false);
+      }
+    }, 600);
+
+    return () => { if (bizDebounceRef.current) clearTimeout(bizDebounceRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.businessPan]);
+
   return (
     <div>
       <h3 className="font-display text-xl font-700 text-white mb-1 flex items-center gap-2">
@@ -163,8 +239,21 @@ export default function StepBusiness({ form, update, errors = {} }) {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
         <div className="sm:col-span-2">
-          <Field label="Company / Business Name *" error={errors.companyName} hint="Exactly as on your registration documents — this becomes your account name.">
-            <input className={`input-field${ring('companyName')}`} value={form.companyName} onChange={set('companyName')} placeholder="Acme Trading Pvt Ltd" maxLength={120} />
+          <Field
+            label="Company / Business Name *"
+            error={errors.companyName}
+            hint={bizPanOk
+              ? 'Auto-filled from the income tax registry via your verified business PAN.'
+              : 'Exactly as on your registration documents — this becomes your account name.'}
+          >
+            <input
+              className={`input-field${ring('companyName')} ${bizPanOk ? 'opacity-70 cursor-not-allowed' : ''}`}
+              value={form.companyName}
+              onChange={set('companyName')}
+              placeholder="Acme Trading Pvt Ltd"
+              maxLength={120}
+              readOnly={bizPanOk}
+            />
           </Field>
         </div>
         <Field label="Business Entity Type *" error={errors.businessType}>
@@ -178,8 +267,26 @@ export default function StepBusiness({ form, update, errors = {} }) {
         <Field label="Date of Incorporation / Establishment *" error={errors.dateOfIncorporation}>
           <input className={`input-field${ring('dateOfIncorporation')}`} type="date" value={form.dateOfIncorporation} onChange={set('dateOfIncorporation')} max={new Date().toISOString().split('T')[0]} />
         </Field>
-        <Field label="Business PAN *" error={errors.businessPan} hint="PAN issued in the business / firm name (format: ABCDE1234F)">
-          <input className={`input-field${ring('businessPan')}`} value={form.businessPan} onChange={setUpper('businessPan', 10)} placeholder="ABCDE1234F" maxLength={10} />
+        <Field label="Business PAN *" error={errors.businessPan} hint={bizPanMsg ? undefined : 'PAN issued in the business / firm name (format: ABCDE1234F)'}>
+          <input
+            className={`input-field${ring('businessPan')} ${(bizPanVerifying || bizPanOk) ? 'opacity-70 cursor-not-allowed' : ''}`}
+            value={form.businessPan}
+            onChange={setUpper('businessPan', 10)}
+            placeholder="ABCDE1234F"
+            maxLength={10}
+            autoCapitalize="characters"
+            style={{ textTransform: 'uppercase' }}
+            disabled={bizPanVerifying}
+            readOnly={bizPanOk}
+          />
+          {bizPanMsg && (
+            <p className={`text-[11px] mt-1 flex items-center gap-1.5 ${bizPanOk ? 'text-green-400' : bizPanVerifying ? 'text-brand-300' : 'text-amber-300'}`}>
+              {bizPanVerifying
+                ? <RiLoader4Line className="animate-spin" />
+                : bizPanOk ? <RiShieldCheckLine /> : <span>ℹ</span>}
+              <span>{bizPanMsg}</span>
+            </p>
+          )}
         </Field>
         <Field label="Trade License Number *" error={errors.tradeLicenseNumber} hint="Municipal trade license / Shops &amp; Establishment registration">
           <input className={`input-field${ring('tradeLicenseNumber')}`} value={form.tradeLicenseNumber} onChange={set('tradeLicenseNumber')} placeholder="TL/2024/012345" maxLength={50} />
