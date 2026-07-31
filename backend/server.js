@@ -138,6 +138,28 @@ app.use(sanitizeRequest);
 const { serveUpload, UPLOADS_ROOT } = require('./middleware/secureUploads');
 app.use('/uploads', serveUpload);
 
+// ─── API responses must NEVER be cached ───────────────────────────────────────
+// ROOT CAUSE of "admin panel doesn't show recent transactions": API JSON had
+// NO Cache-Control header, so the Cloudflare edge (which already served stale
+// APK builds before — see /downloads below) and the browser's HTTP cache could
+// return an OLD copy of GET /api/admin/transactions (and user /transactions).
+// New transactions then don't appear until the stale cache expires.
+//
+// Fix, applied to EVERY /api response:
+//   • Cache-Control: no-store  — browsers must not store or reuse the body
+//   • CDN-Cache-Control: no-store — Cloudflare/edge must never cache it
+//   • Pragma/Expires — belt-and-braces for old proxies
+// ETag generation is also disabled (below) so Express never answers 304 and
+// lets a browser resurrect a stale cached body for live banking data.
+app.set('etag', false);
+app.use('/api/', (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.setHeader('CDN-Cache-Control', 'no-store');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
+
 // ─── Rate Limiting ────────────────────────────────────────────────────────────
 app.use('/api/', apiLimiter);
 

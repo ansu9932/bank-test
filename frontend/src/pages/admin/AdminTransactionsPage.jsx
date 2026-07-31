@@ -178,7 +178,9 @@ export default function AdminTransactionsPage() {
   const fetch = async () => {
     setLoading(true);
     try {
-      const { data } = await api.get('/admin/transactions', { params: { search, flagged: flagged||undefined, page, limit: 30 }, headers });
+      // `_ts` cache-buster: guarantees a unique URL per request so any stale
+      // edge/browser cache entry from before the no-store fix is bypassed too.
+      const { data } = await api.get('/admin/transactions', { params: { search, flagged: flagged||undefined, page, limit: 30, _ts: Date.now() }, headers });
       setTxns(data.data.transactions);
     } catch { toast.error('Failed to fetch'); }
     finally { setLoading(false); }
@@ -228,6 +230,14 @@ export default function AdminTransactionsPage() {
 
         {loading ? (
           <div className="p-8 text-center"><div className="spinner w-8 h-8 mx-auto" style={{ borderWidth: 3 }} /></div>
+        ) : (txns || []).length === 0 ? (
+          <div className="p-10 text-center">
+            <RiFileList3Line className="text-3xl text-dark-400 mx-auto mb-2" />
+            <p className="text-white/70 text-sm">No transactions found</p>
+            <p className="text-dark-400 text-xs mt-1">
+              {search || flagged ? 'Try clearing the search or the flagged filter.' : 'New transactions will appear here as they happen.'}
+            </p>
+          </div>
         ) : (txns || []).map(tx => (
           <div
             key={tx.id}

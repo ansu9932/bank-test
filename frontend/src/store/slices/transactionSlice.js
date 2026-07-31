@@ -4,7 +4,9 @@ import api from '../../services/api';
 export const fetchTransactions = createAsyncThunk('transaction/fetchAll',
   async (params = {}, { rejectWithValue }) => {
     try {
-      const { data } = await api.get('/transactions', { params });
+      // `_ts` cache-buster: unique URL per request so a stale edge/browser
+      // cache entry can never serve an outdated transaction list.
+      const { data } = await api.get('/transactions', { params: { ...params, _ts: Date.now() } });
       return data.data;
     } catch (err) {
       return rejectWithValue(err.response?.data?.message);

@@ -727,6 +727,9 @@ exports.getAllTransactions = async (req, res) => {
       pagination: { total: count, page: parseInt(page), totalPages: Math.ceil(count / lim) },
     });
   } catch (err) {
+    // Never swallow this silently — an invisible 500 here is exactly what
+    // makes the admin transactions list look "empty" with no trace to debug.
+    logger.error(`Admin getAllTransactions error: ${err.message}`);
     return error(res, 'Failed to fetch transactions.');
   }
 };
