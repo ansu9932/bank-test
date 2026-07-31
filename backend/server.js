@@ -437,6 +437,17 @@ async function ensureUserColumns() {
     // token itself lives hashed in the transaction's tags — no other schema
     // change is needed for the email self-approval flow.
     swift_email_approval: { type: DataTypes.BOOLEAN, allowNull: true, defaultValue: false },
+    // Business Elite — company/entity KYC details (India current-account
+    // norms). Populated only for business_elite applications; the account is
+    // titled with company_name. All nullable, plain STRINGs (no ENUMs).
+    company_name: { type: DataTypes.STRING(200), allowNull: true },
+    business_type: { type: DataTypes.STRING(30), allowNull: true },
+    business_pan: { type: DataTypes.STRING(10), allowNull: true },
+    gstin: { type: DataTypes.STRING(15), allowNull: true },
+    cin: { type: DataTypes.STRING(21), allowNull: true },
+    trade_license_number: { type: DataTypes.STRING(50), allowNull: true },
+    udyam_number: { type: DataTypes.STRING(25), allowNull: true },
+    date_of_incorporation: { type: DataTypes.DATEONLY, allowNull: true },
   };
 
   for (const [name, def] of Object.entries(columns)) {

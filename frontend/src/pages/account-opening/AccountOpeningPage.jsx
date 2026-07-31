@@ -518,7 +518,7 @@ export default function AccountOpeningPage() {
                 <RiArrowLeftLine /> Previous
               </motion.button>
 
-              {step < 5 ? (
+              {step < totalSteps ? (
                 <motion.button
                   onClick={next}
                   disabled={!currentStepValid}

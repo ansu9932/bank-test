@@ -34,7 +34,9 @@ const User = sequelize.define('User', {
   // Populated only when account_type = 'business_elite'. The account is opened
   // in the COMPANY's name (company_name), per RBI current-account KYC norms.
   company_name: { type: DataTypes.STRING(200) },
-  business_type: { type: DataTypes.ENUM('sole_proprietorship', 'partnership', 'llp', 'private_limited', 'public_limited', 'opc') },
+  // Plain STRING (not ENUM) so the live alter:false DB never hits the stale-
+  // ENUM "Data truncated" problem; values are whitelisted in validateOpenAccount.
+  business_type: { type: DataTypes.STRING(30) },
   business_pan: { type: DataTypes.STRING(10) },        // company/firm PAN (mandatory)
   gstin: { type: DataTypes.STRING(15) },               // GST registration (if registered)
   cin: { type: DataTypes.STRING(21) },                 // Corporate Identification Number (companies)
