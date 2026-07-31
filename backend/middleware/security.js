@@ -124,6 +124,25 @@ const receiptLimiter = rateLimit({
 });
 
 /**
+ * Rate limiter — "email my statement" requests (anti-bot / anti-spam).
+ *
+ * Statement emails carry a PDF attachment generated server-side and sent via
+ * the SMTP relay, so an abuser hammering the endpoint could (a) spam the
+ * customer's inbox, (b) burn our SMTP quota, and (c) tie up CPU generating
+ * PDFs. A real customer needs at most a couple of these per session, so the
+ * ceiling is deliberately strict: 3 requests per 15 minutes per IP. A second,
+ * per-USER cooldown + daily cap is enforced in the controller (an IP limiter
+ * alone can be dodged by rotating IPs / botnets).
+ */
+const statementEmailLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => tooManyRequests(res, 'Too many statement email requests. Please try again in 15 minutes.'),
+});
+
+/**
  * Helmet security headers
  */
 const securityHeaders = helmet({
@@ -203,6 +222,7 @@ module.exports = {
   transferLimiter,
   swiftApprovalLimiter,
   receiptLimiter,
+  statementEmailLimiter,
   securityHeaders,
   sanitizeRequest,
   securityResponseHeaders,

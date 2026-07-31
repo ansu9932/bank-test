@@ -379,100 +379,222 @@ const resetDailyLimitIfNeeded = async (account) => {
   }
 };
 
+// ─── Statement helpers (shared by download + email delivery) ─────────────────
+
+// The name printed as "Account Holder" on official statements. Business Elite
+// accounts are opened in the COMPANY's name, so the statement is titled with
+// the registered company name instead of the applicant's personal name.
+const statementHolderName = (user) =>
+  (user.account_type === 'business_elite' && user.company_name)
+    ? user.company_name
+    : `${user.first_name} ${user.last_name}`;
+
+// Fetch the statement's transactions for an account + optional date range.
+const fetchStatementTransactions = async (accountId, startDate, endDate) => {
+  const where = { account_id: accountId, status: 'success' };
+  if (startDate && endDate) {
+    where.created_at = {
+      [Op.between]: [new Date(startDate), new Date(endDate + 'T23:59:59')],
+    };
+  }
+  return Transaction.findAll({ where, order: [['created_at', 'DESC']], limit: 500 });
+};
+
+// Render the official statement PDF into the given PDFDocument (piped by the
+// caller either to the HTTP response, or into a Buffer for email delivery).
+const renderStatementPDF = (doc, { user, account, transactions, startDate, endDate }) => {
+  // Header
+  doc.rect(0, 0, 612, 100).fill('#c8102e');
+  doc.fillColor('#ffffff').fontSize(24).font('Helvetica-Bold').text('ALISTER BANK', 50, 30);
+  doc.fontSize(10).font('Helvetica').text('Account Statement', 50, 60);
+  doc.text(`Generated: ${new Date().toLocaleString()}`, 350, 60);
+
+  // Account Info
+  doc.fillColor('#000000').moveDown(4);
+  doc.fontSize(11).font('Helvetica-Bold').text('Account Holder: ', 50, 120, { continued: true });
+  doc.font('Helvetica').text(statementHolderName(user));
+  doc.font('Helvetica-Bold').text('Account Number: ', 50, 138, { continued: true });
+  doc.font('Helvetica').text(maskAccountNumber(account.account_number));
+  doc.font('Helvetica-Bold').text('SWIFT Code: ', 50, 156, { continued: true });
+  doc.font('Helvetica').text(account.swift_code || 'ALSTINBB');
+  doc.font('Helvetica-Bold').text('Current Balance: ', 50, 174, { continued: true });
+  doc.font('Helvetica').text(`$${parseFloat(account.balance).toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
+
+  // Period
+  if (startDate && endDate) {
+    doc.font('Helvetica-Bold').text('Period: ', 50, 192, { continued: true });
+    doc.font('Helvetica').text(`${startDate} to ${endDate}`);
+  }
+
+  // Separator
+  doc.moveTo(50, 215).lineTo(562, 215).strokeColor('#c8102e').lineWidth(2).stroke();
+
+  // Table header
+  const tableTop = 230;
+  doc.rect(50, tableTop, 512, 24).fill('#1a1a2e');
+  doc.fillColor('#ffffff').fontSize(9).font('Helvetica-Bold');
+  doc.text('DATE', 55, tableTop + 7);
+  doc.text('DESCRIPTION', 120, tableTop + 7);
+  doc.text('REF NO.', 310, tableTop + 7);
+  doc.text('DEBIT', 400, tableTop + 7);
+  doc.text('CREDIT', 450, tableTop + 7);
+  doc.text('BALANCE', 505, tableTop + 7);
+
+  // Rows
+  let y = tableTop + 30;
+  transactions.forEach((tx, idx) => {
+    if (y > 750) { doc.addPage(); y = 50; }
+    if (idx % 2 === 0) doc.rect(50, y - 4, 512, 20).fill('#f9f9f9');
+    doc.fillColor('#000000').fontSize(8).font('Helvetica');
+    doc.text(moment(tx.created_at).format('DD/MM/YY'), 55, y);
+    const desc = (tx.description || tx.narration || '').slice(0, 30);
+    doc.text(desc, 120, y);
+    doc.text((tx.reference_number || '').slice(0, 16), 310, y);
+    doc.fillColor(tx.transaction_type === 'debit' ? '#dc2626' : '#555');
+    doc.text(tx.transaction_type === 'debit' ? `$${parseFloat(tx.amount).toFixed(2)}` : '-', 400, y);
+    doc.fillColor(tx.transaction_type === 'credit' ? '#16a34a' : '#555');
+    doc.text(tx.transaction_type === 'credit' ? `$${parseFloat(tx.amount).toFixed(2)}` : '-', 450, y);
+    doc.fillColor('#000000');
+    doc.text(`$${parseFloat(tx.balance_after || 0).toFixed(2)}`, 505, y);
+    y += 20;
+  });
+
+  // Footer
+  doc.moveDown(2);
+  doc.fontSize(8).fillColor('#888').text(
+    'This is a system-generated statement. © Alister Bank. SWIFT: ALSTINBB.',
+    50, y + 20, { align: 'center', width: 512 }
+  );
+
+  doc.end();
+};
+
+// Validate a requested statement date range. Returns an error string or null.
+const validateStatementRange = (startDate, endDate) => {
+  if (!startDate || !endDate) return 'Please select a date range.';
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 'Invalid date range.';
+  if (start > end) return 'Start date must be before end date.';
+  if ((end - start) > 366 * 24 * 60 * 60 * 1000) return 'Statement range cannot exceed 1 year.';
+  return null;
+};
+
 // ─── Download PDF Statement ───────────────────────────────────────────────────
 exports.downloadStatement = async (req, res) => {
   try {
-    const { startDate, endDate, format } = req.query;
+    const { startDate, endDate } = req.query;
     const account = await Account.findOne({ where: { user_id: req.user.id } });
     if (!account) return notFound(res, 'Account not found.');
 
-    const where = { account_id: account.id, status: 'success' };
-    if (startDate && endDate) {
-      where.created_at = {
-        [Op.between]: [new Date(startDate), new Date(endDate + 'T23:59:59')],
-      };
-    }
-
-    const transactions = await Transaction.findAll({
-      where,
-      order: [['created_at', 'DESC']],
-      limit: 500,
-    });
-
+    const transactions = await fetchStatementTransactions(account.id, startDate, endDate);
     const user = await User.findByPk(req.user.id);
 
     const doc = new PDFDocument({ margin: 50, size: 'A4' });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=statement-${Date.now()}.pdf`);
     doc.pipe(res);
-
-    // Header
-    doc.rect(0, 0, 612, 100).fill('#c8102e');
-    doc.fillColor('#ffffff').fontSize(24).font('Helvetica-Bold').text('ALISTER BANK', 50, 30);
-    doc.fontSize(10).font('Helvetica').text('Account Statement', 50, 60);
-    doc.text(`Generated: ${new Date().toLocaleString()}`, 350, 60);
-
-    // Account Info
-    doc.fillColor('#000000').moveDown(4);
-    doc.fontSize(11).font('Helvetica-Bold').text('Account Holder: ', 50, 120, { continued: true });
-    doc.font('Helvetica').text(`${user.first_name} ${user.last_name}`);
-    doc.font('Helvetica-Bold').text('Account Number: ', 50, 138, { continued: true });
-    doc.font('Helvetica').text(maskAccountNumber(account.account_number));
-    doc.font('Helvetica-Bold').text('SWIFT Code: ', 50, 156, { continued: true });
-    doc.font('Helvetica').text(account.swift_code || 'ALSTINBB');
-    doc.font('Helvetica-Bold').text('Current Balance: ', 50, 174, { continued: true });
-    doc.font('Helvetica').text(`$${parseFloat(account.balance).toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
-
-    // Period
-    if (startDate && endDate) {
-      doc.font('Helvetica-Bold').text('Period: ', 50, 192, { continued: true });
-      doc.font('Helvetica').text(`${startDate} to ${endDate}`);
-    }
-
-    // Separator
-    doc.moveTo(50, 215).lineTo(562, 215).strokeColor('#c8102e').lineWidth(2).stroke();
-
-    // Table header
-    const tableTop = 230;
-    doc.rect(50, tableTop, 512, 24).fill('#1a1a2e');
-    doc.fillColor('#ffffff').fontSize(9).font('Helvetica-Bold');
-    doc.text('DATE', 55, tableTop + 7);
-    doc.text('DESCRIPTION', 120, tableTop + 7);
-    doc.text('REF NO.', 310, tableTop + 7);
-    doc.text('DEBIT', 400, tableTop + 7);
-    doc.text('CREDIT', 450, tableTop + 7);
-    doc.text('BALANCE', 505, tableTop + 7);
-
-    // Rows
-    let y = tableTop + 30;
-    transactions.forEach((tx, idx) => {
-      if (y > 750) { doc.addPage(); y = 50; }
-      if (idx % 2 === 0) doc.rect(50, y - 4, 512, 20).fill('#f9f9f9');
-      doc.fillColor('#000000').fontSize(8).font('Helvetica');
-      doc.text(moment(tx.created_at).format('DD/MM/YY'), 55, y);
-      const desc = (tx.description || tx.narration || '').slice(0, 30);
-      doc.text(desc, 120, y);
-      doc.text((tx.reference_number || '').slice(0, 16), 310, y);
-      doc.fillColor(tx.transaction_type === 'debit' ? '#dc2626' : '#555');
-      doc.text(tx.transaction_type === 'debit' ? `$${parseFloat(tx.amount).toFixed(2)}` : '-', 400, y);
-      doc.fillColor(tx.transaction_type === 'credit' ? '#16a34a' : '#555');
-      doc.text(tx.transaction_type === 'credit' ? `$${parseFloat(tx.amount).toFixed(2)}` : '-', 450, y);
-      doc.fillColor('#000000');
-      doc.text(`$${parseFloat(tx.balance_after || 0).toFixed(2)}`, 505, y);
-      y += 20;
-    });
-
-    // Footer
-    doc.moveDown(2);
-    doc.fontSize(8).fillColor('#888').text(
-      'This is a system-generated statement. © Alister Bank. SWIFT: ALSTINBB.',
-      50, y + 20, { align: 'center', width: 512 }
-    );
-
-    doc.end();
+    renderStatementPDF(doc, { user, account, transactions, startDate, endDate });
   } catch (err) {
     logger.error(`Statement download error: ${err.message}`);
     return error(res, 'Failed to generate statement.');
+  }
+};
+
+// ─── Email PDF Statement (to the REGISTERED email only) ──────────────────────
+// POST /transactions/email-statement { startDate, endDate }
+//
+// SECURITY (anti-bot / anti-abuse), layered:
+//   1. Route-level per-IP rate limit (statementEmailLimiter — 3 per 15 min).
+//   2. Per-USER cooldown below: one email statement every 2 minutes, so a bot
+//      with rotating IPs but a stolen session still can't spam the inbox.
+//   3. Per-USER daily cap: max 5 statement emails per calendar day.
+//   4. The recipient is ALWAYS the account's registered email — the client can
+//      never supply a destination address, so statements cannot be exfiltrated
+//      to an attacker-controlled inbox.
+//   5. Strict date-range validation (valid dates, start ≤ end, ≤ 1 year).
+const STATEMENT_EMAIL_COOLDOWN_MS = 2 * 60 * 1000; // 2 minutes between requests
+const STATEMENT_EMAIL_DAILY_CAP = 5;               // max emails per user per day
+// userId → { lastSentAt, day: 'YYYY-MM-DD', count }
+const statementEmailGuard = new Map();
+
+exports.emailStatement = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.body || {};
+
+    const rangeError = validateStatementRange(startDate, endDate);
+    if (rangeError) return badRequest(res, rangeError);
+
+    // ── Per-user cooldown + daily cap ──────────────────────────────────────
+    const today = moment().format('YYYY-MM-DD');
+    const guard = statementEmailGuard.get(req.user.id) || { lastSentAt: 0, day: today, count: 0 };
+    if (guard.day !== today) { guard.day = today; guard.count = 0; }
+    const sinceLast = Date.now() - guard.lastSentAt;
+    if (sinceLast < STATEMENT_EMAIL_COOLDOWN_MS) {
+      const waitSec = Math.ceil((STATEMENT_EMAIL_COOLDOWN_MS - sinceLast) / 1000);
+      return badRequest(res, `Please wait ${waitSec} seconds before requesting another statement email.`);
+    }
+    if (guard.count >= STATEMENT_EMAIL_DAILY_CAP) {
+      return badRequest(res, `Daily limit reached (${STATEMENT_EMAIL_DAILY_CAP} statement emails per day). Please try again tomorrow or use Download Now.`);
+    }
+
+    const account = await Account.findOne({ where: { user_id: req.user.id } });
+    if (!account) return notFound(res, 'Account not found.');
+
+    const user = await User.findByPk(req.user.id);
+    const transactions = await fetchStatementTransactions(account.id, startDate, endDate);
+
+    // ── Generate the PDF into a Buffer for the email attachment ────────────
+    const pdfBuffer = await new Promise((resolve, reject) => {
+      const doc = new PDFDocument({ margin: 50, size: 'A4' });
+      const chunks = [];
+      doc.on('data', (chunk) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+      renderStatementPDF(doc, { user, account, transactions, startDate, endDate });
+    });
+
+    // Reserve the guard slot BEFORE dispatch so parallel requests can't race
+    // past the cooldown while the SMTP send is in flight.
+    guard.lastSentAt = Date.now();
+    guard.count += 1;
+    statementEmailGuard.set(req.user.id, guard);
+
+    const { sendStatementEmail } = require('../services/emailService');
+    const result = await sendStatementEmail(user.email, {
+      name: statementHolderName(user),
+      accountNumber: maskAccountNumber(account.account_number),
+      startDate,
+      endDate,
+      pdfBuffer,
+    });
+
+    if (!result.success) {
+      // Roll the cooldown back so a genuine mail outage doesn't consume the
+      // user's quota for nothing.
+      guard.count -= 1;
+      guard.lastSentAt = 0;
+      statementEmailGuard.set(req.user.id, guard);
+      return error(res, 'Could not send the statement email right now. Please try again shortly.');
+    }
+
+    await createAuditLog({
+      userId: req.user.id,
+      action: 'STATEMENT_EMAILED',
+      entityType: 'Account',
+      entityId: account.id,
+      ipAddress: req.ip,
+      status: 'success',
+      description: `Statement ${startDate} → ${endDate} emailed to registered address.`,
+    });
+
+    // Mask the address in the response (defense-in-depth for shoulder surfing
+    // / logged responses) — the user knows their own registered email.
+    const maskedEmail = user.email.replace(/^(.{2}).*(@.*)$/, '$1***$2');
+    return success(res, { sentTo: maskedEmail }, `Statement sent to your registered email (${maskedEmail}).`);
+  } catch (err) {
+    logger.error(`Statement email error: ${err.message}`);
+    return error(res, 'Failed to email statement.');
   }
 };
 

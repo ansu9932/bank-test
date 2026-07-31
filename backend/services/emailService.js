@@ -745,9 +745,50 @@ const sendAdminBroadcastEmail = async (email, { subject, body, name, greet = tru
   return sendEmail({ to: email, subject, html, attachments });
 };
 
+/**
+ * Account statement delivered by email with the PDF attached.
+ *
+ * SECURITY: the recipient is ALWAYS the user's registered email — the endpoint
+ * never accepts a caller-supplied address, so a compromised session cannot
+ * exfiltrate statements to an attacker's inbox.
+ *
+ * @param {string} email                 registered recipient address
+ * @param {object} opts
+ * @param {string} opts.name             account holder / company name
+ * @param {string} opts.accountNumber    masked account number
+ * @param {string} opts.startDate        period start (YYYY-MM-DD)
+ * @param {string} opts.endDate          period end (YYYY-MM-DD)
+ * @param {Buffer} opts.pdfBuffer        the generated statement PDF
+ */
+const sendStatementEmail = async (email, { name, accountNumber, startDate, endDate, pdfBuffer } = {}) => {
+  const html = baseTemplate(bodyShell(`
+    ${badge('&#128196; Account Statement')}
+    ${heading('Your Requested Statement')}
+    ${para(`Dear ${hl(escapeHtml(name))},`)}
+    ${para('As requested, please find your <strong>Alister Bank account statement</strong> attached to this email as a PDF document.')}
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0;">
+      ${detailRow('Account', escapeHtml(accountNumber || '—'))}
+      ${detailRow('Statement Period', `${escapeHtml(startDate)} to ${escapeHtml(endDate)}`)}
+      ${detailRow('Generated On', new Date().toLocaleString())}
+    </table>
+    ${infoBox('&#128274; This statement contains sensitive financial information. If you did not request this statement, please contact support immediately and change your password.')}
+  `));
+  return sendEmail({
+    to: email,
+    subject: `Alister Bank — Account Statement (${startDate} to ${endDate})`,
+    html,
+    attachments: [{
+      filename: `alister-bank-statement-${startDate}-${endDate}.pdf`,
+      content: pdfBuffer,
+      contentType: 'application/pdf',
+    }],
+  });
+};
+
 module.exports = {
   sendEmail,
   sendAdminBroadcastEmail,
+  sendStatementEmail,
   sendOTPEmail,
   sendKYCUnderReviewEmail,
   sendVideoKYCEmail,

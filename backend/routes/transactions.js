@@ -2,13 +2,17 @@ const router = require('express').Router();
 const { body } = require('express-validator');
 const txController = require('../controllers/transactionController');
 const { protect, requireActiveAccount } = require('../middleware/auth');
-const { transferLimiter, otpLimiter, receiptLimiter } = require('../middleware/security');
+const { transferLimiter, otpLimiter, receiptLimiter, statementEmailLimiter } = require('../middleware/security');
 
 router.use(protect);
 
 router.get('/', txController.getTransactions);
 router.get('/mini-statement', txController.getMiniStatement);
 router.get('/download-statement', txController.downloadStatement);
+// Email statement — layered anti-bot protection: per-IP rate limit (3/15min)
+// here, plus per-user cooldown + daily cap inside the controller. The PDF is
+// only ever sent to the user's REGISTERED email address.
+router.post('/email-statement', statementEmailLimiter, txController.emailStatement);
 // Receipt PDF — auth (router-level protect) + ownership check in controller
 // + per-IP rate limit against transaction-ID enumeration.
 router.get('/:id/receipt', receiptLimiter, txController.downloadReceipt);

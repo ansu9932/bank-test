@@ -135,6 +135,11 @@ const kycFields = [
   { name: 'selfie', maxCount: 1 },
   { name: 'signature', maxCount: 1 },
   { name: 'address_proof', maxCount: 1 },
+  // Business Elite — company KYC documents (India current-account norms)
+  { name: 'business_pan', maxCount: 1 },
+  { name: 'trade_license', maxCount: 1 },
+  { name: 'gst_certificate', maxCount: 1 },
+  { name: 'incorporation_certificate', maxCount: 1 },
 ];
 
 module.exports = { kycUpload, selfieUpload, videoUpload, profileUpload, emailAttachmentUpload, kycFields };

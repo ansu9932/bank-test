@@ -30,6 +30,17 @@ const User = sequelize.define('User', {
   cid_number: { type: DataTypes.STRING(20) },
   national_id_number: { type: DataTypes.STRING(20) },
   tin_number: { type: DataTypes.STRING(20) },
+  // ── Business Elite account — company/entity details (India) ───────────────
+  // Populated only when account_type = 'business_elite'. The account is opened
+  // in the COMPANY's name (company_name), per RBI current-account KYC norms.
+  company_name: { type: DataTypes.STRING(200) },
+  business_type: { type: DataTypes.ENUM('sole_proprietorship', 'partnership', 'llp', 'private_limited', 'public_limited', 'opc') },
+  business_pan: { type: DataTypes.STRING(10) },        // company/firm PAN (mandatory)
+  gstin: { type: DataTypes.STRING(15) },               // GST registration (if registered)
+  cin: { type: DataTypes.STRING(21) },                 // Corporate Identification Number (companies)
+  trade_license_number: { type: DataTypes.STRING(50) },// municipal trade license / Shops & Establishment
+  udyam_number: { type: DataTypes.STRING(25) },        // Udyam / MSME registration (optional)
+  date_of_incorporation: { type: DataTypes.DATEONLY },
   username: { type: DataTypes.STRING(100), unique: true },
   password_hash: { type: DataTypes.STRING(255) },
   security_pin: { type: DataTypes.STRING(255) },

@@ -51,6 +51,9 @@ exports.openAccount = async (req, res) => {
       aadhaarNumber, panNumber, passportNumber,
       citizenshipNumber, cidNumber, nationalIdNumber, tinNumber,
       accountType,
+      // Business Elite — company details (validated in validateOpenAccount)
+      companyName, businessType, businessPan, gstin, cin,
+      tradeLicenseNumber, udyamNumber, dateOfIncorporation,
     } = req.body;
 
     // ── Explicit required-field validation ─────────────────────────────────────
@@ -124,6 +127,20 @@ exports.openAccount = async (req, res) => {
       national_id_number: nationalIdNumber || null,
       tin_number: tinNumber || null,
       account_type: accountType || 'savings',
+      // Business Elite: the account is opened in the COMPANY's name. Store the
+      // company KYC details and title the account (nickname) with the company
+      // name so statements/dashboard display the business, not the applicant.
+      ...(accountType === 'business_elite' ? {
+        company_name: companyName,
+        business_type: businessType ? String(businessType).toLowerCase() : null,
+        business_pan: businessPan ? String(businessPan).toUpperCase().replace(/[^A-Z0-9]/g, '') : null,
+        gstin: gstin ? String(gstin).toUpperCase() : null,
+        cin: cin ? String(cin).toUpperCase() : null,
+        trade_license_number: tradeLicenseNumber || null,
+        udyam_number: udyamNumber ? String(udyamNumber).toUpperCase() : null,
+        date_of_incorporation: dateOfIncorporation || null,
+        account_nickname: companyName,
+      } : {}),
       kyc_status: 'pending',
       account_status: 'pending',
       email_verified: true, // verified during OTP step

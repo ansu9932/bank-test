@@ -10,18 +10,30 @@ import { getDocsForCountry, getCountryByCode, ALL_DOC_ID_KEYS } from '../../conf
 
 // Step components
 import StepPersonal from './steps/StepPersonal';
+import StepBusiness, { getBusinessStepErrors } from './steps/StepBusiness';
 import StepAddress from './steps/StepAddress';
 import StepDocuments from './steps/StepDocuments';
 import StepOTPVerify from './steps/StepOTPVerify';
 import StepReview from './steps/StepReview';
 
-const STEPS = [
-  { id: 1, label: 'Personal Info', icon: '👤' },
-  { id: 2, label: 'Address',       icon: '📍' },
-  { id: 3, label: 'Documents',     icon: '📄' },
-  { id: 4, label: 'Verification',  icon: '🔐' },
-  { id: 5, label: 'Review',        icon: '✅' },
-];
+// Step definitions, keyed so the wizard can inject the Company Info step when
+// the applicant chooses a Business Elite account.
+const STEP_DEFS = {
+  personal:  { label: 'Personal Info', icon: '👤' },
+  business:  { label: 'Company Info',  icon: '🏢' },
+  address:   { label: 'Address',       icon: '📍' },
+  documents: { label: 'Documents',     icon: '📄' },
+  otp:       { label: 'Verification',  icon: '🔐' },
+  review:    { label: 'Review',        icon: '✅' },
+};
+
+// The ordered step keys for a given form. Business Elite applicants get an
+// extra "Company Info" page right after Personal Info.
+export function stepKeysForForm(form) {
+  return form.accountType === 'business_elite'
+    ? ['personal', 'business', 'address', 'documents', 'otp', 'review']
+    : ['personal', 'address', 'documents', 'otp', 'review'];
+}
 
 // ── Field validation patterns (shared with the step components) ───────────────
 const EMAIL_RE   = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -30,18 +42,19 @@ const GEN_PHONE_RE = /^\d{7,15}$/;          // Generic intl mobile (non-India)
 const PINCODE_RE = /^\d{6}$/;               // Indian PIN: 6 digits
 
 /**
- * Validate a single step's required fields. Returns a map of
+ * Validate a single step's required fields (by step KEY). Returns a map of
  * { fieldKey: 'message' }. An empty map means the step is valid and the user
  * may advance. File-upload errors are keyed as `file_<docKey>`.
  *
- * The Documents step (3) is fully country-driven: only the selected country's
- * documents are validated, using the config in kycRequirements.js.
+ * The Documents step is fully country-driven: only the selected country's
+ * documents are validated, using the config in kycRequirements.js. The
+ * Business step is only present (and validated) for Business Elite accounts.
  */
-export function getStepErrors(step, form, otpVerified) {
+export function getStepErrors(stepKey, form, otpVerified) {
   const e = {};
   const isIndia = (form.countryCode || 'IN') === 'IN';
 
-  if (step === 1) {
+  if (stepKey === 'personal') {
     if (!form.countryCode) e.countryCode = 'Please choose your country.';
     if (!form.firstName?.trim()) e.firstName = 'First name is required.';
     if (!form.lastName?.trim()) e.lastName = 'Last name is required.';
@@ -53,13 +66,16 @@ export function getStepErrors(step, form, otpVerified) {
     if (!form.dateOfBirth) e.dateOfBirth = 'Date of birth is required.';
     if (!form.gender) e.gender = 'Please select your gender.';
     if (!form.accountType) e.accountType = 'Please select an account type.';
-  } else if (step === 2) {
+  } else if (stepKey === 'business') {
+    // Business Elite only — company/entity details + business KYC documents.
+    Object.assign(e, getBusinessStepErrors(form));
+  } else if (stepKey === 'address') {
     if (!form.addressLine1?.trim()) e.addressLine1 = 'Address line 1 is required.';
     if (!form.city?.trim()) e.city = 'City is required.';
     if (!form.state?.trim()) e.state = isIndia ? 'Please select a state.' : 'State / province is required.';
     if (!form.pincode?.trim()) e.pincode = isIndia ? 'PIN code is required.' : 'Postal code is required.';
     else if (isIndia && !PINCODE_RE.test(form.pincode.trim())) e.pincode = 'Enter a valid 6-digit PIN code.';
-  } else if (step === 3) {
+  } else if (stepKey === 'documents') {
     // Country-driven document validation — only the selected country's docs.
     const docs = getDocsForCountry(form.countryCode);
     docs.forEach((d) => {
@@ -77,7 +93,7 @@ export function getStepErrors(step, form, otpVerified) {
         e[`file_${d.key}`] = `${d.label} upload is required.`;
       }
     });
-  } else if (step === 4) {
+  } else if (stepKey === 'otp') {
     if (!otpVerified) e.otp = 'Please verify your email with the OTP before continuing.';
   }
 
@@ -97,9 +113,20 @@ const initForm = {
   // Document ID numbers (per-country; only the relevant ones are shown)
   aadhaarNumber: '', panNumber: '', passportNumber: '',
   citizenshipNumber: '', cidNumber: '', nationalIdNumber: '', tinNumber: '',
+  // Business Elite — company details (only used when accountType is business_elite)
+  companyName: '', businessType: '', businessPan: '', gstin: '', cin: '',
+  tradeLicenseNumber: '', udyamNumber: '', dateOfIncorporation: '',
   // Files
   files: {},
 };
+
+// Business-only text fields + upload keys, used to strip stale company data
+// from the payload if the user switches back to a personal account type.
+const BUSINESS_FIELD_KEYS = [
+  'companyName', 'businessType', 'businessPan', 'gstin', 'cin',
+  'tradeLicenseNumber', 'udyamNumber', 'dateOfIncorporation',
+];
+const BUSINESS_FILE_KEYS = ['business_pan', 'trade_license', 'gst_certificate', 'incorporation_certificate'];
 
 // Decorative, non-interactive red glow orbs sitting behind all page content.
 function GlowOrbs() {
@@ -185,12 +212,19 @@ export default function AccountOpeningPage() {
     setNameLocked(false);
   };
 
+  // Dynamic step list — Business Elite injects a "Company Info" page right
+  // after Personal Info. `step` is a 1-based index into this list.
+  const stepKeys = stepKeysForForm(form);
+  const totalSteps = stepKeys.length;
+  const currentKey = stepKeys[Math.min(step, totalSteps) - 1];
+  const isBusiness = form.accountType === 'business_elite';
+
   // Live validation for the current step; drives the disabled Next button.
-  const currentErrors = getStepErrors(step, form, otpVerified);
+  const currentErrors = getStepErrors(currentKey, form, otpVerified);
   const currentStepValid = Object.keys(currentErrors).length === 0;
 
   const next = () => {
-    const stepErrors = getStepErrors(step, form, otpVerified);
+    const stepErrors = getStepErrors(currentKey, form, otpVerified);
     if (Object.keys(stepErrors).length > 0) {
       setErrors(stepErrors);
       setShowErrors(true);
@@ -199,7 +233,7 @@ export default function AccountOpeningPage() {
     }
     setErrors({});
     setShowErrors(false);
-    setStep(s => Math.min(s + 1, 5));
+    setStep(s => Math.min(s + 1, totalSteps));
   };
 
   const prev = () => {
@@ -211,15 +245,16 @@ export default function AccountOpeningPage() {
   const handleSubmit = async () => {
     // Final guard: re-validate every step so a user who somehow reached Review
     // with a gap (or edited back) can't submit an incomplete payload → 500.
-    const allErrors = [1, 2, 3, 4].reduce(
-      (acc, s) => ({ ...acc, ...getStepErrors(s, form, otpVerified) }), {});
+    const checkKeys = stepKeys.filter(k => k !== 'review');
+    const allErrors = checkKeys.reduce(
+      (acc, k) => ({ ...acc, ...getStepErrors(k, form, otpVerified) }), {});
     if (Object.keys(allErrors).length > 0) {
       setErrors(allErrors);
       setShowErrors(true);
-      const firstBadStep = [1, 2, 3, 4].find(
-        s => Object.keys(getStepErrors(s, form, otpVerified)).length > 0);
+      const firstBadKey = checkKeys.find(
+        k => Object.keys(getStepErrors(k, form, otpVerified)).length > 0);
       toast.error('Some required details are missing. Returning to fix them.');
-      if (firstBadStep) setStep(firstBadStep);
+      if (firstBadKey) setStep(stepKeys.indexOf(firstBadKey) + 1);
       return;
     }
     if (!otpVerified) { toast.error('Please verify your email first.'); return; }
@@ -227,12 +262,20 @@ export default function AccountOpeningPage() {
     setLoading(true);
     try {
       const fd = new FormData();
-      // Append all form fields
+      // Append all form fields — business-only fields are stripped when the
+      // applicant is NOT opening a Business Elite account (stale values from a
+      // switched account type must never reach the API).
       Object.entries(form).forEach(([k, v]) => {
-        if (k !== 'files' && v) fd.append(k, v);
+        if (k === 'files' || !v) return;
+        if (!isBusiness && BUSINESS_FIELD_KEYS.includes(k)) return;
+        fd.append(k, v);
       });
-      // Append files
-      Object.entries(form.files).forEach(([k, v]) => { if (v) fd.append(k, v); });
+      // Append files (skip business docs for non-business applications)
+      Object.entries(form.files).forEach(([k, v]) => {
+        if (!v) return;
+        if (!isBusiness && BUSINESS_FILE_KEYS.includes(k)) return;
+        fd.append(k, v);
+      });
 
       const { data } = await api.post('/account/open', fd, {
         headers: {
@@ -315,7 +358,7 @@ export default function AccountOpeningPage() {
   }
 
   // Filled width of the progress track, derived from the existing step state.
-  const progressPct = ((step - 1) / (STEPS.length - 1)) * 100;
+  const progressPct = ((step - 1) / (totalSteps - 1)) * 100;
 
   return (
     <div className="min-h-screen py-8 px-4 relative" style={PAGE_BG}>
@@ -359,34 +402,35 @@ export default function AccountOpeningPage() {
             </span>
           </h1>
           <p className="text-[15px] mt-2" style={{ color: 'rgba(255,255,255,0.5)' }}>
-            Complete in 5 simple steps — takes about 5 minutes
+            {`Complete in ${totalSteps} simple steps — takes about 5 minutes`}
           </p>
         </motion.div>
 
         {/* Step indicators */}
         <div className="max-w-[600px] mx-auto mb-4 px-2">
           <div className="flex items-start justify-between">
-            {STEPS.map((s) => {
-              const isCompleted = step > s.id;
-              const isActive = step === s.id;
+            {stepKeys.map((key, idx) => {
+              const id = idx + 1;
+              const isCompleted = step > id;
+              const isActive = step === id;
               const circleStyle = isCompleted
                 ? { background: 'linear-gradient(135deg, #CC0000, #FF3333)', color: '#fff', border: '2px solid transparent', boxShadow: '0 0 12px rgba(204,0,0,0.5)' }
                 : isActive
                 ? { background: 'transparent', border: '2px solid #CC0000', color: '#CC0000', boxShadow: '0 0 0 4px rgba(204,0,0,0.15)' }
                 : { background: 'rgba(255,255,255,0.05)', border: '2px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.3)' };
               return (
-                <div key={s.id} className="flex flex-col items-center">
+                <div key={key} className="flex flex-col items-center">
                   <div
                     className="w-[30px] h-[30px] sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-[11px] sm:text-[13px] font-semibold transition-all duration-300"
                     style={circleStyle}
                   >
-                    {isCompleted ? <RiCheckLine /> : <span>{s.id}</span>}
+                    {isCompleted ? <RiCheckLine /> : <span>{id}</span>}
                   </div>
                   <p
                     className="text-[11px] mt-1.5 hidden sm:block transition-colors"
                     style={{ color: isActive ? '#CC0000' : 'rgba(255,255,255,0.4)' }}
                   >
-                    {s.label}
+                    {STEP_DEFS[key].label}
                   </p>
                 </div>
               );
@@ -418,7 +462,7 @@ export default function AccountOpeningPage() {
                 initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -30 }} transition={{ duration: 0.3 }}
               >
-                {step === 1 && (
+                {currentKey === 'personal' && (
                   <StepPersonal
                     form={form} update={updateForm}
                     errors={showErrors ? errors : {}}
@@ -426,13 +470,19 @@ export default function AccountOpeningPage() {
                     onCountryChange={changeCountry}
                   />
                 )}
-                {step === 2 && (
+                {currentKey === 'business' && (
+                  <StepBusiness
+                    form={form} update={updateForm}
+                    errors={showErrors ? errors : {}}
+                  />
+                )}
+                {currentKey === 'address' && (
                   <StepAddress
                     form={form} update={updateForm}
                     errors={showErrors ? errors : {}}
                   />
                 )}
-                {step === 3 && (
+                {currentKey === 'documents' && (
                   <StepDocuments
                     form={form} update={updateForm}
                     errors={showErrors ? errors : {}}
@@ -440,21 +490,21 @@ export default function AccountOpeningPage() {
                     setNameLocked={setNameLocked}
                   />
                 )}
-                {step === 4 && (
+                {currentKey === 'otp' && (
                   <StepOTPVerify
                     email={form.email}
                     verified={otpVerified}
                     onVerified={() => setOtpVerified(true)}
                     onEmailChange={(newEmail) => {
-                      // Inline email correction from Step 4 — update the form and
-                      // invalidate any prior verification so the new address must
-                      // be OTP-verified before the user can submit.
+                      // Inline email correction from the OTP step — update the
+                      // form and invalidate any prior verification so the new
+                      // address must be OTP-verified before the user can submit.
                       updateForm({ email: newEmail });
                       setOtpVerified(false);
                     }}
                   />
                 )}
-                {step === 5 && <StepReview form={form} />}
+                {currentKey === 'review' && <StepReview form={form} />}
               </motion.div>
             </AnimatePresence>
 

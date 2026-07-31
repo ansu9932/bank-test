@@ -27,6 +27,14 @@ const PIN_RE = /^[A-Za-z0-9][A-Za-z0-9\s-]{2,11}$/;  // postal codes worldwide
 const AADHAAR_RE = /^\d{12}$/;                        // 12 digits (after strip)
 const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;             // ABCDE1234F
 
+// ── Business Elite (India current-account) format rules ─────────────────────
+const BUSINESS_TYPES = ['sole_proprietorship', 'partnership', 'llp', 'private_limited', 'public_limited', 'opc'];
+// Business types that are registered companies and therefore MUST have a CIN.
+const CIN_REQUIRED_TYPES = ['private_limited', 'public_limited', 'opc'];
+const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/; // 15-char GSTIN
+const CIN_RE = /^[LU][0-9]{5}[A-Z]{2}[0-9]{4}[A-Z]{3}[0-9]{6}$/;     // 21-char CIN
+const UDYAM_RE = /^UDYAM-[A-Z]{2}-[0-9]{2}-[0-9]{7}$/;               // UDYAM-XX-00-0000000
+
 const MAX_FIELD_LEN = 120; // hard ceiling for any free-text field
 
 const validateOpenAccount = (req, res, next) => {
@@ -108,6 +116,47 @@ const validateOpenAccount = (req, res, next) => {
     const panClean = val('panNumber').toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (val('panNumber') && !PAN_RE.test(panClean)) {
       return fail('PAN must be in the format ABCDE1234F.', 'panNumber');
+    }
+
+    // ── Business Elite: company KYC details (India current-account norms) ──
+    if (val('accountType').toLowerCase() === 'business_elite') {
+      if (val('companyName').length < 2) {
+        return fail('Company / business name is required (min 2 characters).', 'companyName');
+      }
+      if (!BUSINESS_TYPES.includes(val('businessType').toLowerCase())) {
+        return fail('Please select a valid business entity type.', 'businessType');
+      }
+      const bizPan = val('businessPan').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (!PAN_RE.test(bizPan)) {
+        return fail('Business PAN must be in the format ABCDE1234F.', 'businessPan');
+      }
+      if (val('tradeLicenseNumber').length < 3) {
+        return fail('Trade license number is required (min 3 characters).', 'tradeLicenseNumber');
+      }
+      const gstin = val('gstin').toUpperCase();
+      if (gstin && !GSTIN_RE.test(gstin)) {
+        return fail('GSTIN must be a valid 15-character GST number.', 'gstin');
+      }
+      const cin = val('cin').toUpperCase();
+      const bizType = val('businessType').toLowerCase();
+      if (CIN_REQUIRED_TYPES.includes(bizType) && !cin) {
+        return fail('CIN is required for registered companies.', 'cin');
+      }
+      if (cin && !CIN_RE.test(cin)) {
+        return fail('CIN must be a valid 21-character Corporate Identification Number.', 'cin');
+      }
+      const udyam = val('udyamNumber').toUpperCase();
+      if (udyam && !UDYAM_RE.test(udyam)) {
+        return fail('Udyam number must be in the format UDYAM-XX-00-0000000.', 'udyamNumber');
+      }
+      const doiStr = val('dateOfIncorporation');
+      const doi = new Date(doiStr);
+      if (!doiStr || Number.isNaN(doi.getTime())) {
+        return fail('Please provide a valid date of incorporation.', 'dateOfIncorporation');
+      }
+      if (doi > new Date()) {
+        return fail('Date of incorporation cannot be in the future.', 'dateOfIncorporation');
+      }
     }
 
     // ── Annual income: numeric and sane when provided ──────────────────────
