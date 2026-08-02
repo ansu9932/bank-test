@@ -95,7 +95,7 @@ export default function DashboardHome() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-xl font-700 text-white">
-            Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, {user?.firstName}! 👋
+            Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, {(user?.accountType === 'business_elite' && user?.companyName) ? user.companyName : user?.firstName}! 👋
           </h1>
           <p className="text-dark-300 text-sm mt-0.5">Here's your financial overview</p>
         </div>

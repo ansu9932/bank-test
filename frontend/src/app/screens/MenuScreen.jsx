@@ -29,7 +29,7 @@ const fmtMoney = (v) =>
 function MenuRoot() {
   const navigate = useNavigate();
   const { theme, toggle } = useAppTheme();
-  const { firstName, customerId } = getLockScreenIdentity();
+  const { displayName, customerId } = getLockScreenIdentity();
   const [bioAvailable, setBioAvailable] = useState(false);
   const [bioOn, setBioOn] = useState(isBiometricEnabled());
   // null | 'session' | 'device' — which logout is awaiting confirmation.
@@ -87,9 +87,9 @@ function MenuRoot() {
       <div className="px-5 flex flex-col gap-4">
         {/* Profile */}
         <Card className="flex items-center gap-3">
-          <span className="app-avatar" aria-hidden="true">{(firstName || 'A').charAt(0)}</span>
+          <span className="app-avatar" aria-hidden="true">{(displayName || 'A').charAt(0)}</span>
           <div className="min-w-0">
-            <p className="font-semibold truncate">{firstName || 'Customer'}</p>
+            <p className="font-semibold truncate">{displayName || 'Customer'}</p>
             <p className="app-dim text-xs">{customerId || ''}</p>
           </div>
         </Card>

@@ -33,7 +33,7 @@ export default function LockScreen() {
   const [bioReady, setBioReady] = useState(false);
   // 0 = hidden, 1 = first confirmation sheet, 2 = final warning sheet
   const [forgotStep, setForgotStep] = useState(0);
-  const { firstName } = getLockScreenIdentity();
+  const { displayName } = getLockScreenIdentity();
 
   // No registration on this device → onboarding is the only way in.
   useEffect(() => {
@@ -102,11 +102,11 @@ export default function LockScreen() {
     <Screen className="lock-screen flex flex-col items-center justify-between px-6 py-10">
       <header className="flex flex-col items-center gap-4 pt-6 text-center">
         <div className="lock-avatar" aria-hidden="true">
-          {firstName ? firstName.charAt(0) : 'A'}
+          {displayName ? displayName.charAt(0) : 'A'}
         </div>
         <div className="flex flex-col gap-0.5">
-          <p className="app-dim text-sm">Welcome back{firstName ? ',' : ''}</p>
-          {firstName && <h1 className="text-2xl font-bold text-balance">{firstName}</h1>}
+          <p className="app-dim text-sm">Welcome back{displayName ? ',' : ''}</p>
+          {displayName && <h1 className="text-2xl font-bold text-balance">{displayName}</h1>}
         </div>
       </header>
 

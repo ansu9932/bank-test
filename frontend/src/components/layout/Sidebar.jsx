@@ -124,10 +124,16 @@ export default function Sidebar({ onNavigate = () => {} }) {
   const primaryNavItems   = isAdmin ? ADMIN_NAV_ITEMS : CUSTOMER_NAV_ITEMS;
   const secondaryNavItems = isAdmin ? []              : CUSTOMER_SETTINGS_ITEMS;
 
-  const displayFirstName  = user.firstName || user.first_name || user.fullName?.split(' ')[0] || 'User';
-  const displayLastName   = user.lastName  || user.last_name  || user.fullName?.split(' ')[1] || '';
+  const isBusinessElite  = user.accountType === 'business_elite' || user.account_type === 'business_elite';
+  const bizName          = user.companyName || user.company_name || '';
+  const displayFirstName  = isBusinessElite && bizName
+    ? bizName
+    : user.firstName || user.first_name || user.fullName?.split(' ')[0] || 'User';
+  const displayLastName   = isBusinessElite ? '' : user.lastName || user.last_name || user.fullName?.split(' ')[1] || '';
   const displayCustomerId = user.customerId || user.customer_id || (isAdmin ? 'Administrator' : '');
-  const avatarInitials    = `${displayFirstName[0] ?? ''}${displayLastName[0] ?? ''}`.toUpperCase() || 'U';
+  const avatarInitials    = isBusinessElite && bizName
+    ? bizName[0].toUpperCase()
+    : `${displayFirstName[0] ?? ''}${displayLastName[0] ?? ''}`.toUpperCase() || 'U';
 
   const handleLogout = async () => {
     onNavigate();

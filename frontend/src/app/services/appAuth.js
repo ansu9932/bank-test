@@ -24,8 +24,17 @@ export function hasDeviceRegistration() {
 }
 
 export function getLockScreenIdentity() {
+  const firstName = appStorage.getItem('appUserFirstName') || '';
+  const accountType = appStorage.getItem('appUserAccountType') || '';
+  const companyName = appStorage.getItem('appUserCompanyName') || '';
+  const displayName = (accountType === 'business_elite' && companyName)
+    ? companyName
+    : firstName;
   return {
-    firstName: appStorage.getItem('appUserFirstName') || '',
+    firstName,
+    displayName,
+    accountType,
+    companyName,
     customerId: appStorage.getItem('appCustomerId') || '',
   };
 }
@@ -36,6 +45,8 @@ function persistSession(data) {
   if (data?.user) {
     appStorage.setItem('user', JSON.stringify(data.user));
     appStorage.setItem('appUserFirstName', data.user.firstName || '');
+    appStorage.setItem('appUserAccountType', data.user.accountType || '');
+    appStorage.setItem('appUserCompanyName', data.user.companyName || '');
     appStorage.setItem('appCustomerId', data.user.customerId || '');
   }
   if (data?.deviceToken) appStorage.setItem('appDeviceToken', data.deviceToken);
@@ -46,6 +57,8 @@ function persistSession(data) {
 export function clearDeviceRegistration() {
   appStorage.removeItem('appDeviceToken');
   appStorage.removeItem('appUserFirstName');
+  appStorage.removeItem('appUserAccountType');
+  appStorage.removeItem('appUserCompanyName');
   appStorage.removeItem('appCustomerId');
   appStorage.removeItem('appBiometricMpin');
 }

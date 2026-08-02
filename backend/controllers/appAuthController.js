@@ -135,6 +135,8 @@ const publicUser = (user) => ({
   kycStatus: user.kyc_status,
   darkMode: user.dark_mode,
   profilePicture: user.profile_picture,
+  accountType: user.account_type,
+  companyName: user.company_name || null,
 });
 
 // ─── 1. Verify Customer ID + DOB → send email OTP ────────────────────────────
@@ -181,7 +183,9 @@ exports.verifyCustomer = async (req, res) => {
 
     return success(res, {
       onboardingToken: signStep(user.id, 'confirm'),
-      accountName: `${user.first_name || ''} ${user.last_name || ''}`.trim(),
+      accountName: (user.account_type === 'business_elite' && user.company_name)
+        ? user.company_name
+        : `${user.first_name || ''} ${user.last_name || ''}`.trim(),
       accountLast6: acctNo ? acctNo.slice(-6) : null,
       maskedEmail: maskEmail(user.email),
     }, 'Account found. Please confirm to continue.');

@@ -414,7 +414,9 @@ function InlineAccountCard({ account, user }) {
 
   const statusLabel  = account?.status?.toUpperCase() || 'ACTIVE';
   const isActive     = account?.status === 'active' || !account?.status;
-  const holderName   = `${user?.firstName || user?.first_name || ''} ${user?.lastName || user?.last_name || ''}`.trim() || 'Account Holder';
+  const holderName   = (user?.accountType === 'business_elite' && user?.companyName)
+    ? user.companyName
+    : `${user?.firstName || user?.first_name || ''} ${user?.lastName || user?.last_name || ''}`.trim() || 'Account Holder';
   const swiftCode    = account?.swift_code || 'ALSTINBB';
 
   return (
@@ -559,10 +561,14 @@ function DashboardTopBar({ user, notifications, unreadCount, onMarkAllRead }) {
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
-  const displayName  = user?.firstName || user?.first_name || 'User';
+  const displayName  = (user?.accountType === 'business_elite' && user?.companyName)
+    ? user.companyName
+    : user?.firstName || user?.first_name || 'User';
   const statusLabel  = user?.accountStatus || user?.account_status || 'Active';
-  const avatarLetter = (user?.firstName?.[0] || user?.first_name?.[0] || 'U').toUpperCase();
-  const avatarLetter2 = (user?.lastName?.[0]  || user?.last_name?.[0]  || '').toUpperCase();
+  const avatarLetter = ((user?.accountType === 'business_elite' && user?.companyName)
+    ? (user.companyName[0] || 'U')
+    : user?.firstName?.[0] || user?.first_name?.[0] || 'U').toUpperCase();
+  const avatarLetter2 = (user?.accountType === 'business_elite' && user?.companyName ? '' : user?.lastName?.[0] || user?.last_name?.[0] || '').toUpperCase();
 
   return (
     <div
@@ -826,7 +832,9 @@ export default function DashboardPage() {
   }, []);
 
   const displayFirstName =
-    user?.firstName || user?.first_name || 'there';
+    (user?.accountType === 'business_elite' && user?.companyName)
+      ? user.companyName
+      : user?.firstName || user?.first_name || 'there';
 
   // ─── Render ─────────────────────────────────────────────────────────────
   return (
