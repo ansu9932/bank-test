@@ -31,7 +31,7 @@ const QUICK_ACTIONS = [
 export default function HomeScreen() {
   const navigate = useNavigate();
   const [showBalance, setShowBalance] = useState(false);
-  const { firstName } = getLockScreenIdentity();
+  const { displayName } = getLockScreenIdentity();
 
   const { data: account } = useSWR('/account/details', fetcher);
   const { data: mini } = useSWR('/transactions/mini-statement', fetcher);
@@ -52,7 +52,7 @@ export default function HomeScreen() {
           <BrandMark size={38} />
           <div>
             <p className="app-dim text-xs">{greeting},</p>
-            <h1 className="text-base font-bold leading-tight">{firstName || 'Customer'}</h1>
+            <h1 className="text-base font-bold leading-tight">{displayName || 'Customer'}</h1>
           </div>
         </div>
         <button

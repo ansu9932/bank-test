@@ -65,11 +65,17 @@ export default function ProfilePage() {
         <div className="flex items-center gap-5 mb-5">
           <div className="w-16 h-16 rounded-2xl bg-brand-500/20 border-2 border-brand-500/30 flex items-center justify-center flex-shrink-0">
             <span className="text-brand-400 font-display font-700 text-2xl">
-              {user?.firstName?.[0]}{user?.lastName?.[0]}
+              {(user?.accountType === 'business_elite' && user?.companyName)
+                ? user.companyName[0]
+                : `${user?.firstName?.[0] || ''}${user?.lastName?.[0] || ''}`}
             </span>
           </div>
           <div>
-            <h2 className="text-white font-display font-700 text-xl">{user?.firstName} {user?.lastName}</h2>
+            <h2 className="text-white font-display font-700 text-xl">
+              {(user?.accountType === 'business_elite' && user?.companyName)
+                ? user.companyName
+                : `${user?.firstName || ''} ${user?.lastName || ''}`}
+            </h2>
             <p className="text-dark-300 text-sm">Customer ID: <span className="text-white font-mono">{user?.customerId}</span></p>
             <div className="flex items-center gap-2 mt-1.5">
               <span className="badge badge-success">{user?.accountStatus}</span>

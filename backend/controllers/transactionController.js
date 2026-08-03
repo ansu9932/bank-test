@@ -192,7 +192,11 @@ exports.initiateTransfer = async (req, res) => {
     const result = await executeTransfer({
       fromAccount: account,
       toAccountNumber,
-      toAccountName: toAccountName || (isInternal?.user?.first_name || 'Unknown'),
+      toAccountName: toAccountName || (isInternal?.user
+        ? (isInternal.user.account_type === 'business_elite' && isInternal.user.company_name
+          ? isInternal.user.company_name
+          : `${isInternal.user.first_name || ''} ${isInternal.user.last_name || ''}`.trim())
+        : 'Unknown'),
       toBankName: toBankName || (isInternal ? 'Alister Bank' : ''),
       toIfsc,
       amount: parsedAmount,
@@ -687,7 +691,9 @@ exports.downloadReceipt = async (req, res) => {
       ['Date & Time', moment(tx.created_at).format('DD MMM YYYY, HH:mm:ss')],
       ['Transfer Mode', tx.transfer_mode || '—'],
       ['Transaction Type', isCredit ? 'Credit' : 'Debit'],
-      ['Account Holder', `${user.first_name} ${user.last_name}`],
+      ['Account Holder', (user.account_type === 'business_elite' && user.company_name)
+        ? user.company_name
+        : `${user.first_name} ${user.last_name}`],
       ['Account Number', maskAccountNumber(account.account_number)],
       ...(tx.to_account_name ? [['Beneficiary Name', tx.to_account_name]] : []),
       ...(tx.to_account_number ? [['Beneficiary A/c', tx.to_account_number]] : []),

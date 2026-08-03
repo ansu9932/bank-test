@@ -212,6 +212,8 @@ exports.login = async (req, res) => {
         kycStatus: user.kyc_status,
         darkMode: user.dark_mode,
         twoFactorEnabled: user.two_factor_enabled,
+        accountType: user.account_type,
+        companyName: user.company_name || null,
       },
     }, 'Login successful.');
   } catch (err) {
