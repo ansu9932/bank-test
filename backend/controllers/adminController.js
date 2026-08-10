@@ -1595,27 +1595,48 @@ exports.createEmailCampaign = async (req, res) => {
 
 // ─── Send ONE batch of recipients ─────────────────────────────────────────────
 // POST /api/admin/send-email
-// body: { subject, body, greet, userIds: string[], attachments?: [], campaignId? }
+// body: { subject, body, greet, userIds?: string[], manualEmails?: string[],
+//         attachments?: [], campaignId? }
 // Sends to the batch's users individually (no shared To/CC), attaches any files,
 // and — when campaignId is supplied — advances that campaign's progress counters.
+// `manualEmails` lets admins mail addresses that aren't registered users.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
 exports.sendManualEmail = async (req, res) => {
   try {
-    const { subject, body, userIds, attachments, campaignId } = req.body;
+    const { subject, body, userIds, manualEmails, attachments, campaignId } = req.body;
     const greet = req.body.greet !== false; // default: personalize with the name
 
     if (!subject || !String(subject).trim()) return badRequest(res, 'A subject is required.');
     if (!body || !String(body).trim()) return badRequest(res, 'The email body cannot be empty.');
-    if (!Array.isArray(userIds) || userIds.length === 0) {
+
+    const idList = Array.isArray(userIds) ? userIds : [];
+    // Sanitize manual addresses: strings only, valid format, deduped.
+    const manualList = Array.isArray(manualEmails)
+      ? [...new Set(
+          manualEmails
+            .map((e) => String(e || '').trim().toLowerCase())
+            .filter((e) => e && EMAIL_RE.test(e)),
+        )]
+      : [];
+
+    if (idList.length === 0 && manualList.length === 0) {
       return badRequest(res, 'This batch has no recipients.');
     }
-    if (userIds.length > 100) {
+    if (idList.length + manualList.length > 100) {
       return badRequest(res, 'Batch too large (max 100 recipients per request).');
     }
 
-    const recipients = await User.findAll({
-      where: { id: { [Op.in]: userIds }, email: { [Op.ne]: null } },
-      attributes: ['id', 'first_name', 'email'],
-    });
+    const recipients = idList.length > 0
+      ? await User.findAll({
+          where: { id: { [Op.in]: idList }, email: { [Op.ne]: null } },
+          attributes: ['id', 'first_name', 'email'],
+        })
+      : [];
+
+    // Avoid double-sending when a manual address belongs to a selected user.
+    const userEmailSet = new Set(recipients.map((u) => String(u.email).toLowerCase()));
+    const manualOnly = manualList.filter((e) => !userEmailSet.has(e));
 
     const mailAttachments = resolveEmailAttachments(attachments);
     const cleanSubject = String(subject).trim();
@@ -1638,6 +1659,24 @@ exports.sendManualEmail = async (req, res) => {
       } catch (e) {
         logger.error(`Manual email to ${u.email} failed: ${e.message}`);
         failed.push(u.email);
+      }
+    }
+
+    // Manually-entered addresses (no account → no name personalization).
+    for (const addr of manualOnly) {
+      try {
+        const result = await sendAdminBroadcastEmail(addr, {
+          subject: cleanSubject,
+          body: cleanBody,
+          name: null,
+          greet: false,
+          attachments: mailAttachments,
+        });
+        if (result && result.success) sent += 1;
+        else failed.push(addr);
+      } catch (e) {
+        logger.error(`Manual email to ${addr} failed: ${e.message}`);
+        failed.push(addr);
       }
     }
 

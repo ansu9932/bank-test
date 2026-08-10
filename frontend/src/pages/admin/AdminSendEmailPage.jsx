@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   RiMailSendLine, RiSearchLine, RiRefreshLine, RiCheckLine,
   RiCloseLine, RiGroupLine, RiUserLine, RiSendPlaneFill,
-  RiAttachment2, RiFile3Line, RiHistoryLine,
+  RiAttachment2, RiFile3Line, RiHistoryLine, RiMailAddLine,
 } from 'react-icons/ri';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
@@ -54,6 +54,10 @@ export default function AdminSendEmailPage() {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(() => new Map()); // id -> {name,email}
 
+  // Manually-entered email addresses (don't need to be registered users).
+  const [manualEmails, setManualEmails] = useState([]); // string[]
+  const [manualInput, setManualInput] = useState('');
+
   // ── Send / progress state ───────────────────────────────────────────────────
   const [sending, setSending] = useState(false);
   const [progress, setProgress] = useState(null); // { done, total, sent, failed }
@@ -99,6 +103,36 @@ export default function AdminSendEmailPage() {
 
   const selectedCount = selected.size;
 
+  // ── Manual email helpers ──────────────────────────────────────────────────
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+  // Parse the input box (comma / space / newline separated) and add valid,
+  // non-duplicate addresses to the manual list.
+  const addManualEmails = () => {
+    const raw = manualInput.split(/[\s,;]+/).map((e) => e.trim().toLowerCase()).filter(Boolean);
+    if (raw.length === 0) return;
+
+    const invalid = raw.filter((e) => !EMAIL_RE.test(e));
+    const valid = raw.filter((e) => EMAIL_RE.test(e));
+
+    if (invalid.length > 0) {
+      toast.error(`Invalid email${invalid.length === 1 ? '' : 's'}: ${invalid.slice(0, 3).join(', ')}${invalid.length > 3 ? '…' : ''}`);
+    }
+    if (valid.length > 0) {
+      setManualEmails((prev) => {
+        const next = new Set(prev);
+        valid.forEach((e) => next.add(e));
+        return Array.from(next);
+      });
+      setManualInput(invalid.join(', ')); // keep only the bad ones for fixing
+    }
+  };
+
+  const removeManualEmail = (email) =>
+    setManualEmails((prev) => prev.filter((e) => e !== email));
+
+  const manualCount = manualEmails.length;
+
   // ── Attachment helpers ────────────────────────────────────────────────────
   const onPickFiles = (e) => {
     const picked = Array.from(e.target.files || []);
@@ -121,17 +155,18 @@ export default function AdminSendEmailPage() {
 
   const canSend = useMemo(() => {
     if (!subject.trim() || !body.trim()) return false;
-    if (mode === 'selected') return selectedCount > 0;
+    if (mode === 'selected') return selectedCount > 0 || manualCount > 0;
     return true;
-  }, [subject, body, mode, selectedCount]);
+  }, [subject, body, mode, selectedCount, manualCount]);
 
   // ── Send ────────────────────────────────────────────────────────────────
   const handleSend = async () => {
     if (!canSend || sending) return;
 
+    const manualNote = manualCount > 0 ? ` + ${manualCount} manual email${manualCount === 1 ? '' : 's'}` : '';
     const target = mode === 'all'
-      ? `ALL users${onlyActive ? ' with an active account' : ''}`
-      : `${selectedCount} selected user${selectedCount === 1 ? '' : 's'}`;
+      ? `ALL users${onlyActive ? ' with an active account' : ''}${manualNote}`
+      : `${selectedCount} selected user${selectedCount === 1 ? '' : 's'}${manualNote}`;
     if (!window.confirm(`Send this email to ${target}?`)) return;
 
     setSending(true);
@@ -149,7 +184,7 @@ export default function AdminSendEmailPage() {
         attachmentRefs = up.data.data.attachments || [];
       }
 
-      // 2. Resolve recipient IDs.
+      // 2. Resolve recipient IDs (+ manually entered addresses).
       let ids;
       if (mode === 'all') {
         const r = await api.get('/admin/user-ids', { params: { onlyActive } });
@@ -157,14 +192,15 @@ export default function AdminSendEmailPage() {
       } else {
         ids = Array.from(selected.keys());
       }
-      if (ids.length === 0) {
+      const totalRecipients = ids.length + manualEmails.length;
+      if (totalRecipients === 0) {
         toast.error('No recipients with an email address were found.');
         setSending(false);
         setProgress(null);
         return;
       }
 
-      setProgress({ done: 0, total: ids.length, sent: 0, failed: 0 });
+      setProgress({ done: 0, total: totalRecipients, sent: 0, failed: 0 });
 
       // 3. Create the campaign (mail-history row).
       const campaignRes = await api.post('/admin/email-campaigns', {
@@ -173,7 +209,7 @@ export default function AdminSendEmailPage() {
         greet,
         sendToAll: mode === 'all',
         onlyActive: mode === 'all' ? onlyActive : false,
-        totalRecipients: ids.length,
+        totalRecipients,
         attachmentNames: attachmentRefs.map((a) => a.filename),
       });
       const campaignId = campaignRes.data.data.campaignId;
@@ -198,7 +234,27 @@ export default function AdminSendEmailPage() {
           failedTotal += batch.length; // whole batch failed (network/server)
         }
         done += batch.length;
-        setProgress({ done, total: ids.length, sent: sentTotal, failed: failedTotal });
+        setProgress({ done, total: totalRecipients, sent: sentTotal, failed: failedTotal });
+      }
+
+      // 4b. Send to manually-entered addresses (batched the same way).
+      for (const batch of chunk(manualEmails, BATCH_SIZE)) {
+        try {
+          const res = await api.post('/admin/send-email', {
+            subject: subject.trim(),
+            body,
+            greet,
+            manualEmails: batch,
+            attachments: attachmentRefs,
+            campaignId,
+          });
+          sentTotal += res.data.data.sent || 0;
+          failedTotal += res.data.data.failed || 0;
+        } catch {
+          failedTotal += batch.length;
+        }
+        done += batch.length;
+        setProgress({ done, total: totalRecipients, sent: sentTotal, failed: failedTotal });
       }
 
       if (failedTotal > 0) {
@@ -212,6 +268,8 @@ export default function AdminSendEmailPage() {
       setBody('');
       setFiles([]);
       clearSelection();
+      setManualEmails([]);
+      setManualInput('');
       setTimeout(() => setProgress(null), 2500);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to send the email.');
@@ -354,6 +412,7 @@ export default function AdminSendEmailPage() {
               {mode === 'all'
                 ? <>Sending to <span className="text-brand-400 font-medium">all users{onlyActive ? ' (active only)' : ''}</span></>
                 : <>Sending to <span className="text-brand-400 font-medium">{selectedCount}</span> selected user{selectedCount === 1 ? '' : 's'}</>}
+              {manualCount > 0 && <> + <span className="text-brand-400 font-medium">{manualCount}</span> manual email{manualCount === 1 ? '' : 's'}</>}
             </p>
             <button onClick={handleSend} disabled={!canSend || sending} className="btn-primary">
               {sending ? (
@@ -471,6 +530,59 @@ export default function AdminSendEmailPage() {
                   </div>
                 )}
               </>
+            )}
+          </div>
+
+          {/* ── Manual email addresses ─────────────────────────────── */}
+          <div className="glass-card p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-dark-200 text-sm font-medium flex items-center gap-2">
+                <RiMailAddLine className="text-brand-400" /> Manual emails
+              </label>
+              {manualCount > 0 && <span className="text-dark-400 text-xs">{manualCount} added</span>}
+            </div>
+            <p className="text-dark-400 text-xs">
+              Send to any address — even if it isn&apos;t a registered user. Separate multiple addresses with commas or spaces.
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={manualInput}
+                onChange={(e) => setManualInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) {
+                    e.preventDefault();
+                    addManualEmails();
+                  }
+                }}
+                placeholder="e.g. someone@example.com"
+                className="input-field py-2.5 flex-1"
+                disabled={sending}
+              />
+              <button
+                type="button"
+                onClick={addManualEmails}
+                disabled={sending || !manualInput.trim()}
+                className="btn-ghost text-sm flex-shrink-0 disabled:opacity-40"
+              >
+                Add
+              </button>
+            </div>
+
+            {manualCount > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {manualEmails.map((email) => (
+                  <span key={email} className="badge badge-brand max-w-full">
+                    <span className="truncate">{email}</span>
+                    {!sending && (
+                      <RiCloseLine
+                        className="cursor-pointer flex-shrink-0"
+                        onClick={() => removeManualEmail(email)}
+                      />
+                    )}
+                  </span>
+                ))}
+              </div>
             )}
           </div>
         </div>
