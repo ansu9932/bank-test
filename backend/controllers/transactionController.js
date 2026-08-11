@@ -833,158 +833,86 @@ exports.downloadReceipt = async (req, res) => {
     res.setHeader('Pragma', 'no-cache');
     doc.pipe(res);
 
-    const PAGE_W = 595.28, PAGE_H = 841.89;
+    const PAGE_W = 595.28;
     const CARD_X = 60, CARD_W = PAGE_W - 120;
 
-    // ── Receipt Header with brand styling ────────────────────────────────────
-    // Dark header with decorative pattern overlay
-    doc.rect(0, 0, PAGE_W, 110).fill('#000a1e'); // primary color
-    
-    // Decorative dot pattern overlay (reduced opacity)
-    for (let x = 2; x < PAGE_W; x += 24) {
-      for (let y = 2; y < 110; y += 24) {
-        doc.circle(x, y, 1).fill('#ffffff').opacity(0.1);
-      }
-    }
-    doc.opacity(1); // Reset opacity
-    
-    doc.rect(0, 106, PAGE_W, 4).fill('#c8102e'); // error accent border
-    
-    doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(18)
-      .text('Alister Bank', 0, 32, { width: PAGE_W, align: 'center' });
-    doc.fillColor('#ffffff').opacity(0.7).fontSize(8).font('Helvetica-Bold')
-      .text('TRANSACTION RECEIPT', 0, 58, { width: PAGE_W, align: 'center', characterSpacing: 2 });
+    // ── Header band ──────────────────────────────────────────────────────────
+    doc.rect(0, 0, PAGE_W, 130).fill('#0f0f1a');
+    doc.rect(0, 126, PAGE_W, 4).fill('#c8102e');
+    doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(26).text('ALISTER BANK', 60, 40);
+    doc.fillColor('#c8102e').fontSize(10).font('Helvetica-Bold').text('TRANSACTION RECEIPT', 60, 74, { characterSpacing: 2 });
+    doc.fillColor('#9ca3af').font('Helvetica').fontSize(8)
+      .text('SWIFT: ALSTINBB  ·  www.alisterbank.online', 60, 92);
+    doc.fillColor('#9ca3af').fontSize(8)
+      .text(`Generated: ${moment().format('DD MMM YYYY, HH:mm:ss')}`, 60, 40, { width: PAGE_W - 120, align: 'right' });
 
-    // ── Status & Amount Hero Section ─────────────────────────────────────────
+    // ── Status + amount hero ─────────────────────────────────────────────────
     const statusMap = {
-      success: { label: 'TRANSFER SUCCESSFUL', color: '#c8102e', bg: '#ffdad6', icon: '✓' },
-      pending: { label: 'PENDING', color: '#d97706', bg: '#fffbeb', icon: '⏱' },
-      processing: { label: 'PROCESSING', color: '#d97706', bg: '#fffbeb', icon: '⟳' },
-      failed: { label: 'FAILED', color: '#dc2626', bg: '#fef2f2', icon: '✗' },
-      reversed: { label: 'REVERSED', color: '#dc2626', bg: '#fef2f2', icon: '↺' },
+      success: { label: 'SUCCESSFUL', color: '#16a34a', bg: '#f0fdf4' },
+      pending: { label: 'PENDING', color: '#d97706', bg: '#fffbeb' },
+      processing: { label: 'PROCESSING', color: '#d97706', bg: '#fffbeb' },
+      failed: { label: 'FAILED', color: '#dc2626', bg: '#fef2f2' },
+      reversed: { label: 'REVERSED', color: '#dc2626', bg: '#fef2f2' },
     };
     const st = statusMap[tx.status] || statusMap.pending;
 
-    let y = 150;
-    // Hero status card
-    doc.roundedRect(CARD_X, y, CARD_W, 90, 10).fill(st.bg);
-    
-    // Status badge
+    let y = 170;
+    doc.roundedRect(CARD_X, y, CARD_W, 110, 10).fill(st.bg);
     doc.fillColor(st.color).font('Helvetica-Bold').fontSize(9)
-      .text(`●  ${st.label}`, CARD_X, y + 16, { width: CARD_W, align: 'center', characterSpacing: 1.5 });
-    
-    // Amount (hero size) - GREEN for credits, RED for debits
-    const amountColor = isCredit ? '#16a34a' : '#dc2626';
-    doc.fillColor(amountColor).font('Helvetica-Bold').fontSize(32)
-      .text(`${isCredit ? '+' : '-'}${money(tx.amount)}`, CARD_X, y + 34, { width: CARD_W, align: 'center' });
-    
-    // Transaction meta - darker text for better readability
-    doc.fillColor('#374151').font('Helvetica').fontSize(8)
+      .text(`●  ${st.label}`, CARD_X, y + 20, { width: CARD_W, align: 'center', characterSpacing: 1.5 });
+    doc.fillColor('#111827').font('Helvetica-Bold').fontSize(30)
+      .text(`${isCredit ? '+' : '-'} ${money(tx.amount)}`, CARD_X, y + 38, { width: CARD_W, align: 'center' });
+    doc.fillColor('#6b7280').font('Helvetica').fontSize(9)
       .text(`${isCredit ? 'Credited to' : 'Debited from'} A/c ${maskAccountNumber(account.account_number)}  ·  ${moment(tx.created_at).format('DD MMM YYYY [at] HH:mm')}`,
-        CARD_X, y + 70, { width: CARD_W, align: 'center' });
+        CARD_X, y + 78, { width: CARD_W, align: 'center' });
 
-    // ── Sender & Recipient Details Grid ─────────────────────────────────────
-    y = 260;
-    const colW = (CARD_W - 16) / 2;
-    
-    // Sender Details (Left) - bar on RIGHT side
-    doc.roundedRect(CARD_X, y, colW, 80, 8).fill('#efeded');
-    // Red bar on the RIGHT edge
-    doc.moveTo(CARD_X + colW - 4, y + 8).lineTo(CARD_X + colW - 4, y + 72)
-      .lineWidth(4).strokeColor('#c8102e').stroke();
-    
-    doc.fillColor('#1f2937').font('Helvetica-Bold').fontSize(7)
-      .text('SENDER DETAILS', CARD_X + 12, y + 12, { characterSpacing: 0.8 });
-    
-    doc.fillColor('#374151').font('Helvetica').fontSize(7)
-      .text('Name', CARD_X + 12, y + 28);
-    doc.fillColor('#000000').font('Helvetica-Bold').fontSize(10)
-      .text((user.account_type === 'business_elite' && user.company_name) 
-        ? user.company_name 
-        : `${user.first_name} ${user.last_name}`, 
-        CARD_X + 12, y + 38, { width: colW - 24, ellipsis: true });
-    
-    doc.fillColor('#374151').font('Helvetica').fontSize(7)
-      .text('Account', CARD_X + 12, y + 54);
-    doc.fillColor('#000000').font('Helvetica').fontSize(8)
-      .text(`${account.account_type?.replace('_', ' ')} ending in ${account.account_number.slice(-4)}`, 
-        CARD_X + 12, y + 64, { width: colW - 24, ellipsis: true });
-    
-    // Recipient Details (Right) - bar on RIGHT side
-    const recX = CARD_X + colW + 16;
-    doc.roundedRect(recX, y, colW, 80, 8).fill('#efeded');
-    // Green bar on the RIGHT edge
-    doc.moveTo(recX + colW - 4, y + 8).lineTo(recX + colW - 4, y + 72)
-      .lineWidth(4).strokeColor('#16a34a').stroke();
-    
-    doc.fillColor('#1f2937').font('Helvetica-Bold').fontSize(7)
-      .text('RECIPIENT DETAILS', recX + 12, y + 12, { characterSpacing: 0.8 });
-    
-    doc.fillColor('#374151').font('Helvetica').fontSize(7)
-      .text('Name', recX + 12, y + 28);
-    doc.fillColor('#000000').font('Helvetica-Bold').fontSize(10)
-      .text(tx.to_account_name || 'N/A', recX + 12, y + 38, { width: colW - 24, ellipsis: true });
-    
-    doc.fillColor('#374151').font('Helvetica').fontSize(7)
-      .text('Account', recX + 12, y + 54);
-    doc.fillColor('#000000').font('Helvetica').fontSize(8)
-      .text(tx.to_account_number 
-        ? `Account ending in ${tx.to_account_number.slice(-4)}` 
-        : 'N/A', 
-        recX + 12, y + 64, { width: colW - 24, ellipsis: true });
-
-    // ── Technical Details Table ──────────────────────────────────────────────
-    y = 360;
-    const details = [
-      ['Transaction ID', tx.reference_number],
-      ['Date & Time', moment(tx.created_at).format('MMM DD, YYYY HH:mm:ss UTC')],
-      ['Type', tx.transfer_mode || 'Internal Transfer'],
+    // ── Details card ─────────────────────────────────────────────────────────
+    y = 310;
+    const rows = [
+      ['Reference Number', tx.reference_number],
+      ['Date & Time', moment(tx.created_at).format('DD MMM YYYY, HH:mm:ss')],
+      ['Transfer Mode', tx.transfer_mode || '—'],
+      ['Transaction Type', isCredit ? 'Credit' : 'Debit'],
+      ['Account Holder', (user.account_type === 'business_elite' && user.company_name)
+        ? user.company_name
+        : `${user.first_name} ${user.last_name}`],
+      ['Account Number', maskAccountNumber(account.account_number)],
+      ...(tx.to_account_name ? [['Beneficiary Name', tx.to_account_name]] : []),
+      ...(tx.to_account_number ? [['Beneficiary A/c', tx.to_account_number]] : []),
       ...(tx.to_bank_name ? [['Beneficiary Bank', tx.to_bank_name]] : []),
       ...(tx.to_ifsc ? [['IFSC / SWIFT', tx.to_ifsc]] : []),
-      ...(tx.description ? [['Note / Description', String(tx.description).slice(0, 60)]] : []),
+      ...(tx.description ? [['Remarks', String(tx.description).slice(0, 80)]] : []),
+      ['Balance After', money(tx.balance_after)],
     ];
-    
-    const detailH = details.length * 26 + 48;
-    doc.roundedRect(CARD_X, y, CARD_W, detailH, 10).lineWidth(1).strokeColor('#e5e7eb').stroke();
-    
-    doc.fillColor('#000000').font('Helvetica-Bold').fontSize(11)
-      .text('PAYMENT DETAILS', CARD_X + 24, y + 18, { characterSpacing: 1 });
-    doc.moveTo(CARD_X + 24, y + 36).lineTo(CARD_X + CARD_W - 24, y + 36)
-      .strokeColor('#c8102e').lineWidth(1.5).stroke();
-    
-    let dY = y + 48;
-    details.forEach(([label, value], idx) => {
-      if (idx > 0) {
-        doc.moveTo(CARD_X + 24, dY - 5).lineTo(CARD_X + CARD_W - 24, dY - 5)
-          .strokeColor('#f3f4f6').lineWidth(0.5).stroke();
-      }
-      doc.fillColor('#374151').font('Helvetica').fontSize(8)
-        .text(label.toUpperCase(), CARD_X + 24, dY, { width: 160 });
-      doc.fillColor('#000000').font('Helvetica-Bold').fontSize(8)
-        .text(String(value), CARD_X + 200, dY, { width: CARD_W - 224, align: 'right' });
-      dY += 26;
+
+    const ROW_H = 26;
+    const cardH = rows.length * ROW_H + 44;
+    doc.roundedRect(CARD_X, y, CARD_W, cardH, 10).lineWidth(1).strokeColor('#e5e7eb').stroke();
+    doc.fillColor('#0f0f1a').font('Helvetica-Bold').fontSize(11).text('PAYMENT DETAILS', CARD_X + 24, y + 18, { characterSpacing: 1 });
+    doc.moveTo(CARD_X + 24, y + 36).lineTo(CARD_X + CARD_W - 24, y + 36).strokeColor('#c8102e').lineWidth(1.5).stroke();
+
+    let ry = y + 48;
+    rows.forEach(([label, value], i) => {
+      if (i > 0) doc.moveTo(CARD_X + 24, ry - 5).lineTo(CARD_X + CARD_W - 24, ry - 5).strokeColor('#f3f4f6').lineWidth(0.5).stroke();
+      doc.fillColor('#6b7280').font('Helvetica').fontSize(9).text(label, CARD_X + 24, ry, { width: 170 });
+      doc.fillColor('#111827').font('Helvetica-Bold').fontSize(9)
+        .text(String(value), CARD_X + 200, ry, { width: CARD_W - 224, align: 'right' });
+      ry += ROW_H;
     });
 
     // ── Footer ───────────────────────────────────────────────────────────────
-    y = dY + 20;
-    
-    // Security notice card
-    doc.roundedRect(CARD_X, y, CARD_W, 50, 8).fill('#f9fafb');
-    doc.fillColor('#374151').font('Helvetica').fontSize(7)
-      .text('SECURITY NOTICE: Alister Bank never asks for your OTP, PIN or password. This receipt is digitally generated and requires no signature. Verify any transaction by matching the reference number in your account statement.',
-        CARD_X + 16, y + 10, { width: CARD_W - 32, align: 'center', lineGap: 2 });
-    
-    // Footer text
-    y += 60;
-    doc.fillColor('#6b7280').fontSize(7).font('Helvetica')
-      .text(`© ${new Date().getFullYear()} Alister Bank · This is a system-generated receipt for reference number ${tx.reference_number}.`,
-        CARD_X, y, { width: CARD_W, align: 'center' });
-    
-    // Support info
-    y += 20;
-    doc.fillColor('#374151').fontSize(8).font('Helvetica')
-      .text('Support: 1-800-ALISTER (1-800-254-7837) · Available 24/7', 
-        CARD_X, y, { width: CARD_W, align: 'center' });
+    let fy = y + cardH + 28;
+    doc.roundedRect(CARD_X, fy, CARD_W, 46, 8).fill('#f9fafb');
+    doc.fillColor('#6b7280').font('Helvetica').fontSize(7.5).text(
+      'SECURITY NOTICE: Alister Bank never asks for your OTP, PIN or password. This receipt is digitally generated and requires no signature. '
+      + 'Verify any transaction by matching the reference number in your account statement.',
+      CARD_X + 16, fy + 10, { width: CARD_W - 32, align: 'center', lineGap: 2 }
+    );
+
+    doc.fillColor('#9ca3af').fontSize(7).text(
+      `© ${new Date().getFullYear()} Alister Bank · This is a system-generated receipt for reference number ${tx.reference_number}.`,
+      CARD_X, fy + 62, { width: CARD_W, align: 'center' }
+    );
 
     doc.end();
   } catch (err) {
