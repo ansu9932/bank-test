@@ -407,69 +407,211 @@ const fetchStatementTransactions = async (accountId, startDate, endDate) => {
 // Render the official statement PDF into the given PDFDocument (piped by the
 // caller either to the HTTP response, or into a Buffer for email delivery).
 const renderStatementPDF = (doc, { user, account, transactions, startDate, endDate }) => {
-  // Header
-  doc.rect(0, 0, 612, 100).fill('#c8102e');
-  doc.fillColor('#ffffff').fontSize(24).font('Helvetica-Bold').text('ALISTER BANK', 50, 30);
-  doc.fontSize(10).font('Helvetica').text('Account Statement', 50, 60);
-  doc.text(`Generated: ${new Date().toLocaleString()}`, 350, 60);
-
-  // Account Info
-  doc.fillColor('#000000').moveDown(4);
-  doc.fontSize(11).font('Helvetica-Bold').text('Account Holder: ', 50, 120, { continued: true });
-  doc.font('Helvetica').text(statementHolderName(user));
-  doc.font('Helvetica-Bold').text('Account Number: ', 50, 138, { continued: true });
-  doc.font('Helvetica').text(maskAccountNumber(account.account_number));
-  doc.font('Helvetica-Bold').text('SWIFT Code: ', 50, 156, { continued: true });
-  doc.font('Helvetica').text(account.swift_code || 'ALSTINBB');
-  doc.font('Helvetica-Bold').text('Current Balance: ', 50, 174, { continued: true });
-  doc.font('Helvetica').text(`$${parseFloat(account.balance).toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
-
-  // Period
+  const PAGE_W = 595.28, PAGE_H = 841.89;
+  const MARGIN = 50;
+  
+  // ── Modern Header with primary brand color and clean typography ──────────
+  doc.rect(0, 0, PAGE_W, 80).fill('#000a1e'); // primary color
+  doc.rect(0, 80, PAGE_W, 4).fill('#c8102e'); // error accent border
+  
+  doc.fillColor('#ffffff').fontSize(28).font('Helvetica-Bold')
+    .text('Alister Bank', MARGIN, 24);
+  
+  doc.fillColor('#ffffff').opacity(0.7).fontSize(10).font('Helvetica')
+    .text('100 Financial District Blvd, Suite 400', MARGIN, 52)
+    .text('New York, NY 10005 · 1-800-ALISTER · www.alisterbank.com', MARGIN, 64);
+  
+  // Header right side - Statement title and period
+  doc.opacity(1).fillColor('#ffffff').fontSize(16).font('Helvetica-Bold')
+    .text('ACCOUNT STATEMENT', PAGE_W - 220, 24, { width: 170, align: 'right' });
+  
   if (startDate && endDate) {
-    doc.font('Helvetica-Bold').text('Period: ', 50, 192, { continued: true });
-    doc.font('Helvetica').text(`${startDate} to ${endDate}`);
+    doc.roundedRect(PAGE_W - 220, 46, 170, 26, 4).fillAndStroke('#efeded', '#c4c6cf');
+    doc.fillColor('#44474e').fontSize(7).font('Helvetica-Bold')
+      .text('STATEMENT PERIOD', PAGE_W - 215, 50, { width: 160, align: 'center' });
+    doc.fillColor('#1b1c1c').fontSize(10).font('Helvetica-Bold')
+      .text(`${moment(startDate).format('MMM DD, YYYY')} - ${moment(endDate).format('MMM DD, YYYY')}`, 
+        PAGE_W - 215, 60, { width: 160, align: 'center' });
   }
-
-  // Separator
-  doc.moveTo(50, 215).lineTo(562, 215).strokeColor('#c8102e').lineWidth(2).stroke();
-
+  
+  // ── Account Holder & Summary Grid ──────────────────────────────────────
+  let y = 110;
+  
+  // Account Holder Info (Left Column)
+  doc.fillColor('#44474e').fontSize(8).font('Helvetica-Bold')
+    .text('ACCOUNT HOLDER', MARGIN, y);
+  doc.fillColor('#1b1c1c').fontSize(14).font('Helvetica-Bold')
+    .text(statementHolderName(user), MARGIN, y + 14);
+  
+  y += 36;
+  doc.fillColor('#44474e').fontSize(8).font('Helvetica-Bold')
+    .text('ACCOUNT NUMBER', MARGIN, y);
+  doc.fillColor('#1b1c1c').fontSize(10).font('Helvetica')
+    .text(maskAccountNumber(account.account_number), MARGIN, y + 14);
+  
+  y += 30;
+  doc.fillColor('#44474e').fontSize(8).font('Helvetica-Bold')
+    .text('ACCOUNT TYPE', MARGIN, y);
+  doc.fillColor('#1b1c1c').fontSize(10).font('Helvetica')
+    .text(account.account_type?.replace('_', ' ').toUpperCase() || 'PREMIUM CHECKING', MARGIN, y + 14);
+  
+  // Financial Summary Card (Right Column - Bento style)
+  const summaryX = PAGE_W - MARGIN - 230;
+  const summaryY = 110;
+  const summaryW = 230;
+  const summaryH = 130;
+  
+  doc.roundedRect(summaryX, summaryY, summaryW, summaryH, 8)
+    .lineWidth(1).strokeColor('#c4c6cf').fillAndStroke('#fbf9f9', '#c4c6cf');
+  
+  doc.fillColor('#44474e').fontSize(8).font('Helvetica-Bold')
+    .text('ACCOUNT SUMMARY', summaryX + 16, summaryY + 16);
+  doc.moveTo(summaryX + 16, summaryY + 30).lineTo(summaryX + summaryW - 16, summaryY + 30)
+    .strokeColor('#c4c6cf').lineWidth(1).stroke();
+  
+  // Calculate totals
+  const openingBalance = transactions.length > 0 
+    ? parseFloat(transactions[transactions.length - 1].balance_before || account.balance) 
+    : parseFloat(account.balance);
+  const totalCredits = transactions
+    .filter(t => t.transaction_type === 'credit')
+    .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
+  const totalDebits = transactions
+    .filter(t => t.transaction_type === 'debit')
+    .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
+  const closingBalance = parseFloat(account.balance);
+  
+  let sY = summaryY + 40;
+  const renderSummaryLine = (label, value, color = '#1b1c1c') => {
+    doc.fillColor('#44474e').fontSize(8).font('Helvetica')
+      .text(label, summaryX + 16, sY, { width: summaryW - 100 });
+    doc.fillColor(color).fontSize(9).font('Helvetica-Bold')
+      .text(value, summaryX + 16, sY, { width: summaryW - 32, align: 'right' });
+    sY += 16;
+  };
+  
+  renderSummaryLine('Opening Balance', `$${openingBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
+  renderSummaryLine('Total Deposits/Credits (+)', `+$${totalCredits.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, '#199d3d');
+  renderSummaryLine('Total Withdrawals/Debits (-)', `-$${totalDebits.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, '#1b1c1c');
+  
+  // Closing balance with emphasis
+  doc.moveTo(summaryX + 16, sY).lineTo(summaryX + summaryW - 16, sY)
+    .strokeColor('#ba1a1a').lineWidth(2).stroke();
+  sY += 8;
+  doc.fillColor('#000a1e').fontSize(10).font('Helvetica-Bold')
+    .text('Closing Balance', summaryX + 16, sY);
+  doc.fillColor('#c8102e').fontSize(13).font('Helvetica-Bold')
+    .text(`$${closingBalance.toLocaleString('en-US', { minimomFractionDigits: 2 })}`, 
+      summaryX + 16, sY, { width: summaryW - 32, align: 'right' });
+  
+  // ── Transaction Details Table ──────────────────────────────────────────
+  y = 260;
+  doc.fillColor('#000a1e').fontSize(12).font('Helvetica-Bold')
+    .text('Transaction Details', MARGIN, y);
+  doc.moveTo(MARGIN, y + 18).lineTo(PAGE_W - MARGIN, y + 18)
+    .strokeColor('#000a1e').lineWidth(2).stroke();
+  
+  y += 26;
+  
   // Table header
-  const tableTop = 230;
-  doc.rect(50, tableTop, 512, 24).fill('#1a1a2e');
-  doc.fillColor('#ffffff').fontSize(9).font('Helvetica-Bold');
-  doc.text('DATE', 55, tableTop + 7);
-  doc.text('DESCRIPTION', 120, tableTop + 7);
-  doc.text('REF NO.', 310, tableTop + 7);
-  doc.text('DEBIT', 400, tableTop + 7);
-  doc.text('CREDIT', 450, tableTop + 7);
-  doc.text('BALANCE', 505, tableTop + 7);
-
-  // Rows
-  let y = tableTop + 30;
-  transactions.forEach((tx, idx) => {
-    if (y > 750) { doc.addPage(); y = 50; }
-    if (idx % 2 === 0) doc.rect(50, y - 4, 512, 20).fill('#f9f9f9');
-    doc.fillColor('#000000').fontSize(8).font('Helvetica');
-    doc.text(moment(tx.created_at).format('DD/MM/YY'), 55, y);
-    const desc = (tx.description || tx.narration || '').slice(0, 30);
-    doc.text(desc, 120, y);
-    doc.text((tx.reference_number || '').slice(0, 16), 310, y);
-    doc.fillColor(tx.transaction_type === 'debit' ? '#dc2626' : '#555');
-    doc.text(tx.transaction_type === 'debit' ? `$${parseFloat(tx.amount).toFixed(2)}` : '-', 400, y);
-    doc.fillColor(tx.transaction_type === 'credit' ? '#16a34a' : '#555');
-    doc.text(tx.transaction_type === 'credit' ? `$${parseFloat(tx.amount).toFixed(2)}` : '-', 450, y);
-    doc.fillColor('#000000');
-    doc.text(`$${parseFloat(tx.balance_after || 0).toFixed(2)}`, 505, y);
-    y += 20;
+  doc.rect(MARGIN, y, PAGE_W - 2 * MARGIN, 20).fill('#efeded');
+  doc.strokeColor('#c4c6cf').lineWidth(0.5)
+    .rect(MARGIN, y, PAGE_W - 2 * MARGIN, 20).stroke();
+  
+  doc.fillColor('#44474e').fontSize(7).font('Helvetica-Bold');
+  doc.text('DATE', MARGIN + 8, y + 7);
+  doc.text('DESCRIPTION', MARGIN + 50, y + 7);
+  doc.text('REF #', MARGIN + 220, y + 7);
+  doc.text('WITHDRAWALS (-)', MARGIN + 300, y + 7, { width: 70, align: 'right' });
+  doc.text('DEPOSITS (+)', MARGIN + 380, y + 7, { width: 70, align: 'right' });
+  doc.text('BALANCE', MARGIN + 460, y + 7, { width: 70, align: 'right' });
+  
+  y += 20;
+  
+  // Table rows
+  [...transactions].reverse().forEach((tx, idx) => {
+    if (y > PAGE_H - 100) {
+      doc.addPage();
+      y = 50;
+      // Repeat header on new page
+      doc.rect(MARGIN, y, PAGE_W - 2 * MARGIN, 20).fill('#efeded');
+      doc.fillColor('#44474e').fontSize(7).font('Helvetica-Bold');
+      doc.text('DATE', MARGIN + 8, y + 7);
+      doc.text('DESCRIPTION', MARGIN + 50, y + 7);
+      doc.text('REF #', MARGIN + 220, y + 7);
+      doc.text('WITHDRAWALS (-)', MARGIN + 300, y + 7, { width: 70, align: 'right' });
+      doc.text('DEPOSITS (+)', MARGIN + 380, y + 7, { width: 70, align: 'right' });
+      doc.text('BALANCE', MARGIN + 460, y + 7, { width: 70, align: 'right' });
+      y += 20;
+    }
+    
+    // Alternating row background
+    if (idx % 2 === 1) {
+      doc.rect(MARGIN, y, PAGE_W - 2 * MARGIN, 18).fill('#fbf9f9');
+    }
+    
+    doc.strokeColor('#c4c6cf').lineWidth(0.5)
+      .rect(MARGIN, y, PAGE_W - 2 * MARGIN, 18).stroke();
+    
+    // Row content
+    doc.fillColor('#44474e').fontSize(8).font('Helvetica')
+      .text(moment(tx.created_at).format('MMM DD'), MARGIN + 8, y + 5);
+    
+    const desc = (tx.description || tx.narration || 'Transaction').slice(0, 35);
+    doc.fillColor('#1b1c1c').fontSize(8).font('Helvetica')
+      .text(desc, MARGIN + 50, y + 5, { width: 165, ellipsis: true });
+    
+    doc.fillColor('#44474e').fontSize(7).font('Helvetica')
+      .text((tx.reference_number || '').slice(0, 18), MARGIN + 220, y + 5);
+    
+    // Withdrawals
+    if (tx.transaction_type === 'debit') {
+      doc.fillColor('#1b1c1c').fontSize(8).font('Helvetica')
+        .text(`-$${parseFloat(tx.amount).toFixed(2)}`, MARGIN + 300, y + 5, { width: 70, align: 'right' });
+    }
+    
+    // Deposits
+    if (tx.transaction_type === 'credit') {
+      doc.fillColor('#199d3d').fontSize(8).font('Helvetica')
+        .text(`+$${parseFloat(tx.amount).toFixed(2)}`, MARGIN + 380, y + 5, { width: 70, align: 'right' });
+    }
+    
+    // Balance
+    doc.fillColor('#1b1c1c').fontSize(8).font('Helvetica-Bold')
+      .text(`$${parseFloat(tx.balance_after || 0).toFixed(2)}`, MARGIN + 460, y + 5, { width: 70, align: 'right' });
+    
+    y += 18;
   });
-
-  // Footer
-  doc.moveDown(2);
-  doc.fontSize(8).fillColor('#888').text(
-    'This is a system-generated statement. © Alister Bank. SWIFT: ALSTINBB.',
-    50, y + 20, { align: 'center', width: 512 }
-  );
-
+  
+  // Closing balance row
+  doc.rect(MARGIN, y, PAGE_W - 2 * MARGIN, 22).fill('#efeded');
+  doc.strokeColor('#000a1e').lineWidth(2)
+    .rect(MARGIN, y, PAGE_W - 2 * MARGIN, 22).stroke();
+  
+  doc.fillColor('#000a1e').fontSize(10).font('Helvetica-Bold')
+    .text('Closing Balance', MARGIN + 8, y + 6);
+  doc.fillColor('#1b1c1c').fontSize(8).font('Helvetica-Bold')
+    .text(`-$${totalDebits.toFixed(2)}`, MARGIN + 300, y + 6, { width: 70, align: 'right' });
+  doc.fillColor('#199d3d').fontSize(8).font('Helvetica-Bold')
+    .text(`+$${totalCredits.toFixed(2)}`, MARGIN + 380, y + 6, { width: 70, align: 'right' });
+  doc.fillColor('#c8102e').fontSize(11).font('Helvetica-Bold')
+    .text(`$${closingBalance.toFixed(2)}`, MARGIN + 460, y + 6, { width: 70, align: 'right' });
+  
+  // ── Footer ──────────────────────────────────────────────────────────────
+  y = PAGE_H - 70;
+  doc.rect(0, y, PAGE_W, 1).fill('#c4c6cf');
+  
+  y += 12;
+  doc.fillColor('#000a1e').fontSize(11).font('Helvetica-Bold')
+    .text('Alister Bank', MARGIN, y);
+  doc.fillColor('#44474e').fontSize(8).font('Helvetica')
+    .text('For customer service, call 1-800-ALISTER (1-800-254-7837)', MARGIN, y + 16)
+    .text('Available 24/7 for account support and fraud reporting.', MARGIN, y + 28);
+  
+  doc.fillColor('#44474e').fontSize(7).font('Helvetica')
+    .text(`© ${new Date().getFullYear()} Alister Bank. All rights reserved. Member FDIC. Equal Housing Lender.`, 
+      MARGIN, y + 44, { width: PAGE_W - 2 * MARGIN, align: 'center' });
+  
   doc.end();
 };
 
@@ -651,86 +793,153 @@ exports.downloadReceipt = async (req, res) => {
     res.setHeader('Pragma', 'no-cache');
     doc.pipe(res);
 
-    const PAGE_W = 595.28;
+    const PAGE_W = 595.28, PAGE_H = 841.89;
     const CARD_X = 60, CARD_W = PAGE_W - 120;
 
-    // ── Header band ──────────────────────────────────────────────────────────
-    doc.rect(0, 0, PAGE_W, 130).fill('#0f0f1a');
-    doc.rect(0, 126, PAGE_W, 4).fill('#c8102e');
-    doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(26).text('ALISTER BANK', 60, 40);
-    doc.fillColor('#c8102e').fontSize(10).font('Helvetica-Bold').text('TRANSACTION RECEIPT', 60, 74, { characterSpacing: 2 });
-    doc.fillColor('#9ca3af').font('Helvetica').fontSize(8)
-      .text('SWIFT: ALSTINBB  ·  www.alisterbank.online', 60, 92);
-    doc.fillColor('#9ca3af').fontSize(8)
-      .text(`Generated: ${moment().format('DD MMM YYYY, HH:mm:ss')}`, 60, 40, { width: PAGE_W - 120, align: 'right' });
+    // ── Receipt Header with brand styling ────────────────────────────────────
+    // Dark header with decorative pattern overlay
+    doc.rect(0, 0, PAGE_W, 110).fill('#000a1e'); // primary color
+    
+    // Decorative dot pattern overlay (reduced opacity)
+    for (let x = 2; x < PAGE_W; x += 24) {
+      for (let y = 2; y < 110; y += 24) {
+        doc.circle(x, y, 1).fill('#ffffff').opacity(0.1);
+      }
+    }
+    doc.opacity(1); // Reset opacity
+    
+    doc.rect(0, 106, PAGE_W, 4).fill('#c8102e'); // error accent border
+    
+    doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(18)
+      .text('Alister Bank', 0, 32, { width: PAGE_W, align: 'center' });
+    doc.fillColor('#ffffff').opacity(0.7).fontSize(8).font('Helvetica-Bold')
+      .text('TRANSACTION RECEIPT', 0, 58, { width: PAGE_W, align: 'center', characterSpacing: 2 });
 
-    // ── Status + amount hero ─────────────────────────────────────────────────
+    // ── Status & Amount Hero Section ─────────────────────────────────────────
     const statusMap = {
-      success: { label: 'SUCCESSFUL', color: '#16a34a', bg: '#f0fdf4' },
-      pending: { label: 'PENDING', color: '#d97706', bg: '#fffbeb' },
-      processing: { label: 'PROCESSING', color: '#d97706', bg: '#fffbeb' },
-      failed: { label: 'FAILED', color: '#dc2626', bg: '#fef2f2' },
-      reversed: { label: 'REVERSED', color: '#dc2626', bg: '#fef2f2' },
+      success: { label: 'TRANSFER SUCCESSFUL', color: '#c8102e', bg: '#ffdad6', icon: '✓' },
+      pending: { label: 'PENDING', color: '#d97706', bg: '#fffbeb', icon: '⏱' },
+      processing: { label: 'PROCESSING', color: '#d97706', bg: '#fffbeb', icon: '⟳' },
+      failed: { label: 'FAILED', color: '#dc2626', bg: '#fef2f2', icon: '✗' },
+      reversed: { label: 'REVERSED', color: '#dc2626', bg: '#fef2f2', icon: '↺' },
     };
     const st = statusMap[tx.status] || statusMap.pending;
 
-    let y = 170;
-    doc.roundedRect(CARD_X, y, CARD_W, 110, 10).fill(st.bg);
+    let y = 150;
+    // Hero status card
+    doc.roundedRect(CARD_X, y, CARD_W, 90, 10).fill(st.bg);
+    
+    // Status badge
     doc.fillColor(st.color).font('Helvetica-Bold').fontSize(9)
-      .text(`●  ${st.label}`, CARD_X, y + 20, { width: CARD_W, align: 'center', characterSpacing: 1.5 });
-    doc.fillColor('#111827').font('Helvetica-Bold').fontSize(30)
-      .text(`${isCredit ? '+' : '-'} ${money(tx.amount)}`, CARD_X, y + 38, { width: CARD_W, align: 'center' });
-    doc.fillColor('#6b7280').font('Helvetica').fontSize(9)
+      .text(`●  ${st.label}`, CARD_X, y + 16, { width: CARD_W, align: 'center', characterSpacing: 1.5 });
+    
+    // Amount (hero size)
+    doc.fillColor('#111827').font('Helvetica-Bold').fontSize(32)
+      .text(`${isCredit ? '+' : '-'}${money(tx.amount)}`, CARD_X, y + 34, { width: CARD_W, align: 'center' });
+    
+    // Transaction meta
+    doc.fillColor('#6b7280').font('Helvetica').fontSize(8)
       .text(`${isCredit ? 'Credited to' : 'Debited from'} A/c ${maskAccountNumber(account.account_number)}  ·  ${moment(tx.created_at).format('DD MMM YYYY [at] HH:mm')}`,
-        CARD_X, y + 78, { width: CARD_W, align: 'center' });
+        CARD_X, y + 70, { width: CARD_W, align: 'center' });
 
-    // ── Details card ─────────────────────────────────────────────────────────
-    y = 310;
-    const rows = [
-      ['Reference Number', tx.reference_number],
-      ['Date & Time', moment(tx.created_at).format('DD MMM YYYY, HH:mm:ss')],
-      ['Transfer Mode', tx.transfer_mode || '—'],
-      ['Transaction Type', isCredit ? 'Credit' : 'Debit'],
-      ['Account Holder', (user.account_type === 'business_elite' && user.company_name)
-        ? user.company_name
-        : `${user.first_name} ${user.last_name}`],
-      ['Account Number', maskAccountNumber(account.account_number)],
-      ...(tx.to_account_name ? [['Beneficiary Name', tx.to_account_name]] : []),
-      ...(tx.to_account_number ? [['Beneficiary A/c', tx.to_account_number]] : []),
+    // ── Sender & Recipient Details Grid ─────────────────────────────────────
+    y = 260;
+    const colW = (CARD_W - 16) / 2;
+    
+    // Sender Details (Left)
+    doc.roundedRect(CARD_X, y, colW, 80, 8).fill('#efeded');
+    doc.moveTo(CARD_X, y).lineTo(CARD_X + 4, y).lineWidth(4).strokeColor('#000a1e').stroke();
+    
+    doc.fillColor('#44474e').font('Helvetica-Bold').fontSize(7)
+      .text('SENDER DETAILS', CARD_X + 12, y + 12, { characterSpacing: 0.8 });
+    
+    doc.fillColor('#44474e').font('Helvetica').fontSize(7)
+      .text('Name', CARD_X + 12, y + 28);
+    doc.fillColor('#1b1c1c').font('Helvetica-Bold').fontSize(10)
+      .text((user.account_type === 'business_elite' && user.company_name) 
+        ? user.company_name 
+        : `${user.first_name} ${user.last_name}`, 
+        CARD_X + 12, y + 38, { width: colW - 24, ellipsis: true });
+    
+    doc.fillColor('#44474e').font('Helvetica').fontSize(7)
+      .text('Account', CARD_X + 12, y + 54);
+    doc.fillColor('#1b1c1c').font('Helvetica').fontSize(8)
+      .text(`${account.account_type?.replace('_', ' ')} ending in ${account.account_number.slice(-4)}`, 
+        CARD_X + 12, y + 64, { width: colW - 24, ellipsis: true });
+    
+    // Recipient Details (Right)
+    const recX = CARD_X + colW + 16;
+    doc.roundedRect(recX, y, colW, 80, 8).fill('#efeded');
+    doc.moveTo(recX, y).lineTo(recX + 4, y).lineWidth(4).strokeColor('#c8102e').stroke();
+    
+    doc.fillColor('#44474e').font('Helvetica-Bold').fontSize(7)
+      .text('RECIPIENT DETAILS', recX + 12, y + 12, { characterSpacing: 0.8 });
+    
+    doc.fillColor('#44474e').font('Helvetica').fontSize(7)
+      .text('Name', recX + 12, y + 28);
+    doc.fillColor('#1b1c1c').font('Helvetica-Bold').fontSize(10)
+      .text(tx.to_account_name || 'N/A', recX + 12, y + 38, { width: colW - 24, ellipsis: true });
+    
+    doc.fillColor('#44474e').font('Helvetica').fontSize(7)
+      .text('Account', recX + 12, y + 54);
+    doc.fillColor('#1b1c1c').font('Helvetica').fontSize(8)
+      .text(tx.to_account_number 
+        ? `Account ending in ${tx.to_account_number.slice(-4)}` 
+        : 'N/A', 
+        recX + 12, y + 64, { width: colW - 24, ellipsis: true });
+
+    // ── Technical Details Table ──────────────────────────────────────────────
+    y = 360;
+    const details = [
+      ['Transaction ID', tx.reference_number],
+      ['Date & Time', moment(tx.created_at).format('MMM DD, YYYY HH:mm:ss UTC')],
+      ['Type', tx.transfer_mode || 'Internal Transfer'],
       ...(tx.to_bank_name ? [['Beneficiary Bank', tx.to_bank_name]] : []),
       ...(tx.to_ifsc ? [['IFSC / SWIFT', tx.to_ifsc]] : []),
-      ...(tx.description ? [['Remarks', String(tx.description).slice(0, 80)]] : []),
-      ['Balance After', money(tx.balance_after)],
+      ...(tx.description ? [['Note / Description', String(tx.description).slice(0, 60)]] : []),
     ];
-
-    const ROW_H = 26;
-    const cardH = rows.length * ROW_H + 44;
-    doc.roundedRect(CARD_X, y, CARD_W, cardH, 10).lineWidth(1).strokeColor('#e5e7eb').stroke();
-    doc.fillColor('#0f0f1a').font('Helvetica-Bold').fontSize(11).text('PAYMENT DETAILS', CARD_X + 24, y + 18, { characterSpacing: 1 });
-    doc.moveTo(CARD_X + 24, y + 36).lineTo(CARD_X + CARD_W - 24, y + 36).strokeColor('#c8102e').lineWidth(1.5).stroke();
-
-    let ry = y + 48;
-    rows.forEach(([label, value], i) => {
-      if (i > 0) doc.moveTo(CARD_X + 24, ry - 5).lineTo(CARD_X + CARD_W - 24, ry - 5).strokeColor('#f3f4f6').lineWidth(0.5).stroke();
-      doc.fillColor('#6b7280').font('Helvetica').fontSize(9).text(label, CARD_X + 24, ry, { width: 170 });
-      doc.fillColor('#111827').font('Helvetica-Bold').fontSize(9)
-        .text(String(value), CARD_X + 200, ry, { width: CARD_W - 224, align: 'right' });
-      ry += ROW_H;
+    
+    const detailH = details.length * 26 + 48;
+    doc.roundedRect(CARD_X, y, CARD_W, detailH, 10).lineWidth(1).strokeColor('#e5e7eb').stroke();
+    
+    doc.fillColor('#0f0f1a').font('Helvetica-Bold').fontSize(11)
+      .text('PAYMENT DETAILS', CARD_X + 24, y + 18, { characterSpacing: 1 });
+    doc.moveTo(CARD_X + 24, y + 36).lineTo(CARD_X + CARD_W - 24, y + 36)
+      .strokeColor('#c8102e').lineWidth(1.5).stroke();
+    
+    let dY = y + 48;
+    details.forEach(([label, value], idx) => {
+      if (idx > 0) {
+        doc.moveTo(CARD_X + 24, dY - 5).lineTo(CARD_X + CARD_W - 24, dY - 5)
+          .strokeColor('#f3f4f6').lineWidth(0.5).stroke();
+      }
+      doc.fillColor('#6b7280').font('Helvetica').fontSize(8)
+        .text(label.toUpperCase(), CARD_X + 24, dY, { width: 160 });
+      doc.fillColor('#111827').font('Helvetica-Bold').fontSize(8)
+        .text(String(value), CARD_X + 200, dY, { width: CARD_W - 224, align: 'right' });
+      dY += 26;
     });
 
     // ── Footer ───────────────────────────────────────────────────────────────
-    let fy = y + cardH + 28;
-    doc.roundedRect(CARD_X, fy, CARD_W, 46, 8).fill('#f9fafb');
-    doc.fillColor('#6b7280').font('Helvetica').fontSize(7.5).text(
-      'SECURITY NOTICE: Alister Bank never asks for your OTP, PIN or password. This receipt is digitally generated and requires no signature. '
-      + 'Verify any transaction by matching the reference number in your account statement.',
-      CARD_X + 16, fy + 10, { width: CARD_W - 32, align: 'center', lineGap: 2 }
-    );
-
-    doc.fillColor('#9ca3af').fontSize(7).text(
-      `© ${new Date().getFullYear()} Alister Bank · This is a system-generated receipt for reference number ${tx.reference_number}.`,
-      CARD_X, fy + 62, { width: CARD_W, align: 'center' }
-    );
+    y = dY + 20;
+    
+    // Security notice card
+    doc.roundedRect(CARD_X, y, CARD_W, 50, 8).fill('#f9fafb');
+    doc.fillColor('#6b7280').font('Helvetica').fontSize(7)
+      .text('SECURITY NOTICE: Alister Bank never asks for your OTP, PIN or password. This receipt is digitally generated and requires no signature. Verify any transaction by matching the reference number in your account statement.',
+        CARD_X + 16, y + 10, { width: CARD_W - 32, align: 'center', lineGap: 2 });
+    
+    // Footer text
+    y += 60;
+    doc.fillColor('#9ca3af').fontSize(7).font('Helvetica')
+      .text(`© ${new Date().getFullYear()} Alister Bank · This is a system-generated receipt for reference number ${tx.reference_number}.`,
+        CARD_X, y, { width: CARD_W, align: 'center' });
+    
+    // Support info
+    y += 20;
+    doc.fillColor('#6b7280').fontSize(8).font('Helvetica')
+      .text('Support: 1-800-ALISTER (1-800-254-7837) · Available 24/7', 
+        CARD_X, y, { width: CARD_W, align: 'center' });
 
     doc.end();
   } catch (err) {
