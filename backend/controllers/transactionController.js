@@ -408,66 +408,84 @@ const fetchStatementTransactions = async (accountId, startDate, endDate) => {
 // caller either to the HTTP response, or into a Buffer for email delivery).
 const renderStatementPDF = (doc, { user, account, transactions, startDate, endDate }) => {
   const PAGE_W = 595.28, PAGE_H = 841.89;
-  const MARGIN = 50;
+  const MARGIN = 60;
+  const CONTENT_W = PAGE_W - 2 * MARGIN;
   
-  // ── Modern Header with primary brand color and clean typography ──────────
-  doc.rect(0, 0, PAGE_W, 80).fill('#000a1e'); // primary color
-  doc.rect(0, 80, PAGE_W, 4).fill('#c8102e'); // error accent border
+  // ── Clean Professional Header ────────────────────────────────────────────
+  let y = MARGIN;
   
-  doc.fillColor('#ffffff').fontSize(28).font('Helvetica-Bold')
-    .text('Alister Bank', MARGIN, 24);
+  // Left side - Bank info
+  doc.fillColor('#000000').fontSize(22).font('Helvetica-Bold')
+    .text('Alister Bank', MARGIN, y);
   
-  doc.fillColor('#ffffff').opacity(0.7).fontSize(10).font('Helvetica')
-    .text('100 Financial District Blvd, Suite 400', MARGIN, 52)
-    .text('New York, NY 10005 · 1-800-ALISTER · www.alisterbank.com', MARGIN, 64);
+  doc.fillColor('#374151').fontSize(8).font('Helvetica')
+    .text('100 Financial District Blvd, Suite 400', MARGIN, y + 28)
+    .text('New York, NY 10005', MARGIN, y + 40)
+    .text('1-800-ALISTER | www.alisterbank.com', MARGIN, y + 52);
   
-  // Header right side - Statement title and period
-  doc.opacity(1).fillColor('#ffffff').fontSize(16).font('Helvetica-Bold')
-    .text('ACCOUNT STATEMENT', PAGE_W - 220, 24, { width: 170, align: 'right' });
+  // Right side - Statement title and period
+  doc.fillColor('#000000').fontSize(16).font('Helvetica-Bold')
+    .text('ACCOUNT STATEMENT', PAGE_W - MARGIN - 180, y, { width: 180, align: 'right' });
   
   if (startDate && endDate) {
-    doc.roundedRect(PAGE_W - 220, 46, 170, 26, 4).fillAndStroke('#efeded', '#c4c6cf');
-    doc.fillColor('#44474e').fontSize(7).font('Helvetica-Bold')
-      .text('STATEMENT PERIOD', PAGE_W - 215, 50, { width: 160, align: 'center' });
-    doc.fillColor('#1b1c1c').fontSize(10).font('Helvetica-Bold')
+    // Statement period badge
+    const badgeW = 180;
+    const badgeX = PAGE_W - MARGIN - badgeW;
+    doc.roundedRect(badgeX, y + 24, badgeW, 32, 4)
+      .lineWidth(1).strokeColor('#c4c6cf').stroke();
+    
+    doc.fillColor('#374151').fontSize(7).font('Helvetica-Bold')
+      .text('STATEMENT PERIOD', badgeX, y + 30, { width: badgeW, align: 'center' });
+    doc.fillColor('#000000').fontSize(9).font('Helvetica-Bold')
       .text(`${moment(startDate).format('MMM DD, YYYY')} - ${moment(endDate).format('MMM DD, YYYY')}`, 
-        PAGE_W - 215, 60, { width: 160, align: 'center' });
+        badgeX, y + 42, { width: badgeW, align: 'center' });
   }
   
-  // ── Account Holder & Summary Grid ──────────────────────────────────────
-  let y = 110;
+  // Separator line
+  y += 80;
+  doc.moveTo(MARGIN, y).lineTo(PAGE_W - MARGIN, y)
+    .strokeColor('#000000').lineWidth(3).stroke();
   
-  // Account Holder Info (Left Column)
-  doc.fillColor('#44474e').fontSize(8).font('Helvetica-Bold')
+  // ── Account Holder & Summary Section ──────────────────────────────────────
+  y += 24;
+  
+  // Left Column - Account Info
+  doc.fillColor('#374151').fontSize(7).font('Helvetica-Bold')
     .text('ACCOUNT HOLDER', MARGIN, y);
-  doc.fillColor('#1b1c1c').fontSize(14).font('Helvetica-Bold')
-    .text(statementHolderName(user), MARGIN, y + 14);
+  doc.fillColor('#000000').fontSize(12).font('Helvetica-Bold')
+    .text(statementHolderName(user), MARGIN, y + 12);
   
-  y += 36;
-  doc.fillColor('#44474e').fontSize(8).font('Helvetica-Bold')
+  const address = user.address || '456 Serenity Lane, Apt 3B';
+  const city = user.city || 'Seattle';
+  const state = user.state || 'WA';
+  const zip = user.zip_code || '98101';
+  doc.fillColor('#374151').fontSize(8).font('Helvetica')
+    .text(address, MARGIN, y + 28)
+    .text(`${city}, ${state} ${zip}`, MARGIN, y + 40);
+  
+  y += 60;
+  doc.fillColor('#374151').fontSize(7).font('Helvetica-Bold')
     .text('ACCOUNT NUMBER', MARGIN, y);
-  doc.fillColor('#1b1c1c').fontSize(10).font('Helvetica')
-    .text(maskAccountNumber(account.account_number), MARGIN, y + 14);
+  doc.fillColor('#000000').fontSize(9).font('Helvetica')
+    .text(maskAccountNumber(account.account_number), MARGIN, y + 12);
   
-  y += 30;
-  doc.fillColor('#44474e').fontSize(8).font('Helvetica-Bold')
+  y += 28;
+  doc.fillColor('#374151').fontSize(7).font('Helvetica-Bold')
     .text('ACCOUNT TYPE', MARGIN, y);
-  doc.fillColor('#1b1c1c').fontSize(10).font('Helvetica')
-    .text(account.account_type?.replace('_', ' ').toUpperCase() || 'PREMIUM CHECKING', MARGIN, y + 14);
+  doc.fillColor('#000000').fontSize(9).font('Helvetica')
+    .text(account.account_type?.replace('_', ' ') || 'Premium Checking', MARGIN, y + 12);
   
-  // Financial Summary Card (Right Column - Bento style)
-  const summaryX = PAGE_W - MARGIN - 230;
-  const summaryY = 110;
-  const summaryW = 230;
-  const summaryH = 130;
+  // Right Column - Account Summary Box
+  const summaryX = PAGE_W - MARGIN - 200;
+  const summaryY = 104 + 24;
+  const summaryW = 200;
+  const summaryH = 120;
   
-  doc.roundedRect(summaryX, summaryY, summaryW, summaryH, 8)
-    .lineWidth(1).strokeColor('#c4c6cf').fillAndStroke('#fbf9f9', '#c4c6cf');
+  doc.roundedRect(summaryX, summaryY, summaryW, summaryH, 6)
+    .lineWidth(1).strokeColor('#e5e7eb').fill('#ffffff').stroke();
   
-  doc.fillColor('#44474e').fontSize(8).font('Helvetica-Bold')
-    .text('ACCOUNT SUMMARY', summaryX + 16, summaryY + 16);
-  doc.moveTo(summaryX + 16, summaryY + 30).lineTo(summaryX + summaryW - 16, summaryY + 30)
-    .strokeColor('#c4c6cf').lineWidth(1).stroke();
+  doc.fillColor('#000000').fontSize(8).font('Helvetica-Bold')
+    .text('ACCOUNT SUMMARY', summaryX + 16, summaryY + 14);
   
   // Calculate totals
   const openingBalance = transactions.length > 0 
@@ -481,136 +499,158 @@ const renderStatementPDF = (doc, { user, account, transactions, startDate, endDa
     .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
   const closingBalance = parseFloat(account.balance);
   
-  let sY = summaryY + 40;
-  const renderSummaryLine = (label, value, color = '#1b1c1c') => {
-    doc.fillColor('#44474e').fontSize(8).font('Helvetica')
-      .text(label, summaryX + 16, sY, { width: summaryW - 100 });
-    doc.fillColor(color).fontSize(9).font('Helvetica-Bold')
+  let sY = summaryY + 32;
+  const renderSummaryLine = (label, value, color = '#000000', indent = 0) => {
+    doc.fillColor('#374151').fontSize(7).font('Helvetica')
+      .text(label, summaryX + 16 + indent, sY);
+    doc.fillColor(color).fontSize(8).font('Helvetica-Bold')
       .text(value, summaryX + 16, sY, { width: summaryW - 32, align: 'right' });
-    sY += 16;
+    sY += 14;
   };
   
   renderSummaryLine('Opening Balance', `$${openingBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
-  renderSummaryLine('Total Deposits/Credits (+)', `+$${totalCredits.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, '#199d3d');
-  renderSummaryLine('Total Withdrawals/Debits (-)', `-$${totalDebits.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, '#1b1c1c');
+  renderSummaryLine('Total Deposits/Credits (+)', `+$${totalCredits.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, '#16a34a');
+  renderSummaryLine('Total Withdrawals/Debits (-)', `-$${totalDebits.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, '#dc2626');
   
-  // Closing balance with emphasis
+  // Separator line in summary
   doc.moveTo(summaryX + 16, sY).lineTo(summaryX + summaryW - 16, sY)
-    .strokeColor('#ba1a1a').lineWidth(2).stroke();
-  sY += 8;
-  doc.fillColor('#000a1e').fontSize(10).font('Helvetica-Bold')
+    .strokeColor('#e5e7eb').lineWidth(1).stroke();
+  sY += 10;
+  
+  // Closing balance
+  doc.fillColor('#000000').fontSize(8).font('Helvetica-Bold')
     .text('Closing Balance', summaryX + 16, sY);
-  doc.fillColor('#c8102e').fontSize(13).font('Helvetica-Bold')
-    .text(`$${closingBalance.toLocaleString('en-US', { minimomFractionDigits: 2 })}`, 
+  doc.fillColor('#c8102e').fontSize(12).font('Helvetica-Bold')
+    .text(`$${closingBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, 
       summaryX + 16, sY, { width: summaryW - 32, align: 'right' });
   
-  // ── Transaction Details Table ──────────────────────────────────────────
-  y = 260;
-  doc.fillColor('#000a1e').fontSize(12).font('Helvetica-Bold')
+  // ── Transaction Details Table ────────────────────────────────────────────
+  y = 320;
+  
+  doc.fillColor('#000000').fontSize(11).font('Helvetica-Bold')
     .text('Transaction Details', MARGIN, y);
-  doc.moveTo(MARGIN, y + 18).lineTo(PAGE_W - MARGIN, y + 18)
-    .strokeColor('#000a1e').lineWidth(2).stroke();
-  
-  y += 26;
-  
-  // Table header
-  doc.rect(MARGIN, y, PAGE_W - 2 * MARGIN, 20).fill('#efeded');
-  doc.strokeColor('#c4c6cf').lineWidth(0.5)
-    .rect(MARGIN, y, PAGE_W - 2 * MARGIN, 20).stroke();
-  
-  doc.fillColor('#44474e').fontSize(7).font('Helvetica-Bold');
-  doc.text('DATE', MARGIN + 8, y + 7);
-  doc.text('DESCRIPTION', MARGIN + 50, y + 7);
-  doc.text('REF #', MARGIN + 220, y + 7);
-  doc.text('WITHDRAWALS (-)', MARGIN + 300, y + 7, { width: 70, align: 'right' });
-  doc.text('DEPOSITS (+)', MARGIN + 380, y + 7, { width: 70, align: 'right' });
-  doc.text('BALANCE', MARGIN + 460, y + 7, { width: 70, align: 'right' });
   
   y += 20;
   
-  // Table rows
+  // Table header
+  doc.rect(MARGIN, y, CONTENT_W, 18).fill('#ffffff');
+  doc.strokeColor('#000000').lineWidth(0.5)
+    .moveTo(MARGIN, y + 18).lineTo(PAGE_W - MARGIN, y + 18).stroke();
+  
+  doc.fillColor('#000000').fontSize(7).font('Helvetica-Bold');
+  doc.text('DATE', MARGIN + 4, y + 6);
+  doc.text('DESCRIPTION', MARGIN + 50, y + 6);
+  doc.text('REF #', MARGIN + 240, y + 6);
+  doc.text('WITHDRAWALS (-)', MARGIN + 320, y + 6);
+  doc.text('DEPOSITS (+)', MARGIN + 395, y + 6);
+  doc.text('BALANCE', MARGIN + 460, y + 6);
+  
+  y += 18;
+  
+  // Opening Balance Row (if transactions exist)
+  if (transactions.length > 0) {
+    doc.fillColor('#374151').fontSize(7).font('Helvetica')
+      .text(moment(startDate || transactions[transactions.length - 1].created_at).format('MMM DD'), 
+        MARGIN + 4, y + 5);
+    doc.fillColor('#000000').fontSize(7).font('Helvetica-Bold')
+      .text('Opening Balance', MARGIN + 50, y + 5);
+    doc.fillColor('#000000').fontSize(7).font('Helvetica-Bold')
+      .text(`$${openingBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, 
+        MARGIN + 460, y + 5);
+    
+    doc.strokeColor('#e5e7eb').lineWidth(0.5)
+      .moveTo(MARGIN, y + 16).lineTo(PAGE_W - MARGIN, y + 16).stroke();
+    y += 16;
+  }
+  
+  // Transaction rows
   [...transactions].reverse().forEach((tx, idx) => {
-    if (y > PAGE_H - 100) {
+    if (y > PAGE_H - 80) {
       doc.addPage();
       y = 50;
+      
       // Repeat header on new page
-      doc.rect(MARGIN, y, PAGE_W - 2 * MARGIN, 20).fill('#efeded');
-      doc.fillColor('#44474e').fontSize(7).font('Helvetica-Bold');
-      doc.text('DATE', MARGIN + 8, y + 7);
-      doc.text('DESCRIPTION', MARGIN + 50, y + 7);
-      doc.text('REF #', MARGIN + 220, y + 7);
-      doc.text('WITHDRAWALS (-)', MARGIN + 300, y + 7, { width: 70, align: 'right' });
-      doc.text('DEPOSITS (+)', MARGIN + 380, y + 7, { width: 70, align: 'right' });
-      doc.text('BALANCE', MARGIN + 460, y + 7, { width: 70, align: 'right' });
-      y += 20;
+      doc.rect(MARGIN, y, CONTENT_W, 18).fill('#ffffff');
+      doc.strokeColor('#000000').lineWidth(0.5)
+        .moveTo(MARGIN, y + 18).lineTo(PAGE_W - MARGIN, y + 18).stroke();
+      
+      doc.fillColor('#000000').fontSize(7).font('Helvetica-Bold');
+      doc.text('DATE', MARGIN + 4, y + 6);
+      doc.text('DESCRIPTION', MARGIN + 50, y + 6);
+      doc.text('REF #', MARGIN + 240, y + 6);
+      doc.text('WITHDRAWALS (-)', MARGIN + 320, y + 6);
+      doc.text('DEPOSITS (+)', MARGIN + 395, y + 6);
+      doc.text('BALANCE', MARGIN + 460, y + 6);
+      
+      y += 18;
     }
     
-    // Alternating row background
-    if (idx % 2 === 1) {
-      doc.rect(MARGIN, y, PAGE_W - 2 * MARGIN, 18).fill('#fbf9f9');
-    }
+    // Date
+    doc.fillColor('#374151').fontSize(7).font('Helvetica')
+      .text(moment(tx.created_at).format('MMM DD'), MARGIN + 4, y + 5);
     
-    doc.strokeColor('#c4c6cf').lineWidth(0.5)
-      .rect(MARGIN, y, PAGE_W - 2 * MARGIN, 18).stroke();
+    // Description
+    const desc = (tx.description || tx.narration || 'Transaction').slice(0, 38);
+    doc.fillColor('#000000').fontSize(7).font('Helvetica')
+      .text(desc, MARGIN + 50, y + 5, { width: 185, ellipsis: true });
     
-    // Row content
-    doc.fillColor('#44474e').fontSize(8).font('Helvetica')
-      .text(moment(tx.created_at).format('MMM DD'), MARGIN + 8, y + 5);
+    // Ref number
+    doc.fillColor('#374151').fontSize(6).font('Helvetica')
+      .text((tx.reference_number || '').slice(0, 20), MARGIN + 240, y + 5);
     
-    const desc = (tx.description || tx.narration || 'Transaction').slice(0, 35);
-    doc.fillColor('#1b1c1c').fontSize(8).font('Helvetica')
-      .text(desc, MARGIN + 50, y + 5, { width: 165, ellipsis: true });
-    
-    doc.fillColor('#44474e').fontSize(7).font('Helvetica')
-      .text((tx.reference_number || '').slice(0, 18), MARGIN + 220, y + 5);
-    
-    // Withdrawals
+    // Withdrawals (debits)
     if (tx.transaction_type === 'debit') {
-      doc.fillColor('#1b1c1c').fontSize(8).font('Helvetica')
-        .text(`-$${parseFloat(tx.amount).toFixed(2)}`, MARGIN + 300, y + 5, { width: 70, align: 'right' });
+      doc.fillColor('#000000').fontSize(7).font('Helvetica')
+        .text(`-$${parseFloat(tx.amount).toFixed(2)}`, MARGIN + 320, y + 5);
     }
     
-    // Deposits
+    // Deposits (credits)
     if (tx.transaction_type === 'credit') {
-      doc.fillColor('#199d3d').fontSize(8).font('Helvetica')
-        .text(`+$${parseFloat(tx.amount).toFixed(2)}`, MARGIN + 380, y + 5, { width: 70, align: 'right' });
+      doc.fillColor('#16a34a').fontSize(7).font('Helvetica')
+        .text(`+$${parseFloat(tx.amount).toFixed(2)}`, MARGIN + 395, y + 5);
     }
     
     // Balance
-    doc.fillColor('#1b1c1c').fontSize(8).font('Helvetica-Bold')
-      .text(`$${parseFloat(tx.balance_after || 0).toFixed(2)}`, MARGIN + 460, y + 5, { width: 70, align: 'right' });
+    doc.fillColor('#000000').fontSize(7).font('Helvetica-Bold')
+      .text(`$${parseFloat(tx.balance_after || 0).toFixed(2)}`, MARGIN + 460, y + 5);
     
-    y += 18;
+    // Row separator
+    doc.strokeColor('#e5e7eb').lineWidth(0.5)
+      .moveTo(MARGIN, y + 16).lineTo(PAGE_W - MARGIN, y + 16).stroke();
+    
+    y += 16;
   });
   
-  // Closing balance row
-  doc.rect(MARGIN, y, PAGE_W - 2 * MARGIN, 22).fill('#efeded');
-  doc.strokeColor('#000a1e').lineWidth(2)
-    .rect(MARGIN, y, PAGE_W - 2 * MARGIN, 22).stroke();
+  // Closing Balance Row
+  doc.rect(MARGIN, y, CONTENT_W, 20).fill('#f9fafb');
+  doc.strokeColor('#000000').lineWidth(1)
+    .rect(MARGIN, y, CONTENT_W, 20).stroke();
   
-  doc.fillColor('#000a1e').fontSize(10).font('Helvetica-Bold')
-    .text('Closing Balance', MARGIN + 8, y + 6);
-  doc.fillColor('#1b1c1c').fontSize(8).font('Helvetica-Bold')
-    .text(`-$${totalDebits.toFixed(2)}`, MARGIN + 300, y + 6, { width: 70, align: 'right' });
-  doc.fillColor('#199d3d').fontSize(8).font('Helvetica-Bold')
-    .text(`+$${totalCredits.toFixed(2)}`, MARGIN + 380, y + 6, { width: 70, align: 'right' });
-  doc.fillColor('#c8102e').fontSize(11).font('Helvetica-Bold')
-    .text(`$${closingBalance.toFixed(2)}`, MARGIN + 460, y + 6, { width: 70, align: 'right' });
+  doc.fillColor('#374151').fontSize(7).font('Helvetica')
+    .text(moment(endDate || new Date()).format('MMM DD'), MARGIN + 4, y + 7);
+  doc.fillColor('#000000').fontSize(8).font('Helvetica-Bold')
+    .text('Closing Balance', MARGIN + 50, y + 7);
+  doc.fillColor('#dc2626').fontSize(7).font('Helvetica-Bold')
+    .text(`-$${totalDebits.toFixed(2)}`, MARGIN + 320, y + 7);
+  doc.fillColor('#16a34a').fontSize(7).font('Helvetica-Bold')
+    .text(`+$${totalCredits.toFixed(2)}`, MARGIN + 395, y + 7);
+  doc.fillColor('#c8102e').fontSize(9).font('Helvetica-Bold')
+    .text(`$${closingBalance.toFixed(2)}`, MARGIN + 460, y + 7);
   
-  // ── Footer ──────────────────────────────────────────────────────────────
-  y = PAGE_H - 70;
-  doc.rect(0, y, PAGE_W, 1).fill('#c4c6cf');
+  // ── Professional Footer ──────────────────────────────────────────────────
+  y = PAGE_H - 100;
   
-  y += 12;
-  doc.fillColor('#000a1e').fontSize(11).font('Helvetica-Bold')
+  doc.fillColor('#000000').fontSize(10).font('Helvetica-Bold')
     .text('Alister Bank', MARGIN, y);
-  doc.fillColor('#44474e').fontSize(8).font('Helvetica')
-    .text('For customer service, call 1-800-ALISTER (1-800-254-7837)', MARGIN, y + 16)
-    .text('Available 24/7 for account support and fraud reporting.', MARGIN, y + 28);
   
-  doc.fillColor('#44474e').fontSize(7).font('Helvetica')
+  doc.fillColor('#374151').fontSize(7).font('Helvetica')
+    .text('For customer service, call 1-800-ALISTER (1-800-254-7837)', MARGIN, y + 18)
+    .text('Available 24/7 for account support and fraud reporting.', MARGIN, y + 30);
+  
+  y += 50;
+  doc.fillColor('#6b7280').fontSize(7).font('Helvetica')
     .text(`© ${new Date().getFullYear()} Alister Bank. All rights reserved. Member FDIC. Equal Housing Lender.`, 
-      MARGIN, y + 44, { width: PAGE_W - 2 * MARGIN, align: 'center' });
+      MARGIN, y, { width: PAGE_W - 2 * MARGIN, align: 'left' });
   
   doc.end();
 };
