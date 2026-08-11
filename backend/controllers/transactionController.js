@@ -833,12 +833,13 @@ exports.downloadReceipt = async (req, res) => {
     doc.fillColor(st.color).font('Helvetica-Bold').fontSize(9)
       .text(`●  ${st.label}`, CARD_X, y + 16, { width: CARD_W, align: 'center', characterSpacing: 1.5 });
     
-    // Amount (hero size)
-    doc.fillColor('#111827').font('Helvetica-Bold').fontSize(32)
+    // Amount (hero size) - GREEN for credits, RED for debits
+    const amountColor = isCredit ? '#16a34a' : '#dc2626';
+    doc.fillColor(amountColor).font('Helvetica-Bold').fontSize(32)
       .text(`${isCredit ? '+' : '-'}${money(tx.amount)}`, CARD_X, y + 34, { width: CARD_W, align: 'center' });
     
-    // Transaction meta
-    doc.fillColor('#6b7280').font('Helvetica').fontSize(8)
+    // Transaction meta - darker text for better readability
+    doc.fillColor('#374151').font('Helvetica').fontSize(8)
       .text(`${isCredit ? 'Credited to' : 'Debited from'} A/c ${maskAccountNumber(account.account_number)}  ·  ${moment(tx.created_at).format('DD MMM YYYY [at] HH:mm')}`,
         CARD_X, y + 70, { width: CARD_W, align: 'center' });
 
@@ -846,43 +847,47 @@ exports.downloadReceipt = async (req, res) => {
     y = 260;
     const colW = (CARD_W - 16) / 2;
     
-    // Sender Details (Left)
+    // Sender Details (Left) - bar on RIGHT side
     doc.roundedRect(CARD_X, y, colW, 80, 8).fill('#efeded');
-    doc.moveTo(CARD_X, y).lineTo(CARD_X + 4, y).lineWidth(4).strokeColor('#000a1e').stroke();
+    // Red bar on the RIGHT edge
+    doc.moveTo(CARD_X + colW - 4, y + 8).lineTo(CARD_X + colW - 4, y + 72)
+      .lineWidth(4).strokeColor('#c8102e').stroke();
     
-    doc.fillColor('#44474e').font('Helvetica-Bold').fontSize(7)
+    doc.fillColor('#1f2937').font('Helvetica-Bold').fontSize(7)
       .text('SENDER DETAILS', CARD_X + 12, y + 12, { characterSpacing: 0.8 });
     
-    doc.fillColor('#44474e').font('Helvetica').fontSize(7)
+    doc.fillColor('#374151').font('Helvetica').fontSize(7)
       .text('Name', CARD_X + 12, y + 28);
-    doc.fillColor('#1b1c1c').font('Helvetica-Bold').fontSize(10)
+    doc.fillColor('#000000').font('Helvetica-Bold').fontSize(10)
       .text((user.account_type === 'business_elite' && user.company_name) 
         ? user.company_name 
         : `${user.first_name} ${user.last_name}`, 
         CARD_X + 12, y + 38, { width: colW - 24, ellipsis: true });
     
-    doc.fillColor('#44474e').font('Helvetica').fontSize(7)
+    doc.fillColor('#374151').font('Helvetica').fontSize(7)
       .text('Account', CARD_X + 12, y + 54);
-    doc.fillColor('#1b1c1c').font('Helvetica').fontSize(8)
+    doc.fillColor('#000000').font('Helvetica').fontSize(8)
       .text(`${account.account_type?.replace('_', ' ')} ending in ${account.account_number.slice(-4)}`, 
         CARD_X + 12, y + 64, { width: colW - 24, ellipsis: true });
     
-    // Recipient Details (Right)
+    // Recipient Details (Right) - bar on RIGHT side
     const recX = CARD_X + colW + 16;
     doc.roundedRect(recX, y, colW, 80, 8).fill('#efeded');
-    doc.moveTo(recX, y).lineTo(recX + 4, y).lineWidth(4).strokeColor('#c8102e').stroke();
+    // Green bar on the RIGHT edge
+    doc.moveTo(recX + colW - 4, y + 8).lineTo(recX + colW - 4, y + 72)
+      .lineWidth(4).strokeColor('#16a34a').stroke();
     
-    doc.fillColor('#44474e').font('Helvetica-Bold').fontSize(7)
+    doc.fillColor('#1f2937').font('Helvetica-Bold').fontSize(7)
       .text('RECIPIENT DETAILS', recX + 12, y + 12, { characterSpacing: 0.8 });
     
-    doc.fillColor('#44474e').font('Helvetica').fontSize(7)
+    doc.fillColor('#374151').font('Helvetica').fontSize(7)
       .text('Name', recX + 12, y + 28);
-    doc.fillColor('#1b1c1c').font('Helvetica-Bold').fontSize(10)
+    doc.fillColor('#000000').font('Helvetica-Bold').fontSize(10)
       .text(tx.to_account_name || 'N/A', recX + 12, y + 38, { width: colW - 24, ellipsis: true });
     
-    doc.fillColor('#44474e').font('Helvetica').fontSize(7)
+    doc.fillColor('#374151').font('Helvetica').fontSize(7)
       .text('Account', recX + 12, y + 54);
-    doc.fillColor('#1b1c1c').font('Helvetica').fontSize(8)
+    doc.fillColor('#000000').font('Helvetica').fontSize(8)
       .text(tx.to_account_number 
         ? `Account ending in ${tx.to_account_number.slice(-4)}` 
         : 'N/A', 
@@ -902,7 +907,7 @@ exports.downloadReceipt = async (req, res) => {
     const detailH = details.length * 26 + 48;
     doc.roundedRect(CARD_X, y, CARD_W, detailH, 10).lineWidth(1).strokeColor('#e5e7eb').stroke();
     
-    doc.fillColor('#0f0f1a').font('Helvetica-Bold').fontSize(11)
+    doc.fillColor('#000000').font('Helvetica-Bold').fontSize(11)
       .text('PAYMENT DETAILS', CARD_X + 24, y + 18, { characterSpacing: 1 });
     doc.moveTo(CARD_X + 24, y + 36).lineTo(CARD_X + CARD_W - 24, y + 36)
       .strokeColor('#c8102e').lineWidth(1.5).stroke();
@@ -913,9 +918,9 @@ exports.downloadReceipt = async (req, res) => {
         doc.moveTo(CARD_X + 24, dY - 5).lineTo(CARD_X + CARD_W - 24, dY - 5)
           .strokeColor('#f3f4f6').lineWidth(0.5).stroke();
       }
-      doc.fillColor('#6b7280').font('Helvetica').fontSize(8)
+      doc.fillColor('#374151').font('Helvetica').fontSize(8)
         .text(label.toUpperCase(), CARD_X + 24, dY, { width: 160 });
-      doc.fillColor('#111827').font('Helvetica-Bold').fontSize(8)
+      doc.fillColor('#000000').font('Helvetica-Bold').fontSize(8)
         .text(String(value), CARD_X + 200, dY, { width: CARD_W - 224, align: 'right' });
       dY += 26;
     });
@@ -925,19 +930,19 @@ exports.downloadReceipt = async (req, res) => {
     
     // Security notice card
     doc.roundedRect(CARD_X, y, CARD_W, 50, 8).fill('#f9fafb');
-    doc.fillColor('#6b7280').font('Helvetica').fontSize(7)
+    doc.fillColor('#374151').font('Helvetica').fontSize(7)
       .text('SECURITY NOTICE: Alister Bank never asks for your OTP, PIN or password. This receipt is digitally generated and requires no signature. Verify any transaction by matching the reference number in your account statement.',
         CARD_X + 16, y + 10, { width: CARD_W - 32, align: 'center', lineGap: 2 });
     
     // Footer text
     y += 60;
-    doc.fillColor('#9ca3af').fontSize(7).font('Helvetica')
+    doc.fillColor('#6b7280').fontSize(7).font('Helvetica')
       .text(`© ${new Date().getFullYear()} Alister Bank · This is a system-generated receipt for reference number ${tx.reference_number}.`,
         CARD_X, y, { width: CARD_W, align: 'center' });
     
     // Support info
     y += 20;
-    doc.fillColor('#6b7280').fontSize(8).font('Helvetica')
+    doc.fillColor('#374151').fontSize(8).font('Helvetica')
       .text('Support: 1-800-ALISTER (1-800-254-7837) · Available 24/7', 
         CARD_X, y, { width: CARD_W, align: 'center' });
 
