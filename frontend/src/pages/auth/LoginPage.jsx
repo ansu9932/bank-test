@@ -27,16 +27,23 @@ import {
 // state and bounce to the public homepage.
 const LOGIN_WINDOW_MS = 10 * 60 * 1000;
 
-// Shared input styling (Alister Bank design system). Logic/attributes on the
-// inputs themselves are untouched — this only controls appearance + focus state.
+// ── Alister Bank light design system (Material-3 inspired template) ──────────
+// Palette: light surfaces + red (error-tone) brand accent. Logic/attributes on
+// the inputs themselves are untouched — this only controls appearance.
+const RED = '#ba1a1a';          // brand accent (template "error")
+const INK = '#1b1c1c';          // on-surface
+const MUTED = '#44474e';        // on-surface-variant
+const OUTLINE = '#74777f';      // outline
+const BORDER = '#c4c6cf';       // outline-variant
+
 const INPUT_CLASS =
-  'w-full bg-[rgba(255,255,255,0.06)] border border-[rgba(255,255,255,0.1)] rounded-[10px] ' +
-  'text-white text-[15px] py-3 sm:py-[13px] transition-all duration-200 placeholder:text-white/30 ' +
-  'focus:outline-none focus:border-[#CC0000] focus:border-l-[3px] focus:shadow-[0_0_0_3px_rgba(204,0,0,0.15)]';
+  'w-full bg-[#fbf9f9] border border-[#c4c6cf] rounded-lg ' +
+  'text-[#1b1c1c] text-[15px] py-3 transition-all duration-200 placeholder:text-[#a9abb4] ' +
+  'focus:outline-none focus:border-[#ba1a1a] focus:ring-2 focus:ring-[#ba1a1a]/20';
 
-const LABEL_CLASS = 'block text-[13px] font-medium text-white/50 mb-1.5';
+const LABEL_CLASS = 'block text-[12px] font-semibold tracking-[0.05em] uppercase text-[#44474e] mb-1.5';
 
-const LINK_CLASS = 'text-[#CC0000] font-medium hover:text-[#FF3333] hover:underline transition-colors';
+const LINK_CLASS = 'text-[#ba1a1a] font-medium hover:underline transition-colors';
 
 export default function LoginPage() {
   const dispatch = useDispatch();
@@ -223,273 +230,274 @@ export default function LoginPage() {
   };
 
   return (
-    <div
-      className="min-h-screen flex overflow-hidden relative"
-      style={{ background: 'linear-gradient(135deg, #0A0A0A 0%, #1A1A1A 50%, #2D0000 100%)' }}
-    >
+    <div className="min-h-screen flex flex-col bg-[#fbf9f9] text-[#1b1c1c] relative">
       {/* Back to Home (fixed top-left) */}
-      <BackToHome />
+      <BackToHome variant="light" />
 
-      {/* Left — branding panel */}
-      <motion.div
-        initial={{ opacity: 0, x: -40 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.6 }}
-        className="hidden lg:flex flex-col justify-between w-[480px] bg-[#1A1A1A]/70 border-r border-white/[0.05] p-12 relative overflow-hidden flex-shrink-0"
-      >
-        {/* Background decorations */}
-        <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-[#CC0000]/10 blur-3xl" />
-        <div className="absolute -bottom-32 -right-32 w-96 h-96 rounded-full bg-[#CC0000]/5 blur-3xl" />
-
-        {/* Logo */}
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-16">
-            <div
-              className="w-11 h-11 rounded-2xl flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #CC0000, #FF3333)', boxShadow: '0 0 22px rgba(204,0,0,0.45)' }}
-            >
-              <RiBankLine className="text-white text-2xl" />
-            </div>
-            <div>
-              <p className="font-display font-700 text-white text-xl tracking-wide">ALISTER BANK</p>
-              <p className="text-white/40 text-xs tracking-widest uppercase">Digital Banking</p>
-            </div>
-          </div>
-
-          <h1 className="font-display text-4xl font-700 text-white leading-tight mb-4">
-            Banking that<br />
-            <span className="text-gradient-red">works for you.</span>
-          </h1>
-          <p className="text-white/50 text-base leading-relaxed">
-            Secure, modern digital banking with real-time transactions, instant transfers, and powerful financial insights.
-          </p>
-        </div>
-
-        {/* Features */}
-        <div className="space-y-4 relative z-10">
-          {[
-            { icon: '🔒', label: 'Bank-grade 256-bit encryption' },
-            { icon: '⚡', label: 'Instant IMPS/NEFT/RTGS transfers' },
-            { icon: '📊', label: 'Smart spending analytics' },
-            { icon: '🌍', label: 'International banking standards' },
-          ].map((f, i) => (
-            <motion.div
-              key={i} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.3 + i * 0.1 }}
-              className="flex items-center gap-3"
-            >
-              <span className="text-lg">{f.icon}</span>
-              <p className="text-white/50 text-sm">{f.label}</p>
-            </motion.div>
-          ))}
-        </div>
-
-        <p className="text-white/30 text-xs relative z-10">© 2024 Alister Bank. SWIFT: ALSTINBB</p>
-      </motion.div>
-
-      {/* Right — login form */}
-      <div className="flex-1 flex items-center justify-center p-6 relative">
-        {/* Blurred red glow orb behind the card */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
-          style={{ width: 400, height: 400, background: 'rgba(204,0,0,0.12)', filter: 'blur(80px)', zIndex: 0 }}
-        />
-
-        <motion.div
-          initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: 'easeOut' }}
-          className="relative z-10 w-full max-w-[440px]"
+      {/* Main split content */}
+      <main className="flex-1 flex flex-col lg:flex-row w-full max-w-[1600px] mx-auto relative">
+        {/* Left pane — messaging */}
+        <motion.section
+          initial={{ opacity: 0, x: -40 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.6 }}
+          className="hidden lg:flex w-full lg:w-5/12 bg-[#f5f3f3] px-16 py-20 flex-col justify-center relative z-10"
         >
-          {/* Mobile logo */}
-          <div className="flex items-center gap-3 mb-8 lg:hidden">
-            <div
-              className="w-9 h-9 rounded-xl flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #CC0000, #FF3333)' }}
-            >
-              <RiBankLine className="text-white text-lg" />
+          <div className="max-w-md mx-auto w-full">
+            {/* Brand */}
+            <div className="flex items-center gap-3 mb-14">
+              <div className="w-12 h-12 rounded-full flex items-center justify-center shadow-sm" style={{ background: RED }}>
+                <RiBankLine className="text-white text-2xl" />
+              </div>
+              <div>
+                <p className="font-bold text-[20px] tracking-tight" style={{ color: INK }}>ALISTER BANK</p>
+                <p className="text-[11px] font-semibold tracking-[0.2em] uppercase" style={{ color: MUTED }}>Digital Banking</p>
+              </div>
             </div>
-            <p className="font-display font-700 text-white text-lg">ALISTER BANK</p>
+
+            <h1 className="text-[44px] leading-[52px] font-bold tracking-[-0.02em] mb-4 text-balance" style={{ color: INK }}>
+              Banking that<br />
+              <span style={{ color: RED }}>works for you.</span>
+            </h1>
+            <p className="text-[17px] leading-relaxed mb-12" style={{ color: MUTED }}>
+              Secure, modern digital banking with real-time transactions, instant transfers, and powerful financial insights.
+            </p>
+
+            {/* Features */}
+            <ul className="space-y-5">
+              {[
+                { Icon: RiLockLine, color: OUTLINE, label: 'Bank-grade 256-bit encryption' },
+                { Icon: RiRefreshLine, color: RED, label: 'Instant IMPS/NEFT/RTGS transfers' },
+                { Icon: RiShieldCheckLine, color: '#115cb9', label: 'Smart spending analytics' },
+                { Icon: RiBankLine, color: '#465f88', label: 'International banking standards' },
+              ].map(({ Icon, color, label }, i) => (
+                <motion.li
+                  key={i} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.3 + i * 0.1 }}
+                  className="flex items-center gap-4"
+                >
+                  <Icon className="text-[20px] flex-shrink-0" style={{ color }} />
+                  <span className="text-[15px]" style={{ color: MUTED }}>{label}</span>
+                </motion.li>
+              ))}
+            </ul>
           </div>
+
+          <p className="absolute bottom-10 left-16 text-[11px] font-semibold tracking-[0.05em]" style={{ color: BORDER }}>
+            © 2024 Alister Bank. SWIFT: ALSTINBB
+          </p>
+        </motion.section>
+
+        {/* Right pane — login card */}
+        <section className="w-full lg:w-7/12 relative flex flex-col items-center justify-center p-4 md:p-16">
+          {/* Soft architectural background wash */}
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 z-0 opacity-60"
+            style={{ background: 'radial-gradient(ellipse 80% 60% at 70% 30%, #efeded 0%, transparent 70%), radial-gradient(ellipse 60% 50% at 20% 80%, #e9e8e7 0%, transparent 70%)' }}
+          />
 
           <motion.div
-            whileHover={{ boxShadow: '0 25px 60px rgba(0,0,0,0.5), 0 0 30px rgba(204,0,0,0.08)' }}
-            transition={{ duration: 0.3 }}
-            className="w-full rounded-[20px] border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.04)] sm:backdrop-blur-[20px] p-6 sm:p-10"
-            style={{ boxShadow: '0 25px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(204,0,0,0.08)' }}
+            initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: 'easeOut' }}
+            className="relative z-10 w-full max-w-[440px]"
           >
-            {/* Card header */}
-            <div className="text-center mb-5">
-              <div
-                className="w-14 h-14 mx-auto mb-4 rounded-2xl flex items-center justify-center"
-                style={{ background: 'rgba(204,0,0,0.12)', border: '1px solid rgba(204,0,0,0.3)' }}
-              >
-                <RiShieldCheckLine className="text-[26px]" style={{ color: '#FF3333' }} />
+            {/* Mobile logo */}
+            <div className="flex items-center gap-3 mb-8 lg:hidden">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: RED }}>
+                <RiBankLine className="text-white text-lg" />
               </div>
-              <h2 className="text-white font-bold text-[24px]" style={{ fontFamily: 'Inter, sans-serif' }}>Welcome back</h2>
-              <p className="text-[14px] font-medium mt-1" style={{ color: '#CC0000' }}>Sign in to your account to continue</p>
+              <div>
+                <p className="font-bold text-[17px]" style={{ color: INK }}>ALISTER BANK</p>
+                <p className="text-[10px] font-semibold tracking-[0.2em] uppercase" style={{ color: MUTED }}>Digital Banking</p>
+              </div>
             </div>
-            <div className="border-b border-white/[0.07] mb-5" />
 
-            {/* Login method tabs: Password | Scan QR */}
-            <div className="flex gap-2 mb-6 p-1 rounded-[12px] bg-white/[0.04] border border-white/[0.06]" role="tablist" aria-label="Login method">
-              <button
-                type="button" role="tab" aria-selected={mode === 'password'}
-                onClick={() => setMode('password')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-[9px] text-[13px] font-semibold transition-all ${
-                  mode === 'password'
-                    ? 'bg-[#CC0000] text-white shadow-[0_4px_14px_rgba(204,0,0,0.35)]'
-                    : 'text-white/50 hover:text-white/80'
-                }`}
-              >
-                <RiLockLine className="text-base" /> Password
-              </button>
-              <button
-                type="button" role="tab" aria-selected={mode === 'qr'}
-                onClick={() => setMode('qr')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-[9px] text-[13px] font-semibold transition-all ${
-                  mode === 'qr'
-                    ? 'bg-[#CC0000] text-white shadow-[0_4px_14px_rgba(204,0,0,0.35)]'
-                    : 'text-white/50 hover:text-white/80'
-                }`}
-              >
-                <RiQrCodeLine className="text-base" /> Scan to Login
-              </button>
-            </div>
+            <div className="w-full bg-white rounded-xl border border-[#c4c6cf]/40 p-6 md:p-10 shadow-[0_10px_40px_rgba(27,28,28,0.08)]">
+              {/* Card header */}
+              <div className="text-center mb-8">
+                <div
+                  className="w-12 h-12 mx-auto mb-3 rounded-xl flex items-center justify-center"
+                  style={{ background: '#ffdad6', border: '1px solid rgba(186,26,26,0.2)' }}
+                >
+                  <RiShieldCheckLine className="text-[24px]" style={{ color: RED }} />
+                </div>
+                <h2 className="font-semibold text-[24px]" style={{ color: INK }}>Welcome back</h2>
+                <p className="text-[14px] mt-1" style={{ color: RED }}>Sign in to your account to continue</p>
+              </div>
+
+              {/* Login method tabs: Password | Scan QR */}
+              <div className="flex p-1 rounded-lg bg-[#e9e8e7] mb-8" role="tablist" aria-label="Login method">
+                <button
+                  type="button" role="tab" aria-selected={mode === 'password'}
+                  onClick={() => setMode('password')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-[14px] font-medium transition-colors ${
+                    mode === 'password' ? 'text-white shadow-sm' : 'text-[#44474e] hover:bg-[#efeded]'
+                  }`}
+                  style={mode === 'password' ? { background: RED } : undefined}
+                >
+                  <RiLockLine className="text-base" /> Password
+                </button>
+                <button
+                  type="button" role="tab" aria-selected={mode === 'qr'}
+                  onClick={() => setMode('qr')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-[14px] font-medium transition-colors ${
+                    mode === 'qr' ? 'text-white shadow-sm' : 'text-[#44474e] hover:bg-[#efeded]'
+                  }`}
+                  style={mode === 'qr' ? { background: RED } : undefined}
+                >
+                  <RiQrCodeLine className="text-base" /> Scan to Login
+                </button>
+              </div>
 
             {/* QR mode — approve on the phone; no password ever typed here */}
             {mode === 'qr' && <QrLoginPanel onSuccess={allowNavigation} />}
 
-            <form onSubmit={handleSubmit} className={`space-y-4 ${mode === 'qr' ? 'hidden' : ''}`}>
-              <div>
-                <label className={LABEL_CLASS}>Username or Email</label>
-                <div className="relative">
-                  <RiUserLine className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/40 text-base" />
+              <form onSubmit={handleSubmit} className={`space-y-5 ${mode === 'qr' ? 'hidden' : ''}`}>
+                <div>
+                  <label className={LABEL_CLASS}>Username or Email</label>
+                  <div className="relative">
+                    <RiUserLine className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#74777f] text-base" />
+                    <input
+                      type="text"
+                      value={form.username}
+                      onChange={e => setForm({ ...form, username: e.target.value })}
+                      placeholder="Enter username or email"
+                      className={`${INPUT_CLASS} pl-10 pr-4`}
+                      autoComplete="username"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className={LABEL_CLASS}>Password</label>
+                  <div className="relative">
+                    <RiLockLine className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#74777f] text-base" />
+                    <input
+                      type={showPwd ? 'text' : 'password'}
+                      value={form.password}
+                      onChange={e => setForm({ ...form, password: e.target.value })}
+                      placeholder="Enter your password"
+                      className={`${INPUT_CLASS} pl-10 pr-10`}
+                      autoComplete="current-password"
+                      {...secureFieldProps()}
+                    />
+                    <button type="button" onClick={() => setShowPwd(!showPwd)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#74777f] hover:text-[#1b1c1c] transition-colors">
+                      {showPwd ? <RiEyeOffLine /> : <RiEyeLine />}
+                    </button>
+                  </div>
+                  <div className="text-right mt-2">
+                    <Link to="/forgot-password" className={`${LINK_CLASS} text-sm`}>
+                      Forgot password?
+                    </Link>
+                  </div>
+                </div>
+
+                {/* Self-hosted captcha — image challenge + answer input */}
+                <div className="pt-1">
+                  <label className={LABEL_CLASS}>Enter the characters shown</label>
+                  <div className="flex items-center gap-3 mb-2">
+                    <div
+                      className="flex-1 h-14 rounded-lg overflow-hidden border border-[#c4c6cf] bg-[#141414] flex items-center justify-center [&>svg]:h-full [&>svg]:w-full [&>svg]:object-cover"
+                      dangerouslySetInnerHTML={{ __html: captcha.svg }}
+                    />
+                    <button
+                      type="button"
+                      onClick={loadCaptcha}
+                      disabled={captchaLoading}
+                      title="Get a new captcha"
+                      className="w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-lg bg-[#fbf9f9] border border-[#c4c6cf] text-[#44474e] hover:bg-[#efeded] transition-colors disabled:opacity-50"
+                    >
+                      <RiRefreshLine className={captchaLoading ? 'animate-spin' : ''} />
+                    </button>
+                  </div>
                   <input
                     type="text"
-                    value={form.username}
-                    onChange={e => setForm({ ...form, username: e.target.value })}
-                    placeholder="Enter username or email"
-                    className={`${INPUT_CLASS} pl-10 pr-4`}
-                    autoComplete="username"
+                    value={captchaAnswer}
+                    onChange={e => setCaptchaAnswer(e.target.value)}
+                    placeholder="TYPE THE CHARACTERS ABOVE"
+                    autoComplete="off"
+                    autoCapitalize="characters"
+                    className={`${INPUT_CLASS} px-4 text-center tracking-widest uppercase`}
                   />
                 </div>
-              </div>
 
-              <div>
-                <label className={LABEL_CLASS}>Password</label>
-                <div className="relative">
-                  <RiLockLine className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/40 text-base" />
-                  <input
-                    type={showPwd ? 'text' : 'password'}
-                    value={form.password}
-                    onChange={e => setForm({ ...form, password: e.target.value })}
-                    placeholder="Enter your password"
-                    className={`${INPUT_CLASS} pl-10 pr-10`}
-                    autoComplete="current-password"
-                    {...secureFieldProps()}
-                  />
-                  <button type="button" onClick={() => setShowPwd(!showPwd)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/90 transition-colors">
-                    {showPwd ? <RiEyeOffLine /> : <RiEyeLine />}
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end">
-                <Link to="/forgot-password" className={`${LINK_CLASS} text-sm`}>
-                  Forgot password?
-                </Link>
-              </div>
-
-              {/* Self-hosted captcha — image challenge + answer input */}
-              <div>
-                <label className={LABEL_CLASS}>Enter the characters shown</label>
-                <div className="flex items-center gap-3">
+                {/* Rooted-device security block (native app only) */}
+                {rooted && (
                   <div
-                    className="rounded-[10px] overflow-hidden border border-white/10 bg-[rgba(255,255,255,0.06)] flex items-center justify-center"
-                    style={{ width: 170, height: 56, flexShrink: 0 }}
-                    dangerouslySetInnerHTML={{ __html: captcha.svg }}
-                  />
+                    role="alert"
+                    className="flex items-start gap-3 rounded-lg border border-[#ba1a1a]/30 bg-[#ffdad6] p-3"
+                  >
+                    <RiErrorWarningLine className="text-[#93000a] text-xl flex-shrink-0 mt-0.5" />
+                    <p className="text-[#93000a] text-[13px] leading-relaxed">
+                      <span className="font-semibold">Security warning:</span> this
+                      device appears to be rooted or running in an emulator. For your
+                      protection, Alister Bank login is disabled in this environment.
+                    </p>
+                  </div>
+                )}
+
+                {/* Biometric quick login (native app, previously enabled) */}
+                {!rooted && canBiometric && (
                   <button
                     type="button"
-                    onClick={loadCaptcha}
-                    disabled={captchaLoading}
-                    title="Get a new captcha"
-                    className="p-3 rounded-[10px] bg-[rgba(255,255,255,0.06)] text-white/50 hover:text-white hover:bg-[rgba(255,255,255,0.12)] transition-colors disabled:opacity-50"
+                    onClick={handleBiometricLogin}
+                    disabled={bioBusy || loading}
+                    className="w-full min-h-[50px] py-3 rounded-lg border border-[#ba1a1a]/40 bg-[#ffdad6]/60 font-semibold text-[15px] flex items-center justify-center gap-2 hover:bg-[#ffdad6] transition-colors disabled:opacity-60"
+                    style={{ color: RED }}
                   >
-                    <RiRefreshLine className={captchaLoading ? 'animate-spin' : ''} />
+                    <RiFingerprintLine className="text-[22px]" />
+                    {bioBusy ? 'Verifying…' : 'Login with fingerprint'}
                   </button>
-                </div>
-                <input
-                  type="text"
-                  value={captchaAnswer}
-                  onChange={e => setCaptchaAnswer(e.target.value)}
-                  placeholder="Type the characters above"
-                  autoComplete="off"
-                  autoCapitalize="characters"
-                  className={`${INPUT_CLASS} px-4 mt-2 tracking-widest uppercase`}
-                />
+                )}
+
+                <motion.button
+                  type="submit"
+                  disabled={loading || rooted}
+                  whileTap={{ scale: 0.98 }}
+                  className="w-full min-h-[50px] py-3 mt-1 rounded-lg text-white font-semibold text-[17px] cursor-pointer flex items-center justify-center gap-2 shadow-sm transition-colors duration-200 disabled:opacity-70 disabled:cursor-not-allowed hover:opacity-90"
+                  style={{ background: RED }}
+                >
+                  {loading ? <><div className="spinner w-4 h-4" /> Signing in...</> : 'Sign In'}
+                </motion.button>
+              </form>
+
+              <div className="mt-8 text-center space-y-3">
+                <p className="flex items-center justify-center gap-1.5 text-[11px] font-semibold tracking-[0.05em]" style={{ color: OUTLINE }}>
+                  <RiLockLine className="text-[13px]" />
+                  Secured with 256-bit encryption
+                </p>
+                <p className="text-sm" style={{ color: MUTED }}>
+                  Don&apos;t have an account?{' '}
+                  <Link to="/open-account" className={LINK_CLASS}>
+                    Open Account
+                  </Link>
+                </p>
               </div>
+            </div>
 
-              {/* Rooted-device security block (native app only) */}
-              {rooted && (
-                <div
-                  role="alert"
-                  className="flex items-start gap-3 rounded-[10px] border border-[#CC0000]/40 bg-[#CC0000]/10 p-3"
-                >
-                  <RiErrorWarningLine className="text-[#FF3333] text-xl flex-shrink-0 mt-0.5" />
-                  <p className="text-white/80 text-[13px] leading-relaxed">
-                    <span className="font-semibold text-white">Security warning:</span> this
-                    device appears to be rooted or running in an emulator. For your
-                    protection, Alister Bank login is disabled in this environment.
-                  </p>
-                </div>
-              )}
-
-              {/* Biometric quick login (native app, previously enabled) */}
-              {!rooted && canBiometric && (
-                <button
-                  type="button"
-                  onClick={handleBiometricLogin}
-                  disabled={bioBusy || loading}
-                  className="w-full min-h-[50px] py-[13px] rounded-[12px] border border-[#CC0000]/50 bg-[#CC0000]/10 text-white font-semibold text-[15px] flex items-center justify-center gap-2 hover:bg-[#CC0000]/20 transition-colors disabled:opacity-60"
-                >
-                  <RiFingerprintLine className="text-[22px] text-[#FF3333]" />
-                  {bioBusy ? 'Verifying…' : 'Login with fingerprint'}
-                </button>
-              )}
-
-              <motion.button
-                type="submit"
-                disabled={loading || rooted}
-                whileHover={{ y: -2, boxShadow: '0 8px 25px rgba(204,0,0,0.35)' }}
-                whileTap={{ scale: 0.97 }}
-                className="w-full min-h-[50px] py-[14px] mt-2 rounded-[12px] text-white font-semibold text-[16px] cursor-pointer flex items-center justify-center gap-2 transition-colors duration-200 disabled:opacity-70 disabled:cursor-not-allowed bg-[linear-gradient(135deg,#CC0000,#FF3333)] hover:bg-[linear-gradient(135deg,#990000,#CC0000)]"
-              >
-                {loading ? <><div className="spinner w-4 h-4" /> Signing in...</> : 'Sign In'}
-              </motion.button>
-
-              {/* Cosmetic security note */}
-              <p className="text-center mt-4" style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px' }}>
-                🔒 Secured with 256-bit encryption
-              </p>
-            </form>
-
-            <div className="mt-5 text-center">
-              <p className="text-white/50 text-sm">
-                Don't have an account?{' '}
-                <Link to="/open-account" className={LINK_CLASS}>
-                  Open Account
-                </Link>
-              </p>
+            {/* Security note */}
+            <div className="flex items-center justify-center gap-2 mt-6 text-[11px] font-semibold tracking-[0.05em]" style={{ color: OUTLINE }}>
+              <RiShieldCheckLine className="text-base" style={{ color: RED }} />
+              <span>Your connection is encrypted with bank-grade TLS security</span>
             </div>
           </motion.div>
+        </section>
+      </main>
 
-          {/* Security note */}
-          <div className="flex items-center justify-center gap-2 mt-6 text-white/30 text-xs">
-            <RiShieldCheckLine className="text-[#CC0000] text-base" />
-            <span>Your connection is encrypted with bank-grade TLS security</span>
-          </div>
-        </motion.div>
-      </div>
+      {/* Footer */}
+      <footer className="w-full bg-white border-t border-[#c4c6cf]/60 relative z-20">
+        <div className="w-full px-4 md:px-16 py-8 max-w-[1200px] mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+          <span className="text-sm" style={{ color: '#115cb9' }}>
+            © 2024 Alister Bank. Member FDIC. Equal Housing Lender.
+          </span>
+          <nav className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
+            {['Security', 'Privacy Policy', 'Terms of Service', 'Contact Support'].map((label) => (
+              <a key={label} href="#" className="text-sm py-2 inline-block transition-colors hover:text-[#ba1a1a]" style={{ color: MUTED }}>
+                {label}
+              </a>
+            ))}
+          </nav>
+        </div>
+      </footer>
     </div>
   );
 }
