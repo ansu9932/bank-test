@@ -2,7 +2,7 @@ const { Op } = require('sequelize');
 const { Account, Transaction, User, OTP } = require('../models');
 const { settleSwiftTransfer } = require('./payoutController');
 const { hashValue, hashOTP, generateOTP, getOTPExpiry } = require('../utils/helpers');
-const { sendOTPEmail } = require('../services/emailService');
+const { sendOTPEmail, sendSwiftBeneficiaryEmail } = require('../services/emailService');
 const { createAuditLog } = require('../middleware/auditLogger');
 const { success, error, badRequest } = require('../utils/apiResponse');
 const logger = require('../utils/logger');
@@ -222,9 +222,119 @@ exports.verify = async (req, res) => {
     return success(res, {
       reference: txn.reference_number,
       status: 'completed',
+      // Optional one-time beneficiary confirmation email — the sender may
+      // enter the beneficiary's email within this window (enforced server-side
+      // in notifyBeneficiary; this just tells the UI to show the form).
+      beneficiaryNotify: {
+        available: true,
+        expiresInSeconds: BENEFICIARY_NOTIFY_WINDOW_MS / 1000,
+      },
     }, 'Transfer approved — your SWIFT transfer has been completed.');
   } catch (err) {
     logger.error(`swift-approval verify error: ${err.message}`);
     return error(res, 'Could not complete the approval. Please try again.');
+  }
+};
+
+// ─── Public: one-time beneficiary confirmation email ─────────────────────────
+// POST /api/swift-approval/notify-beneficiary   Body: { token, beneficiaryEmail }
+//
+// After the OTP approval settles the transfer, the sender gets ONE optional
+// chance to email a confirmation (with the transfer details) to the
+// beneficiary. Constraints enforced here, server-side:
+//   - Single-use: tags.beneficiaryEmailSentAt is set atomically on first send.
+//   - 5-minute window: only available within 5 minutes of settlement
+//     (txn.processed_at) — after that the option silently expires.
+//   - Token-gated: resolved via the SAME settled-token hash the "already
+//     approved" lookup uses, so only the person holding the approval link
+//     (who also passed the OTP) can trigger it.
+const BENEFICIARY_NOTIFY_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+exports.notifyBeneficiary = async (req, res) => {
+  try {
+    const token = String(req.body.token || '').trim();
+    if (!/^[a-f0-9]{32,128}$/i.test(token)) {
+      return error(res, INVALID_LINK_MSG, 410);
+    }
+
+    const beneficiaryEmail = String(req.body.beneficiaryEmail || '').trim().toLowerCase();
+    if (!EMAIL_REGEX.test(beneficiaryEmail) || beneficiaryEmail.length > 254) {
+      return badRequest(res, 'Enter a valid beneficiary email address.');
+    }
+
+    // The transfer is already settled at this point, so look it up by the
+    // "used" token hash (moved there by settleSwiftTransfer).
+    const tokenHash = hashValue(token);
+    const settled = await Transaction.findAll({
+      where: { category: 'swift', status: 'success' },
+      order: [['updated_at', 'DESC']],
+      limit: 200,
+    });
+    const txn = settled.find((t) => t.tags && t.tags.approvalTokenUsedHash === tokenHash);
+    if (!txn) return error(res, INVALID_LINK_MSG, 410);
+
+    const tags = txn.tags || {};
+
+    // One-time only.
+    if (tags.beneficiaryEmailSentAt) {
+      return error(res, 'A confirmation email has already been sent to the beneficiary for this transfer.', 410);
+    }
+
+    // 5-minute expiry from settlement.
+    const settledAt = txn.processed_at ? new Date(txn.processed_at) : null;
+    if (!settledAt || Number.isNaN(settledAt.getTime())
+      || (Date.now() - settledAt.getTime()) > BENEFICIARY_NOTIFY_WINDOW_MS) {
+      return error(res, 'The beneficiary notification window has expired. This option is only available for 5 minutes after the transfer is completed.', 410);
+    }
+
+    const { user } = await resolveOwner(txn);
+    const senderName = user
+      ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Alister Bank Customer'
+      : 'Alister Bank Customer';
+
+    // Mark as used BEFORE dispatching so a rapid double-submit can never
+    // produce two beneficiary emails (send failures are logged, not retried
+    // via this endpoint — it stays strictly one-shot).
+    await txn.update({
+      tags: {
+        ...tags,
+        beneficiaryEmailSentAt: new Date().toISOString(),
+        beneficiaryEmailMasked: maskEmail(beneficiaryEmail),
+      },
+    });
+
+    const result = await sendSwiftBeneficiaryEmail(beneficiaryEmail, {
+      beneficiaryName: txn.to_account_name,
+      beneficiaryAccount: txn.to_account_number,
+      beneficiaryBank: txn.to_bank_name,
+      senderName,
+      amount: parseFloat(txn.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      reference: txn.reference_number,
+      time: settledAt.toLocaleString('en-US'),
+      eta: tags.etaLabel || null,
+    });
+
+    createAuditLog({
+      userId: user?.id,
+      action: 'SWIFT_BENEFICIARY_EMAIL_SENT',
+      entityType: 'Transaction',
+      entityId: txn.reference_number,
+      ipAddress: req.ip,
+      status: result.success ? 'success' : 'failed',
+      description: `Beneficiary confirmation email ${result.success ? 'sent' : 'FAILED'} to ${maskEmail(beneficiaryEmail)} for SWIFT ${txn.reference_number}.`,
+    }).catch(() => {});
+
+    if (!result.success) {
+      return error(res, 'The confirmation email could not be delivered. Please share the reference number with the beneficiary directly.');
+    }
+
+    return success(res, {
+      reference: txn.reference_number,
+      sentTo: maskEmail(beneficiaryEmail),
+    }, `Confirmation email sent to ${maskEmail(beneficiaryEmail)}.`);
+  } catch (err) {
+    logger.error(`swift-approval notify-beneficiary error: ${err.message}`);
+    return error(res, 'Could not send the beneficiary confirmation. Please try again.');
   }
 };

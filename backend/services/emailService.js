@@ -687,6 +687,38 @@ const sendSwiftCompletedEmail = async (email, name, { amount, reference, benefic
 };
 
 /**
+ * SWIFT beneficiary CONFIRMATION — sent to the BENEFICIARY's email address
+ * (entered by the sender right after they complete the email self-approval).
+ * One-time only; the option expires 5 minutes after settlement (enforced by
+ * the notify-beneficiary endpoint). All dynamic values are escaped because
+ * beneficiary name/bank are user-supplied form fields.
+ */
+const sendSwiftBeneficiaryEmail = async (email, { beneficiaryName, beneficiaryAccount, beneficiaryBank, senderName, amount, reference, time, eta }) => {
+  const safeName = escapeHtml(beneficiaryName || 'Customer');
+  const html = baseTemplate(bodyShell(`
+    ${badge('&#127760; Incoming SWIFT Transfer')}
+    ${heading('An International Transfer Is On Its Way to You')}
+    ${para(`Dear ${hl(safeName)},`)}
+    ${para('We have successfully received a request to initiate an <strong>international SWIFT transfer</strong> to your account. The transaction has been processed and is currently on its way.')}
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${BRAND.panelAlt}; border-radius:10px; padding:4px 20px; margin:20px 0;">
+      ${detailRow('Beneficiary Name', safeName)}
+      ${detailRow('Beneficiary Account', escapeHtml(beneficiaryAccount || '—'))}
+      ${detailRow('Beneficiary Bank', escapeHtml(beneficiaryBank || '—'))}
+      ${detailRow('Sender Name', escapeHtml(senderName || '—'))}
+      ${detailRow('Amount', `$${amount} USD`, '#22c55e')}
+      ${detailRow('Reference Number', escapeHtml(reference || '—'))}
+      ${detailRow('Date &amp; Time', escapeHtml(time || '—'))}
+      ${detailRow('Transfer Mode', 'SWIFT')}
+    </table>
+    ${infoBox(`&#9201; <strong>Estimated Completion:</strong> International SWIFT transfers typically take <strong>${eta || '1 to 3 business days'}</strong> to be fully processed and credited to your account by your receiving bank.`)}
+    ${para(`If you have any questions regarding this incoming transfer, please reference <strong>${escapeHtml(reference || '')}</strong> when contacting customer support.`)}
+    ${infoBox('&#128274; <strong>Security Notice:</strong> Alister Bank will never ask for your OTP, PIN, or password.')}
+    ${para('Warm regards,<br/><strong>Alister Bank Support Team</strong>')}
+  `));
+  return sendEmail({ to: email, subject: `Alister Bank — Incoming SWIFT Transfer of $${amount} (Ref ${reference})`, html });
+};
+
+/**
  * SWIFT transfer FAILED + REFUNDED — sent when an admin rejects the wire.
  */
 const sendSwiftFailedEmail = async (email, name, { amount, reference, beneficiary, country, reason, refundAmount, balance, time, disclaimer }) => {
@@ -811,4 +843,5 @@ module.exports = {
   sendSwiftApprovalRequestEmail,
   sendSwiftCompletedEmail,
   sendSwiftFailedEmail,
+  sendSwiftBeneficiaryEmail,
 };

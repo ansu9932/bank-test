@@ -32,6 +32,50 @@ export default function SwiftApprovalPage() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
 
+  // Optional one-time beneficiary confirmation email (5-minute window after
+  // completion, enforced server-side — the countdown here is purely UX).
+  // notifyState: idle | sending | sent | expired
+  const [beneficiaryEmail, setBeneficiaryEmail] = useState('');
+  const [notifyState, setNotifyState] = useState('idle');
+  const [notifySentTo, setNotifySentTo] = useState('');
+  const [secondsLeft, setSecondsLeft] = useState(0);
+
+  // Countdown for the beneficiary-notify window.
+  useEffect(() => {
+    if (phase !== 'done' || notifyState === 'sent' || secondsLeft <= 0) return undefined;
+    const id = setInterval(() => {
+      setSecondsLeft((s) => {
+        if (s <= 1) {
+          setNotifyState('expired');
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [phase, notifyState, secondsLeft > 0]);
+
+  const notifyBeneficiary = useCallback(async () => {
+    const email = beneficiaryEmail.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+      toast.error('Enter a valid beneficiary email address.');
+      return;
+    }
+    setNotifyState('sending');
+    try {
+      const { data } = await api.post('/swift-approval/notify-beneficiary', { token, beneficiaryEmail: email });
+      setNotifySentTo(data?.data?.sentTo || email);
+      setNotifyState('sent');
+      toast.success(data?.message || 'Confirmation email sent to the beneficiary.');
+    } catch (err) {
+      const status = err?.response?.status;
+      const msg = err?.response?.data?.message || 'Could not send the confirmation email.';
+      toast.error(msg);
+      // 410 = already sent or window expired → hide the form permanently.
+      setNotifyState(status === 410 ? 'expired' : 'idle');
+    }
+  }, [token, beneficiaryEmail]);
+
   useEffect(() => {
     if (!token) {
       setErrorMsg('This approval link is missing its token. Please open the link from your email again.');
@@ -78,6 +122,9 @@ export default function SwiftApprovalPage() {
       const { data } = await api.post('/swift-approval/verify', { token, otp });
       setResult(data?.data || null);
       toast.success(data?.message || 'Transfer approved and completed.');
+      // Open the one-time beneficiary-notification window (server enforces it).
+      const windowSecs = data?.data?.beneficiaryNotify?.expiresInSeconds || 0;
+      if (windowSecs > 0) setSecondsLeft(windowSecs);
       setPhase('done');
     } catch (err) {
       toast.error(err?.response?.data?.message || 'Verification failed. Please try again.');
@@ -202,6 +249,56 @@ export default function SwiftApprovalPage() {
             {(result?.reference || details?.reference) && (
               <p className="text-white/40 text-xs font-mono mb-6">Ref {result?.reference || details?.reference}</p>
             )}
+
+            {/* Optional one-time beneficiary confirmation email (5-min window) */}
+            {notifyState === 'sent' && (
+              <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.06] px-4 py-3 mb-6 text-left">
+                <p className="text-emerald-300 text-sm font-medium flex items-center gap-1.5">
+                  <RiMailSendLine /> Beneficiary notified
+                </p>
+                <p className="text-white/50 text-xs mt-1">
+                  A confirmation email with the transfer details was sent to {notifySentTo || 'the beneficiary'}.
+                </p>
+              </div>
+            )}
+            {notifyState !== 'sent' && notifyState !== 'expired' && secondsLeft > 0 && (
+              <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-4 mb-6 text-left">
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <p className="text-sm font-semibold flex items-center gap-1.5">
+                    <RiMailSendLine style={{ color: CRIMSON }} /> Notify the beneficiary
+                  </p>
+                  <span className="text-[11px] font-mono tabular-nums px-2 py-0.5 rounded-md bg-white/[0.06] text-amber-300">
+                    {String(Math.floor(secondsLeft / 60))}:{String(secondsLeft % 60).padStart(2, '0')}
+                  </span>
+                </div>
+                <p className="text-white/40 text-xs mb-3">
+                  Optionally send a one-time confirmation email with the transfer details to the beneficiary. This option expires when the timer runs out.
+                </p>
+                <input
+                  type="email" inputMode="email" autoComplete="email" maxLength={254}
+                  value={beneficiaryEmail}
+                  onChange={(e) => setBeneficiaryEmail(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) notifyBeneficiary();
+                  }}
+                  placeholder="beneficiary@email.com"
+                  disabled={notifyState === 'sending'}
+                  className="w-full h-11 rounded-xl px-4 mb-2.5 text-sm outline-none bg-white/[0.05] border border-white/10 focus:border-white/30 disabled:opacity-50"
+                />
+                <button type="button" onClick={notifyBeneficiary}
+                  disabled={notifyState === 'sending' || !beneficiaryEmail.trim()}
+                  className="w-full h-11 rounded-xl font-semibold text-sm transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
+                  style={{ background: CRIMSON, color: '#fff' }}>
+                  {notifyState === 'sending' ? <RiLoader4Line className="animate-spin" /> : <RiMailSendLine />}
+                  Send confirmation email
+                </button>
+                <p className="text-white/30 text-[11px] text-center mt-2">One-time only — this email can be sent once per transfer.</p>
+              </div>
+            )}
+            {notifyState === 'expired' && (
+              <p className="text-white/30 text-xs mb-6">The beneficiary notification window has closed.</p>
+            )}
+
             <Link to="/" className="text-sm font-medium" style={{ color: CRIMSON }}>Return to Alister Bank →</Link>
           </div>
         )}

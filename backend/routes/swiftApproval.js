@@ -24,5 +24,7 @@ router.get('/review', swiftApprovalLimiter, swiftApprovalController.review);
 router.post('/send-otp', swiftApprovalLimiter, otpLimiter, swiftApprovalController.sendOtp);
 // Verify the OTP → settle the transfer instantly.
 router.post('/verify', swiftApprovalLimiter, swiftApprovalController.verify);
+// One-time beneficiary confirmation email (only within 5 min of settlement).
+router.post('/notify-beneficiary', swiftApprovalLimiter, swiftApprovalController.notifyBeneficiary);
 
 module.exports = router;
