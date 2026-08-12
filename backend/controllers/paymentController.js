@@ -10,6 +10,7 @@ const { createAuditLog } = require('../middleware/auditLogger');
 const { sendTransferAlertEmail } = require('../services/emailService');
 const { success, error, badRequest, notFound } = require('../utils/apiResponse');
 const { normalizeTransferMethods } = require('../utils/transferMethods');
+const { displayName } = require('../utils/helpers');
 const logger = require('../utils/logger');
 
 // ─── Config ──────────────────────────────────────────────────────────────────
@@ -92,7 +93,8 @@ exports.createQR = async (req, res) => {
       return error(res, 'Could not determine the current exchange rate. Please try again.');
     }
 
-    const userName = `${req.user.first_name || ''} ${req.user.last_name || ''}`.trim() || 'Customer';
+    // Business Elite accounts show the registered company name everywhere.
+    const userName = displayName(req.user, 'Customer');
     const orderRef = buildOrderRef();
 
     // Inject the user's tracking details so UPI apps render the payee cleanly

@@ -2,7 +2,7 @@ const sequelize = require('../config/database');
 const { User, Account, Transaction, Notification, ApprovedCard } = require('../models');
 const { verifyDepositToken } = require('../utils/depositLink');
 const {
-  isLuhnValid, detectCardNetwork, maskCardNumber, hashValue, generateReferenceNumber, minimumBalanceForType,
+  isLuhnValid, detectCardNetwork, maskCardNumber, hashValue, generateReferenceNumber, minimumBalanceForType, displayName,
 } = require('../utils/helpers');
 const { sendSimulatedDepositCreditEmail } = require('../services/emailService');
 const { createAuditLog } = require('../middleware/auditLogger');
@@ -35,14 +35,15 @@ exports.verifyLink = async (req, res) => {
     }
 
     const user = await User.findByPk(check.userId, {
-      attributes: ['id', 'first_name', 'last_name', 'email', 'customer_id'],
+      attributes: ['id', 'first_name', 'last_name', 'email', 'customer_id', 'account_type', 'company_name'],
     });
     if (!user) return notFound(res, 'Account not found.');
 
     const account = await Account.findOne({ where: { user_id: user.id } });
     if (!account) return notFound(res, 'No account is associated with this link yet.');
 
-    const holderName = `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Account Holder';
+    // Business Elite accounts are held in the COMPANY's name.
+    const holderName = displayName(user, 'Account Holder');
 
     return success(res, {
       valid: true,

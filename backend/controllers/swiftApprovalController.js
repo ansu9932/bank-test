@@ -1,7 +1,7 @@
 const { Op } = require('sequelize');
 const { Account, Transaction, User, OTP } = require('../models');
 const { settleSwiftTransfer } = require('./payoutController');
-const { hashValue, hashOTP, generateOTP, getOTPExpiry } = require('../utils/helpers');
+const { hashValue, hashOTP, generateOTP, getOTPExpiry, displayName } = require('../utils/helpers');
 const { sendOTPEmail, sendSwiftBeneficiaryEmail } = require('../services/emailService');
 const { createAuditLog } = require('../middleware/auditLogger');
 const { success, error, badRequest } = require('../utils/apiResponse');
@@ -289,9 +289,9 @@ exports.notifyBeneficiary = async (req, res) => {
     }
 
     const { user } = await resolveOwner(txn);
-    const senderName = user
-      ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Alister Bank Customer'
-      : 'Alister Bank Customer';
+    // Business Elite accounts are held in the COMPANY's name — the beneficiary
+    // sees the registered business name, never the applicant's personal name.
+    const senderName = displayName(user);
 
     // Mark as used BEFORE dispatching so a rapid double-submit can never
     // produce two beneficiary emails (send failures are logged, not retried

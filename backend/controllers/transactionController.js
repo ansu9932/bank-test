@@ -3,7 +3,7 @@ const PDFDocument = require('pdfkit');
 const { Op } = require('sequelize');
 const sequelize = require('../config/database');
 const { Account, Transaction, Beneficiary, User, Notification, OTP } = require('../models');
-const { generateReferenceNumber, maskAccountNumber, formatCurrency, paginate, generateOTP, hashOTP, getOTPExpiry } = require('../utils/helpers');
+const { generateReferenceNumber, maskAccountNumber, formatCurrency, paginate, generateOTP, hashOTP, getOTPExpiry, displayName } = require('../utils/helpers');
 const { isMethodEnabled, methodBlockedMessage } = require('../utils/transferMethods');
 const { sendTransferAlertEmail, sendOTPEmail } = require('../services/emailService');
 const { createAuditLog } = require('../middleware/auditLogger');
@@ -388,10 +388,9 @@ const resetDailyLimitIfNeeded = async (account) => {
 // The name printed as "Account Holder" on official statements. Business Elite
 // accounts are opened in the COMPANY's name, so the statement is titled with
 // the registered company name instead of the applicant's personal name.
-const statementHolderName = (user) =>
-  (user.account_type === 'business_elite' && user.company_name)
-    ? user.company_name
-    : `${user.first_name} ${user.last_name}`;
+// Delegates to the shared displayName() helper so ALL surfaces (statements,
+// emails, transfers, beneficiary notifications) resolve names identically.
+const statementHolderName = (user) => displayName(user, 'Account Holder');
 
 // Fetch the statement's transactions for an account + optional date range.
 const fetchStatementTransactions = async (accountId, startDate, endDate) => {

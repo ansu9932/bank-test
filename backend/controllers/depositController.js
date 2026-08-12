@@ -4,6 +4,7 @@ const { createOrder, isConfigured } = require('../utils/razorpay');
 const { createAuditLog } = require('../middleware/auditLogger');
 const { success, error, badRequest, notFound } = require('../utils/apiResponse');
 const { normalizeTransferMethods } = require('../utils/transferMethods');
+const { displayName } = require('../utils/helpers');
 const logger = require('../utils/logger');
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -104,7 +105,8 @@ exports.createDepositOrder = async (req, res) => {
     const account = await Account.findOne({ where: { user_id: req.user.id } });
     if (!account) return notFound(res, 'No active bank account found for this profile.');
 
-    const userName = `${req.user.first_name || ''} ${req.user.last_name || ''}`.trim() || 'Customer';
+    // Business Elite accounts show the registered company name everywhere.
+    const userName = displayName(req.user, 'Customer');
     const orderRef = buildOrderRef();
 
     const notes = {
