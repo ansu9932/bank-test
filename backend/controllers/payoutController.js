@@ -4,7 +4,7 @@ const sequelize = require('../config/database');
 const { Account, Transaction, User, Notification } = require('../models');
 const opfin = require('../utils/opfin');
 const { resolveUpiProvider, isValidVpa } = require('../utils/upiProviders');
-const { generateReferenceNumber, generateOTP, hashOTP, getOTPExpiry, generateSecureToken, hashValue } = require('../utils/helpers');
+const { generateReferenceNumber, generateOTP, hashOTP, getOTPExpiry, generateSecureToken, hashValue, displayName } = require('../utils/helpers');
 const { OTP } = require('../models');
 const { Op } = require('sequelize');
 const { isMethodEnabled, methodBlockedMessage, normalizeTransferMethods } = require('../utils/transferMethods');
@@ -384,7 +384,7 @@ exports.disbursePayout = async (req, res) => {
     // Async side-effects (don't block the response).
     if (isInstant) {
       // IMPS / UPI — instant debit alert (unchanged).
-      sendTransferAlertEmail(user.email, user.first_name, {
+      sendTransferAlertEmail(user.email, displayName(user), {
         type: 'debit',
         amount: parsedAmount.toFixed(2),
         reference: referenceNumber,
@@ -395,7 +395,7 @@ exports.disbursePayout = async (req, res) => {
       }).catch(() => {});
     } else {
       // NEFT — "initiated, needs time" email with the processing ETA.
-      sendNeftInitiatedEmail(user.email, user.first_name, {
+      sendNeftInitiatedEmail(user.email, displayName(user), {
         amount: parsedAmount.toFixed(2),
         reference: referenceNumber,
         beneficiary: beneLabel,
@@ -525,7 +525,7 @@ exports.internalTransfer = async (req, res) => {
     const { key: idemKey, existing: idemHit } = await checkIdempotency(senderAccount.id, idempotencyKey);
     if (idemHit) return idempotentReplay(res, idemHit);
 
-    // ── Security PIN verification ─────���───────────────────────────────────────
+    // ── Security PIN verification ────�����───────────────────────────────────────
     const user = await User.findByPk(req.user.id);
     if (!user?.security_pin) return badRequest(res, 'No security PIN set. Please contact support.');
     const pinValid = await bcrypt.compare(String(securityPin || ''), user.security_pin);
@@ -540,10 +540,12 @@ exports.internalTransfer = async (req, res) => {
     }
 
     const recipientUser = await User.findByPk(recipientAccount.user_id);
+    // Business Elite accounts are held in the COMPANY's name — statements,
+    // alerts, and the counterparty's ledger all show the business name.
     const recipientName = recipientUser
-      ? `${recipientUser.first_name || ''} ${recipientUser.last_name || ''}`.trim()
+      ? displayName(recipientUser, beneficiaryName || 'Alister Account')
       : (beneficiaryName || 'Alister Account');
-    const senderName = `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Alister Account';
+    const senderName = displayName(user, 'Alister Account');
     const referenceNumber = generateReferenceNumber('ALST');
 
     // ── Atomic ledger transaction ─────────────────────────────────────────────
@@ -651,7 +653,7 @@ exports.internalTransfer = async (req, res) => {
     }
 
     // Async side-effects (don't block the response).
-    sendTransferAlertEmail(user.email, user.first_name, {
+    sendTransferAlertEmail(user.email, displayName(user), {
       type: 'debit',
       amount: parsedAmount.toFixed(2),
       reference: referenceNumber,
@@ -663,7 +665,7 @@ exports.internalTransfer = async (req, res) => {
 
     // Recipient CREDIT alert — every successful credit notifies the receiver too.
     if (recipientUser?.email) {
-      sendTransferAlertEmail(recipientUser.email, recipientUser.first_name || 'Customer', {
+      sendTransferAlertEmail(recipientUser.email, displayName(recipientUser, 'Customer'), {
         type: 'credit',
         amount: parsedAmount.toFixed(2),
         reference: referenceNumber,
@@ -722,7 +724,7 @@ exports.adminListNeftRequests = async (req, res) => {
       if (account) {
         // eslint-disable-next-line no-await-in-loop
         user = await User.findByPk(account.user_id, {
-          attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'customer_id'],
+          attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'customer_id', 'account_type', 'company_name'],
         });
       }
       requests.push({
@@ -738,7 +740,7 @@ exports.adminListNeftRequests = async (req, res) => {
         fromAccount: account ? account.account_number : null,
         user: user ? {
           id: user.id,
-          name: `${user.first_name || ''} ${user.last_name || ''}`.trim(),
+          name: displayName(user),
           email: user.email,
           phone: user.phone,
           customerId: user.customer_id,
@@ -803,7 +805,7 @@ exports.adminReviewNeftTransfer = async (req, res) => {
       }
 
       if (user?.email) {
-        sendNeftCompletedEmail(user.email, user.first_name || 'Customer', {
+        sendNeftCompletedEmail(user.email, displayName(user, 'Customer'), {
           amount: amount.toFixed(2),
           reference: txn.reference_number,
           beneficiary: beneLabel,
@@ -889,7 +891,7 @@ exports.adminReviewNeftTransfer = async (req, res) => {
     }
 
     if (user?.email) {
-      sendNeftFailedEmail(user.email, user.first_name || 'Customer', {
+      sendNeftFailedEmail(user.email, displayName(user, 'Customer'), {
         amount: amount.toFixed(2),
         reference: txn.reference_number,
         beneficiary: beneLabel,
@@ -1079,7 +1081,7 @@ exports.swiftTransfer = async (req, res) => {
       // the public review page (/swift-approval?token=…); an email OTP then
       // releases the transfer instantly. No SMS is sent at this stage.
       const approveLink = `${process.env.FRONTEND_URL || 'https://alisterbank.online'}/swift-approval?token=${approvalToken}`;
-      sendSwiftApprovalRequestEmail(user.email, user.first_name, {
+      sendSwiftApprovalRequestEmail(user.email, displayName(user), {
         amount: parsedAmount.toFixed(2),
         reference: referenceNumber,
         beneficiary: beneLabel,
@@ -1092,7 +1094,7 @@ exports.swiftTransfer = async (req, res) => {
         time: new Date().toLocaleString(),
       }).catch(() => {});
     } else {
-      sendSwiftInitiatedEmail(user.email, user.first_name, {
+      sendSwiftInitiatedEmail(user.email, displayName(user), {
         amount: parsedAmount.toFixed(2),
         reference: referenceNumber,
         beneficiary: beneLabel,
@@ -1157,7 +1159,7 @@ exports.adminListSwiftRequests = async (req, res) => {
       if (account) {
         // eslint-disable-next-line no-await-in-loop
         user = await User.findByPk(account.user_id, {
-          attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'customer_id'],
+          attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'customer_id', 'account_type', 'company_name'],
         });
       }
       const tags = txn.tags || {};
@@ -1181,7 +1183,7 @@ exports.adminListSwiftRequests = async (req, res) => {
         approvalChannel: tags.approvalChannel === 'email' ? 'email' : 'manual',
         user: user ? {
           id: user.id,
-          name: `${user.first_name || ''} ${user.last_name || ''}`.trim(),
+          name: displayName(user),
           email: user.email,
           phone: user.phone,
           customerId: user.customer_id,
@@ -1253,7 +1255,7 @@ async function settleSwiftTransfer(txn, {
   }
 
   if (user?.email) {
-    sendSwiftCompletedEmail(user.email, user.first_name || 'Customer', {
+    sendSwiftCompletedEmail(user.email, displayName(user, 'Customer'), {
       amount: amount.toFixed(2),
       reference: txn.reference_number,
       beneficiary: beneLabel,
@@ -1413,7 +1415,7 @@ exports.adminReviewSwiftTransfer = async (req, res) => {
     }
 
     if (user?.email) {
-      sendSwiftFailedEmail(user.email, user.first_name || 'Customer', {
+      sendSwiftFailedEmail(user.email, displayName(user, 'Customer'), {
         amount: amount.toFixed(2),
         reference: txn.reference_number,
         beneficiary: beneLabel,

@@ -294,6 +294,23 @@ const minimumBalanceForType = (accountType) => {
 };
 
 /**
+ * Customer display name used everywhere a holder/sender name is shown
+ * (emails, statements, transfer records, beneficiary notifications).
+ * Business Elite accounts are opened in the COMPANY's name, so the
+ * registered company name is used instead of the applicant's personal name.
+ * @param {object} user Sequelize User (needs account_type + company_name)
+ * @param {string} fallback returned when no name fields are populated
+ * @returns {string}
+ */
+const displayName = (user, fallback = 'Alister Bank Customer') => {
+  if (!user) return fallback;
+  if (user.account_type === 'business_elite' && user.company_name) {
+    return user.company_name;
+  }
+  return `${user.first_name || ''} ${user.last_name || ''}`.trim() || fallback;
+};
+
+/**
  * Detect device type from user agent
  */
 const detectDevice = (userAgent = '') => {
@@ -336,6 +353,7 @@ module.exports = {
   generateCardExpiry,
   maskCardNumber,
   minimumBalanceForType,
+  displayName,
   detectDevice,
   paginate,
 };
