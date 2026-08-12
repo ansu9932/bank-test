@@ -544,10 +544,21 @@ const renderStatementPDF = (doc, { user, account, transactions, startDate, endDa
 
   y += 26;
 
-  // Column layout (x offsets from MARGIN)
-  const COL = { date: 4, desc: 46, ref: 235, wdr: 315, dep: 385, bal: 448 };
+  // Column layout (x offsets from MARGIN). Amount columns are sized to hold
+  // 7-figure values like "+$1,000,000.00" on ONE line — never let them wrap.
+  const COL = { date: 4, desc: 44, ref: 192, wdr: 268, dep: 348, bal: 424 };
   const BAL_X = MARGIN + COL.bal - 6;
   const BAL_W = PAGE_W - MARGIN - BAL_X;
+
+  // Right-aligned, single-line money cell. Shrinks the font (down to 5.5pt)
+  // until the string fits its column so text can NEVER wrap or overlap.
+  const moneyCell = (str, x, width, { color = INK, font = 'Courier', size = 7.5, yOff = 5 } = {}) => {
+    let fs = size;
+    doc.font(font);
+    while (fs > 5.5 && doc.fontSize(fs).widthOfString(str) > width) fs -= 0.5;
+    doc.fillColor(color).fontSize(fs)
+      .text(str, x, y + yOff + (size - fs) / 2, { width, align: 'right', lineBreak: false });
+  };
 
   const drawTableHeader = () => {
     doc.rect(MARGIN, y, CONTENT_W, 20).fill(PANEL);
@@ -582,8 +593,7 @@ const renderStatementPDF = (doc, { user, account, transactions, startDate, endDa
       .text(moment(startDate || transactions[transactions.length - 1].created_at).format('MMM DD'), MARGIN + COL.date, y + 5);
     doc.fillColor(INK).fontSize(7.5).font('Helvetica-Bold')
       .text('Opening Balance', MARGIN + COL.desc, y + 5);
-    doc.fillColor(INK).fontSize(7.5).font('Courier-Bold')
-      .text(money(openingBalance), BAL_X, y + 5, { width: BAL_W - 6, align: 'right' });
+    moneyCell(money(openingBalance), BAL_X, BAL_W - 6, { font: 'Courier-Bold' });
     y += ROW_H;
   }
 
@@ -600,24 +610,29 @@ const renderStatementPDF = (doc, { user, account, transactions, startDate, endDa
     doc.fillColor(MUTED).fontSize(7.5).font('Helvetica')
       .text(moment(tx.created_at).format('MMM DD'), MARGIN + COL.date, y + 5);
 
-    const desc = (tx.description || tx.narration || 'Transaction').slice(0, 42);
-    doc.fillColor(INK).fontSize(7.5).font('Helvetica')
-      .text(desc, MARGIN + COL.desc, y + 5, { width: COL.ref - COL.desc - 8, ellipsis: true });
+    // Truncate the description by MEASURED width so it can never wrap into
+    // the next row (slicing by character count is unreliable across glyphs).
+    let desc = (tx.description || tx.narration || 'Transaction').replace(/\s+/g, ' ').trim();
+    const descW = COL.ref - COL.desc - 8;
+    doc.fontSize(7.5).font('Helvetica');
+    if (doc.widthOfString(desc) > descW) {
+      while (desc.length > 1 && doc.widthOfString(`${desc}…`) > descW) desc = desc.slice(0, -1);
+      desc = `${desc.trimEnd()}…`;
+    }
+    doc.fillColor(INK)
+      .text(desc, MARGIN + COL.desc, y + 5, { width: descW, lineBreak: false });
 
     doc.fillColor(MUTED).fontSize(6.5).font('Courier')
       .text((tx.reference_number || '').slice(0, 14), MARGIN + COL.ref, y + 6);
 
     if (tx.transaction_type === 'debit') {
-      doc.fillColor(INK).fontSize(7.5).font('Courier')
-        .text(`-${money(tx.amount)}`, MARGIN + COL.wdr, y + 5, { width: COL.dep - COL.wdr - 8, align: 'right' });
+      moneyCell(`-${money(tx.amount)}`, MARGIN + COL.wdr, COL.dep - COL.wdr - 8);
     }
     if (tx.transaction_type === 'credit') {
-      doc.fillColor(GREEN).fontSize(7.5).font('Courier')
-        .text(`+${money(tx.amount)}`, MARGIN + COL.dep, y + 5, { width: COL.bal - COL.dep - 12, align: 'right' });
+      moneyCell(`+${money(tx.amount)}`, MARGIN + COL.dep, COL.bal - COL.dep - 12, { color: GREEN });
     }
 
-    doc.fillColor(INK).fontSize(7.5).font('Courier')
-      .text(money(tx.balance_after), BAL_X, y + 5, { width: BAL_W - 6, align: 'right' });
+    moneyCell(money(tx.balance_after), BAL_X, BAL_W - 6);
 
     y += ROW_H;
   });
@@ -633,12 +648,9 @@ const renderStatementPDF = (doc, { user, account, transactions, startDate, endDa
     .text(moment(endDate || new Date()).format('MMM DD'), MARGIN + COL.date, y + 9);
   doc.fillColor(NAVY).fontSize(10).font('Helvetica-Bold')
     .text('Closing Balance', MARGIN + COL.desc, y + 8);
-  doc.fillColor(MUTED).fontSize(7.5).font('Courier-Bold')
-    .text(`-${money(totalDebits)}`, MARGIN + COL.wdr, y + 9, { width: COL.dep - COL.wdr - 8, align: 'right' });
-  doc.fillColor(GREEN).fontSize(7.5).font('Courier-Bold')
-    .text(`+${money(totalCredits)}`, MARGIN + COL.dep, y + 9, { width: COL.bal - COL.dep - 12, align: 'right' });
-  doc.fillColor(RED).fontSize(11).font('Helvetica-Bold')
-    .text(money(closingBalance), BAL_X, y + 8, { width: BAL_W - 6, align: 'right' });
+  moneyCell(`-${money(totalDebits)}`, MARGIN + COL.wdr, COL.dep - COL.wdr - 8, { color: MUTED, font: 'Courier-Bold', yOff: 9 });
+  moneyCell(`+${money(totalCredits)}`, MARGIN + COL.dep, COL.bal - COL.dep - 12, { color: GREEN, font: 'Courier-Bold', yOff: 9 });
+  moneyCell(money(closingBalance), BAL_X, BAL_W - 6, { color: RED, font: 'Helvetica-Bold', size: 10, yOff: 8 });
 
   // ── Footer ────────────────────────────────────────────────────────────────
   const footH = 108;
