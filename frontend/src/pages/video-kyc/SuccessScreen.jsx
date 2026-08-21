@@ -2,13 +2,13 @@ import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Check, Download, ArrowRight } from 'lucide-react';
 
-const VERIFIED_ITEMS = ['Liveness', 'Blink', 'Selfie', 'ID Scan', 'Details'];
+const VERIFIED_ITEMS = ['Liveness', 'Blink', 'Selfie', 'ID Scan'];
 
 /**
  * Step 6 — Success. Animated checkmark ring (SVG stroke draw-in),
  * reference ID + timestamp, verified summary, receipt download.
  */
-export default function SuccessScreen({ details, onFinish }) {
+export default function SuccessScreen({ onFinish }) {
   const refId = useMemo(
     () => `VKYC-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
     []
@@ -21,11 +21,8 @@ export default function SuccessScreen({ details, onFinish }) {
       '─────────────────────────────────',
       `Reference ID : ${refId}`,
       `Completed at : ${timestamp}`,
-      `Name         : ${details.fullName || '—'}`,
-      `Date of Birth: ${details.dob || '—'}`,
-      `ID Number    : ${details.idNumber || '—'}`,
       '',
-      'Verified: Liveness, Blink, Selfie, ID Scan, Details',
+      'Verified: Liveness, Blink, Selfie, ID Scan',
       'Status  : Submitted for final officer review.',
     ].join('\n');
     const blob = new Blob([lines], { type: 'text/plain' });

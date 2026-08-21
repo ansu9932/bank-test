@@ -2,12 +2,10 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { Loader2, ShieldCheck, ScanText, Camera, ArrowRight, Lock } from 'lucide-react';
+import { Loader2, ShieldCheck, Camera, ArrowRight, Lock } from 'lucide-react';
 import api from '../../services/api';
 import ExpiredLinkPage from '../../components/ExpiredLinkPage';
 import useFaceLandmarker from './useFaceLandmarker';
-import { preprocessIdImage, binarizeIdImage } from './faceMath';
-import { parseIndianId, mergeParsedId } from './idParser';
 import StepProgress from './StepProgress';
 import ConsentScreen from './ConsentScreen';
 import FaceScanStep from './FaceScanStep';
@@ -19,7 +17,7 @@ import './vkyc.css';
 /* ────────────────────────────────────────────────────────────────
    ALISTER BANK · VIDEO KYC (fully on-device biometric flow)
    consent → face positioning → liveness → blink + auto selfie →
-   ID scan + OCR → review/edit → submit → success.
+   ID scan → review captures → submit → success.
 
    SECURITY NOTE: all liveness/OCR checks here run client-side.
    Production MUST pair this with server-side verification (image
@@ -38,7 +36,6 @@ const PHASE_STEP = {
   face: 1,
   'selfie-review': 3,
   'id-scan': 4,
-  extracting: 4,
   review: 5,
   done: 6,
 };
@@ -89,14 +86,10 @@ export default function VideoKYC() {
   const [camError, setCamError] = useState('');
   const [starting, setStarting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [ocrEmpty, setOcrEmpty] = useState(false);
 
   // Captured biometrics live ONLY in memory (never localStorage).
   const [selfie, setSelfie] = useState(null);
   const [idPhoto, setIdPhoto] = useState(null);
-  const [details, setDetails] = useState({ fullName: '', dob: '', idNumber: '' });
-  const [idType, setIdType] = useState('unknown');
-  const [idTypeLabel, setIdTypeLabel] = useState('');
 
   const streamRef = useRef(null);
   const lastActivityRef = useRef(Date.now());
@@ -119,10 +112,6 @@ export default function VideoKYC() {
     stopStream();
     setSelfie(null);
     setIdPhoto(null);
-    setDetails({ fullName: '', dob: '', idNumber: '' });
-    setIdType('unknown');
-    setIdTypeLabel('');
-    setOcrEmpty(false);
     goPhase('consent');
     if (message) toast(message);
   }, [stopStream, goPhase]);
@@ -215,55 +204,10 @@ export default function VideoKYC() {
     goPhase('face');
   }, [goPhase]);
 
-  /* ── Step 4: ID captured → OCR ───────────────────────────── */
-  const handleIdCaptured = useCallback(async (dataURL) => {
+  /* ── Step 4: ID captured → straight to review ────────────── */
+  const handleIdCaptured = useCallback((dataURL) => {
     setIdPhoto(dataURL);
     stopStream(); // front stream no longer needed
-    goPhase('extracting');
-    try {
-      // Tesseract is lazy-loaded only when the ID step is reached.
-      const { createWorker } = await import('tesseract.js');
-      const worker = await createWorker('eng');
-      await worker.setParameters({
-        preserve_interword_spaces: '1',
-        user_defined_dpi: '300',
-      });
-
-      // Build the image variants (each pass reads text the others miss):
-      //   1. grayscale + contrast-stretched (best on shadows/low contrast)
-      //   2. Otsu-binarized pure B/W (best on printed labels + numbers)
-      //   3. raw capture (best when preprocessing over-corrects)
-      const variants = [];
-      try { variants.push(await preprocessIdImage(dataURL)); } catch { /* skip */ }
-      try { variants.push(await binarizeIdImage(dataURL)); } catch { /* skip */ }
-      variants.push(dataURL);
-
-      // Auto-detects which of the 5 Indian IDs (Aadhaar / PAN / Voter /
-      // Passport / DL) was scanned and parses per that document's layout.
-      // Each pass fills in fields the previous passes missed; stops early
-      // once name + DOB + ID number are all extracted.
-      let parsed = { idType: 'unknown', fullName: '', dob: '', idNumber: '' };
-      for (const image of variants) {
-        try {
-          const pass = await worker.recognize(image);
-          parsed = mergeParsedId(parsed, parseIndianId(pass?.data?.text));
-        } catch { /* keep previous results */ }
-        if (parsed.fullName && parsed.dob && parsed.idNumber && parsed.idType !== 'unknown') break;
-      }
-      await worker.terminate();
-
-      const empty = !parsed.fullName && !parsed.dob && !parsed.idNumber;
-      setOcrEmpty(empty);
-      setIdType(parsed.idType);
-      setIdTypeLabel(parsed.idType !== 'unknown' ? parsed.idTypeLabel : '');
-      setDetails((d) => ({
-        fullName: parsed.fullName || d.fullName,
-        dob: parsed.dob || d.dob,
-        idNumber: parsed.idNumber || d.idNumber,
-      }));
-    } catch {
-      setOcrEmpty(true);
-    }
     goPhase('review');
   }, [goPhase, stopStream]);
 
@@ -284,7 +228,6 @@ export default function VideoKYC() {
       form.append('document', new File([dataURLToBlob(idPhoto)], `video-kyc-${Date.now()}.jpg`, { type: 'image/jpeg' }));
       form.append('selfie', new File([dataURLToBlob(selfie)], `selfie-${Date.now()}.jpg`, { type: 'image/jpeg' }));
       if (token) form.append('token', token);
-      form.append('details', JSON.stringify({ ...details, idType, idTypeLabel }));
 
       const { data } = await api.post('/account/kyc/upload', form, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -305,7 +248,7 @@ export default function VideoKYC() {
     } finally {
       setSubmitting(false);
     }
-  }, [idPhoto, selfie, token, details, isProduction, goPhase]);
+  }, [idPhoto, selfie, token, isProduction, goPhase]);
 
   const finish = useCallback(() => navigate('/login', { replace: true }), [navigate]);
 
@@ -417,38 +360,11 @@ export default function VideoKYC() {
             </motion.div>
           )}
 
-          {phase === 'extracting' && (
-            <motion.div
-              key="extracting"
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="flex-1 flex flex-col items-center justify-center gap-4 px-6"
-            >
-              <div className="relative w-20 h-20 rounded-2xl bg-[#F4F4F5] flex items-center justify-center overflow-hidden">
-                <ScanText size={32} className="text-[#DC2626]" aria-hidden="true" />
-                <motion.div
-                  className="absolute left-0 right-0 h-0.5 bg-[#DC2626]"
-                  animate={{ top: ['15%', '85%', '15%'] }}
-                  transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
-                />
-              </div>
-              <p aria-live="polite" className="vkyc-heading text-lg font-semibold text-[#0A0A0A]">
-                Extracting details…
-              </p>
-              <p className="text-sm text-[#0A0A0A]/55 text-center max-w-xs leading-relaxed">
-                Reading your ID on-device with OCR. This takes a few seconds.
-              </p>
-            </motion.div>
-          )}
-
           {phase === 'review' && (
             <ReviewStep
               key="review"
               selfie={selfie}
               idPhoto={idPhoto}
-              details={details}
-              idTypeLabel={idTypeLabel}
-              onDetailsChange={setDetails}
-              ocrEmpty={ocrEmpty}
               onRetakeSelfie={retakeSelfie}
               onRescanId={rescanId}
               onSubmit={submitKYC}
@@ -456,7 +372,7 @@ export default function VideoKYC() {
             />
           )}
 
-          {phase === 'done' && <SuccessScreen key="done" details={details} onFinish={finish} />}
+          {phase === 'done' && <SuccessScreen key="done" onFinish={finish} />}
         </AnimatePresence>
       </main>
 
