@@ -29,17 +29,14 @@ const authLimiter = rateLimit({
  * Window: exactly 15 minutes. Threshold: max 5 attempts per IP.
  * On breach, rejects with HTTP 429 BEFORE the request reaches the controller
  * (and therefore before any database lookup), using the exact JSON contract
- * expected by the client: { status: false, message: "..." }.
+ * expected by the client: { success: false, message: "..." }.
  */
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5,                    // 5 attempts per IP per window
   standardHeaders: true,
   legacyHeaders: false,
-  handler: (req, res) => res.status(429).json({
-    status: false,
-    message: 'Too many login attempts from this device. Please try again after 15 minutes.',
-  }),
+  handler: (req, res) => tooManyRequests(res, 'Too many login attempts from this device. Please try again after 15 minutes.'),
 });
 
 /**

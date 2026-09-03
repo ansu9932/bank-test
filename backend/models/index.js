@@ -45,6 +45,25 @@ SupportTicket.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 User.hasMany(CardRequest, { foreignKey: 'user_id', as: 'cardRequests' });
 CardRequest.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 
+// Additional associations to prevent N+1 queries
+User.hasMany(AuditLog, { foreignKey: 'user_id', as: 'auditLogs' });
+AuditLog.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+
+User.hasMany(AdminDevice, { foreignKey: 'user_id', as: 'devices' });
+AdminDevice.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+
+User.hasMany(TransferRequest, { foreignKey: 'from_account_id', as: 'transferRequests' });
+TransferRequest.belongsTo(User, { foreignKey: 'from_account_id', as: 'fromUser' });
+
+Account.hasMany(ApprovedCard, { foreignKey: 'account_id', as: 'approvedCards' });
+ApprovedCard.belongsTo(Account, { foreignKey: 'account_id', as: 'account' });
+
+User.hasMany(EmailCampaign, { foreignKey: 'created_by', as: 'campaigns' });
+EmailCampaign.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
+
+User.hasMany(QrLoginSession, { foreignKey: 'user_id', as: 'qrSessions' });
+QrLoginSession.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+
 module.exports = {
   sequelize,
   User,

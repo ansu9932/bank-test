@@ -1283,7 +1283,7 @@ async function settleSwiftTransfer(txn, {
   const smsDestBank = (txn.to_bank_name || '').trim().toUpperCase() || 'THE BENEFICIARY BANK';
   const smsContent = (smsMessage && String(smsMessage).trim())
     || (channel === 'email'
-      ? `ALERT: Your outward SWIFT remittance of ${fmtINR(amount)} from A/c ending ${beneAcctLast6} to ${smsDestBank} is being PROCESSED for regulatory clearance (Ref ${txn.reference_number}). Kindly submit the required FEMA declarations/docs via the app or your home branch to release funds. We never ask for OTP/PIN. - Alister Bank`
+      ? `ALERT: Your SWIFT transfer of ${fmtINR(amount)} to ${smsDestBank} (Ref ${txn.reference_number}) has been approved. Funds will be credited within 2-3 business days. Log into the Alister Bank app to track status. We never ask for OTP/PIN via SMS. - Alister Bank`
       : null);
   if (smsContent && smsRecipient) {
     sendSms({ recipient: smsRecipient, content: smsContent })

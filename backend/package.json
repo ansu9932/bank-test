@@ -17,7 +17,6 @@
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
-    "express-mongo-sanitize": "^2.2.0",
     "express-rate-limit": "^7.5.1",
     "express-validator": "^7.0.1",
     "helmet": "^7.1.0",
@@ -30,16 +29,13 @@
     "node-cron": "^4.2.1",
     "nodemailer": "^9.0.3",
     "pdfkit": "^0.14.0",
-    "pg": "^8.21.0",
-    "pg-hstore": "^2.3.4",
     "qrcode": "^1.5.3",
     "razorpay": "^2.9.4",
     "sequelize": "^6.37.7",
     "sharp": "^0.32.6",
     "jsqr": "^1.4.0",
     "uuid": "^11.1.1",
-    "winston": "^3.11.0",
-    "xss-clean": "^0.1.4"
+    "winston": "^3.11.0"
   },
   "overrides": {
     "uuid": "$uuid"
