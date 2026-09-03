@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const sequelize = require('../config/database');
 const { CardRequest, User, Account, Transaction, Notification } = require('../models');
 const { createAuditLog } = require('../middleware/auditLogger');
@@ -391,11 +392,16 @@ exports.revealCard = async (req, res) => {
       return badRequest(res, 'Enter your 4-digit transaction security PIN.');
     }
 
+    // Reject any attempt to write CVV (PCI-DSS: CVV never stored).
+    if (req.body.cvv !== undefined) {
+      return badRequest(res, 'CVV cannot be stored. Enter it only when needed for transactions.');
+    }
+
     const card = await CardRequest.findOne({
       where: { id: req.params.id, user_id: req.user.id, request_type: TYPE_DEBIT_CARD },
     });
     if (!card) return notFound(res, 'Card not found.');
-    if (card.status !== 'active' || !card.card_number) {
+    if (card.status !== 'active' || !card.card_number_hash) {
       return badRequest(res, 'Card details are only available once your card is active.');
     }
 
@@ -408,19 +414,18 @@ exports.revealCard = async (req, res) => {
     createAuditLog({
       userId: req.user.id, action: 'CARD_DETAILS_REVEALED', entityType: 'CardRequest',
       entityId: card.id, ipAddress: req.ip, status: 'success',
-      description: 'Full card details revealed after PIN verification.',
+      description: 'Card details (masked) revealed after PIN verification. CVV NOT stored in system.',
     }).catch(() => {});
 
-    // Format the PAN in groups of 4 for display.
-    const grouped = String(card.card_number).replace(/(.{4})/g, '$1 ').trim();
+    // Return masked card details only. CVV is NEVER returned from server.
     return success(res, {
-      number: card.card_number,
-      formattedNumber: grouped,
-      cvv: card.cvv || null,
+      maskedNumber: `••••••••••••${card.card_last4}`,
+      last4: card.card_last4,
       expiry: card.expiry_date || null,
       network: card.card_network,
       tier: card.card_tier,
-    }, 'Card details revealed.');
+      note: 'Enter your CVV from the physical card when prompted at checkout. It is never stored.',
+    }, 'Card details revealed (masked).');
   } catch (err) {
     logger.error(`revealCard error: ${err.message}`);
     return error(res, 'Could not reveal card details. Please try again.');
@@ -486,13 +491,16 @@ exports.adminProcessRequest = async (req, res) => {
         // Defensive: regenerate on the astronomically-unlikely chance of an
         // invalid number (keeps the guarantee absolute).
         if (!isLuhnValid(cardNumber)) cardNumber = generateCardNumber(network);
-        const cvv = generateCVV();
+
+        // Hash the card number for PCI-DSS compliance (never store plaintext).
+        const cardNumberHash = crypto.createHash('sha256').update(cardNumber).digest('hex');
+        const last4 = cardNumber.slice(-4);
         const expiry = generateCardExpiry(5);
 
         await request.update({
           status: 'active',
-          card_number: cardNumber,
-          cvv,
+          card_number_hash: cardNumberHash,
+          card_last4: last4,
           expiry_date: expiry,
           notes: notes || request.notes,
         });
@@ -500,7 +508,7 @@ exports.adminProcessRequest = async (req, res) => {
         // Reflect issuance on the account profile (best-effort).
         const acct = await Account.findOne({ where: { user_id: request.user_id } });
         if (acct) {
-          await acct.update({ card_issued: true, card_number_masked: maskCardNumber(cardNumber) }).catch(() => {});
+          await acct.update({ card_issued: true, card_number_masked: `••••••••••••${last4}` }).catch(() => {});
         }
 
         await notifyUser(request.user_id, 'Debit Card Issued',
@@ -508,12 +516,12 @@ exports.adminProcessRequest = async (req, res) => {
 
         if (recipientEmail) {
           sendCardIssuedEmail(recipientEmail, recipientName, {
-            tier: request.card_tier, network, maskedNumber: maskCardNumber(cardNumber), expiry,
+            tier: request.card_tier, network, maskedNumber: `••••••••••••${last4}`, expiry,
           }).catch((e) => logger.error(`Card issued email failed: ${e.message}`));
         }
 
         auditProcess(req, request, previousStatus, 'active', action);
-        return success(res, { requestId: request.id, status: 'active', maskedNumber: maskCardNumber(cardNumber) },
+        return success(res, { requestId: request.id, status: 'active', maskedNumber: `••••••••••••${last4}` },
           'Card approved and issued.');
       }
 

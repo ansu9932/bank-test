@@ -633,6 +633,39 @@ async function ensureKycDocumentTypeColumn() {
   }
 }
 
+/**
+ * Ensure idempotency key unique index exists on transactions table.
+ * Closes race window where two concurrent requests with same idempotency_key
+ * both pass the app-level check before either writes the record.
+ */
+async function ensureIdempotencyIndex() {
+  const qi = sequelize.getQueryInterface();
+  try {
+    await qi.describeTable('transactions');
+  } catch {
+    return; // table absent; sync will create it
+  }
+  try {
+    // Check if index already exists
+    const indexes = await qi.showIndex('transactions');
+    const hasIdempotencyIndex = indexes.some(
+      idx => idx.name === 'unique_account_idempotency' ||
+              (idx.fields && idx.fields.account_id && idx.fields.idempotency_key && idx.unique)
+    );
+
+    if (!hasIdempotencyIndex) {
+      await qi.addIndex('transactions', ['account_id', 'idempotency_key'], {
+        name: 'unique_account_idempotency',
+        unique: true,
+        where: { idempotency_key: { [sequelize.Sequelize.Op.ne]: null } }
+      });
+      logger.info('✅ Added unique index on (account_id, idempotency_key).');
+    }
+  } catch (e) {
+    logger.warn(`⚠️ Idempotency index creation skipped: ${e.message}`);
+  }
+}
+
 const start = async () => {
   try {
     // Guarantee the uploads tree exists before anything serves/writes to it.
@@ -658,7 +691,7 @@ const start = async () => {
     const useAlter = process.env.DB_SYNC_ALTER === 'true';
     if (useAlter) {
       try {
-        await sequelize.sync({ alter: false });
+        await sequelize.sync({ alter: true });
         logger.info('✅ Database models synchronized (alter mode).');
         console.log('✅ Database models synchronized (alter mode).');
       } catch (syncErr) {
@@ -714,6 +747,19 @@ const start = async () => {
 
     // Widen kyc_documents.document_type so new country doc types are accepted.
     try {
+      await ensureKycDocumentTypeColumn();
+    } catch (colErr) {
+      logger.error(`kyc_documents column backfill failed (non-fatal): ${colErr.message}`);
+      console.error(`kyc_documents column backfill failed (non-fatal): ${colErr.message}`);
+    }
+
+    // Ensure idempotency key unique index (closes race-window vulnerability).
+    try {
+      await ensureIdempotencyIndex();
+    } catch (idempErr) {
+      logger.error(`idempotency index creation failed (non-fatal): ${idempErr.message}`);
+      console.error(`idempotency index creation failed (non-fatal): ${idempErr.message}`);
+    }
       await ensureKycDocumentTypeColumn();
     } catch (colErr) {
       logger.error(`kyc_documents column backfill failed (non-fatal): ${colErr.message}`);

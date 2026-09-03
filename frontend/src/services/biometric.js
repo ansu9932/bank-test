@@ -112,8 +112,9 @@ export async function biometricLogin() {
  * Root detection — calls the custom RootCheck plugin registered in
  * MainActivity (backed by the RootBeer library). Rooted devices are blocked
  * from logging in because Keystore + FLAG_SECURE guarantees don't hold there.
- * Fails OPEN on web (not applicable) and CLOSED errors to "not rooted" so a
- * plugin hiccup can't lock out every user.
+ *
+ * SECURITY: Fail-CLOSED on errors (return true to block the login).
+ * Never let a plugin hiccup become a security bypass.
  */
 export async function isDeviceRooted() {
   if (!isNativeApp()) return false;
@@ -122,15 +123,18 @@ export async function isDeviceRooted() {
     const RootCheck = registerPlugin('RootCheck');
     const { rooted } = await RootCheck.isRooted();
     return !!rooted;
-  } catch {
-    return false;
+  } catch (e) {
+    console.warn('⚠️ Root check failed; blocking login for safety:', e.message);
+    return true; // Fail closed: assume rooted if we can't verify
   }
 }
 
 /**
  * Emulator detection — banking sessions must not run inside emulators
  * (Frida/instrumentation risk). Treated exactly like a rooted device by the
- * login page. Same fail-open-on-error policy as isDeviceRooted().
+ * login page.
+ *
+ * SECURITY: Fail-CLOSED on errors (return true to block).
  */
 export async function isEmulatorDevice() {
   if (!isNativeApp()) return false;
@@ -139,8 +143,9 @@ export async function isEmulatorDevice() {
     const RootCheck = registerPlugin('RootCheck');
     const { emulator } = await RootCheck.isEmulator();
     return !!emulator;
-  } catch {
-    return false;
+  } catch (e) {
+    console.warn('⚠️ Emulator check failed; blocking login for safety:', e.message);
+    return true; // Fail closed: assume emulator if we can't verify
   }
 }
 
@@ -148,8 +153,9 @@ export async function isEmulatorDevice() {
  * Developer-mode detection — like other banking apps, the app refuses to run
  * while Android Developer Options (or USB debugging) is enabled, since ADB
  * allows runtime inspection and input injection. Checked on app entry and on
- * every foreground resume. Same fail-open-on-error policy as above so a
- * plugin hiccup can't brick the app for everyone.
+ * every foreground resume.
+ *
+ * SECURITY: Fail-CLOSED on errors (return true to block).
  */
 export async function isDeveloperModeEnabled() {
   if (!isNativeApp()) return false;
@@ -158,8 +164,9 @@ export async function isDeveloperModeEnabled() {
     const RootCheck = registerPlugin('RootCheck');
     const { enabled } = await RootCheck.isDeveloperModeEnabled();
     return !!enabled;
-  } catch {
-    return false;
+  } catch (e) {
+    console.warn('⚠️ Developer mode check failed; blocking login for safety:', e.message);
+    return true; // Fail closed: assume dev mode if we can't verify
   }
 }
 

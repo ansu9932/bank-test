@@ -9,6 +9,8 @@ import {
 import { fetchTransactions } from '../../store/slices/transactionSlice';
 import { safeFormat, safeCurrency } from '../../utils/dateHelpers';
 import { downloadReceipt } from '../../utils/downloadReceipt';
+import api from '../../services/api';
+import { toast } from 'react-hot-toast';
 
 const modeColor = { NEFT: 'badge-info', RTGS: 'badge-brand', IMPS: 'badge-warning', INTERNAL: 'badge-success', SALARY: 'badge-success', INTEREST: 'badge-info', SYSTEM: 'badge-info', CHARGE: 'badge-danger' };
 
@@ -26,9 +28,23 @@ export default function TransactionsPage() {
 
   const setF = (k) => (e) => { setFilters(f => ({ ...f, [k]: e.target.value })); setPage(1); };
 
-  const downloadStatement = () => {
-    const params = new URLSearchParams({ startDate: filters.startDate, endDate: filters.endDate });
-    window.open(`/api/transactions/download-statement?${params}`, '_blank');
+  const downloadStatement = async () => {
+    try {
+      const params = new URLSearchParams({ startDate: filters.startDate, endDate: filters.endDate });
+      const { data } = await api.get(`/transactions/download-statement?${params}`, {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `statement-${new Date().toISOString().split('T')[0]}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to download statement');
+    }
   };
 
   return (

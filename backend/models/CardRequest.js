@@ -1,4 +1,5 @@
 const { DataTypes } = require('sequelize');
+const crypto = require('crypto');
 const sequelize = require('../config/database');
 
 const CardRequest = sequelize.define('CardRequest', {
@@ -21,10 +22,12 @@ const CardRequest = sequelize.define('CardRequest', {
   card_network: { type: DataTypes.STRING(20) },
   // 'Gold' | 'Platinum' | 'Business'
   card_tier: { type: DataTypes.STRING(20) },
-  // 16-digit PAN (Luhn-valid), generated on admin approval. Stored as a string
-  // to preserve any leading characteristics; never logged in clear text.
-  card_number: { type: DataTypes.STRING(16) },
-  cvv: { type: DataTypes.STRING(4) },
+  // Card number is stored as SHA-256 hash only (PCI-DSS compliant).
+  // Never store or log the plaintext card number.
+  card_number_hash: { type: DataTypes.STRING(64), unique: true },
+  // Last 4 digits for UI display only (no sensitive data)
+  card_last4: { type: DataTypes.STRING(4) },
+  // CVV is NEVER stored. Return 403 if client attempts to write it.
   // 'MM/YY'
   expiry_date: { type: DataTypes.STRING(5) },
 
