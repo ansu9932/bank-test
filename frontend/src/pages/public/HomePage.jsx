@@ -152,6 +152,12 @@ function Hero() {
             <GhostButton to="/accounts" large>Explore Products</GhostButton>
           </motion.div>
 
+          <motion.div variants={heroLine} className="mt-5">
+            <Link to="/account-guide" className="inline-flex items-center gap-2 text-sm font-medium text-alister-white-muted hover:text-alister-white underline-offset-4 hover:underline">
+              <Video size={18} aria-hidden="true" /> Watch the account-opening video
+            </Link>
+          </motion.div>
+
           <motion.div variants={heroLine} className="mt-10 flex flex-wrap items-center gap-x-7 gap-y-3">
             {[
               ['🔒', 'Bank-Grade Security'],

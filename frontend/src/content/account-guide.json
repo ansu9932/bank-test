@@ -1,0 +1,119 @@
+{
+  "title": "Your account. From start to sign in.",
+  "language": "English",
+  "disclosure": "Illustrated walkthrough based on this project's web flow. Example data only; this is not a live account recording. The activation deposit is a sandbox simulation, not a real payment.",
+  "scenes": [
+    {
+      "id": "welcome", "duration": 8, "chapter": "The complete walkthrough", "title": "Your account.\nFrom start\nto sign in.",
+      "description": "A clear, step-by-step guide to opening your Alister Bank web account.",
+      "steps": ["Apply with your details", "Complete identity verification", "Set up your account and sign in"],
+      "note": "Illustrated guide · Example data only", "panel": "journey", "panelTitle": "One journey. Every step.",
+      "transcript": "Welcome to the Alister Bank web account guide. Follow the application, email verification, video KYC, sandbox activation, account setup, and first sign-in. These are illustrative screens with example data, not a live account recording."
+    },
+    {
+      "id": "prepare", "duration": 12, "chapter": "Before you begin", "title": "A little preparation.\nA smoother start.",
+      "description": "Have your information ready before opening the application.",
+      "steps": ["Keep your email inbox and mobile number handy", "Prepare the identity documents for your country", "Use a device with a camera and good lighting"],
+      "note": "India access is invitation-only in this project.", "panel": "checklist", "panelTitle": "Your application checklist",
+      "items": ["Accessible email address", "Mobile number and personal details", "Identity documents and signature", "Camera, clear lighting, stable connection"],
+      "transcript": "Keep your email inbox, mobile number, identity documents, and signature ready. You will also need a camera for video KYC. This project's India services are limited to pre-approved participants. On the homepage, select Request Account Access to open the application."
+    },
+    {
+      "id": "personal", "duration": 14, "chapter": "Application · Personal information", "title": "Start with\nyour details.",
+      "description": "Choose your country, then enter your details exactly as they appear on your government ID.",
+      "steps": ["Enter your name, email and mobile number", "Add your date of birth and gender", "Choose Savings, Current or Business Elite"],
+      "note": "Your country determines the documents required.", "panel": "form", "panelTitle": "Personal Information",
+      "fields": [["Country", "India · example"], ["Full name", "Alex Taylor · example"], ["Email address", "alex@example.com"], ["Mobile number", "Your mobile number"], ["Date of birth / Gender", "As on your government ID"], ["Account type", "Savings Account"]],
+      "button": "Next Step", "transcript": "Select your country. Enter your first and last name, email, mobile number, date of birth, and gender as required by the form. Choose Savings, Current, or Business Elite. Complete any other relevant fields, then select Next Step. Your country determines the document requirements."
+    },
+    {
+      "id": "business", "duration": 10, "chapter": "Optional branch · Business Elite", "title": "Opening for\nyour business?",
+      "description": "Business Elite adds a Company Info step after your personal information.",
+      "steps": ["Enter your company name and entity type", "Complete the required registration details", "Upload the business documents requested"],
+      "note": "Savings and Current applicants skip this step.", "panel": "form", "panelTitle": "Company Information",
+      "fields": [["Company name", "Your registered company"], ["Entity type", "Choose your business type"], ["Registration details", "Complete all required fields"], ["Business documents", "Upload the requested documents"]],
+      "button": "Continue to Address", "transcript": "If you selected Business Elite, complete the additional Company Info step. Provide your company name, entity type, registration details, and the business documents marked as required. The account will be held in the company name. Savings and Current applicants skip this step."
+    },
+    {
+      "id": "address", "duration": 10, "chapter": "Application · Address", "title": "Add the place\nyou call home.",
+      "description": "Enter your residential address carefully before continuing.",
+      "steps": ["Add your address line and city", "Select or enter your state or province", "Enter the PIN code or postal code"],
+      "note": "For India, the PIN code must contain six digits.", "panel": "form", "panelTitle": "Address Details",
+      "fields": [["Address line 1", "Your residential address"], ["Address line 2", "Apartment or landmark · optional"], ["City", "Your city"], ["State / Province", "Your state or province"], ["PIN / Postal code", "Your postal code"]],
+      "button": "Next Step", "transcript": "Enter your residential address, city, state or province, and PIN or postal code. Address line two is optional. Indian PIN codes must contain six digits. Check that your address is accurate, then continue to Documents."
+    },
+    {
+      "id": "documents", "duration": 16, "chapter": "Application · Documents", "title": "Your documents.\nClear and complete.",
+      "description": "Upload the documents shown for your selected country. Make every detail readable.",
+      "steps": ["India: provide PAN and Aadhaar details and files", "Upload your live selfie and signature", "For other countries, follow the required list"],
+      "note": "PAN verification can update and lock your legal name.", "panel": "documents", "panelTitle": "KYC Documents · India example",
+      "items": ["PAN Card · number and upload", "Aadhaar Card · number and upload", "Live Selfie · required", "Signature · required"],
+      "button": "Next Step", "transcript": "Document requirements depend on your country. For India, provide PAN and Aadhaar numbers and uploads, a live selfie, and your signature. Passport and address proof are optional for India. Nepal, Bhutan, and Bangladesh have different identity-document requirements and require address proof. Successful PAN verification can update and lock your legal name. Upload clear supported images or PDFs."
+    },
+    {
+      "id": "email-otp", "duration": 12, "chapter": "Application · Email verification", "title": "Check your inbox.\nVerify it is you.",
+      "description": "Request the six-digit verification code using the email shown on screen.",
+      "steps": ["Select Send OTP and open your email", "Enter your own six-digit code", "Verify the code before continuing"],
+      "note": "Wrong email? Use Change and request a new code.", "panel": "otp", "panelTitle": "Email Verification",
+      "button": "Verify OTP", "transcript": "Check the displayed email address, then select Send OTP. Open your inbox and enter the six-digit code you received. Verify the code before moving forward. If the email address is wrong, use Change and request a new code. Never share your OTP with anyone."
+    },
+    {
+      "id": "review", "duration": 12, "chapter": "Application · Review and submit", "title": "One final check.\nThen submit.",
+      "description": "Review your information, uploaded documents and the terms before sending your application.",
+      "steps": ["Check every section for accuracy", "Go back to correct anything that is wrong", "Submit and keep your customer ID"],
+      "note": "Submission is not the same as an active account.", "panel": "checklist", "panelTitle": "Review Your Application",
+      "items": ["Personal and contact information", "Company details · if applicable", "Address and KYC documents", "Email verification complete"],
+      "button": "Submit Application", "transcript": "Review your personal details, company details if applicable, address, and KYC documents. Read the terms and privacy information. Go back to correct any mistakes, then submit the application. Keep the customer ID shown in the confirmation. Your account still needs the remaining verification and activation steps."
+    },
+    {
+      "id": "kyc-email", "duration": 10, "chapter": "Verification · Your invitation", "title": "Your next step\narrives by email.",
+      "description": "Look for the video KYC invitation in your registered inbox.",
+      "steps": ["Check your inbox and spam folder", "Open the secure video KYC link", "Read the consent screen and allow the camera"],
+      "note": "Expired link? Contact support for a fresh one.", "panel": "email", "panelTitle": "Your video KYC invitation",
+      "button": "Begin Video KYC", "transcript": "After submission, look for the video KYC invitation sent to your registered email address. Delivery and review can take time, so check your spam folder too. Open the secure link in a supported browser, read the consent screen, and allow camera access. Contact support if your link has expired."
+    },
+    {
+      "id": "face", "duration": 14, "chapter": "Video KYC · Face verification", "title": "Face the camera.\nFollow the prompts.",
+      "description": "Sit in good light and keep your face clearly visible inside the guide.",
+      "steps": ["Position your face in the on-screen circle", "Follow the head-movement and blink prompts", "Review your selfie and retake if needed"],
+      "note": "The movement prompts can vary each session.", "panel": "face", "panelTitle": "Face Verification",
+      "transcript": "Position your face inside the circle in good lighting. Follow the on-screen movement prompts, which can vary between sessions, and blink when asked. Keep still while the selfie is captured automatically. Review the captured selfie and retake it if the image is not clear."
+    },
+    {
+      "id": "id-scan", "duration": 12, "chapter": "Video KYC · ID and review", "title": "Scan your ID.\nCheck the details.",
+      "description": "Keep the document fully visible, in focus and free from glare.",
+      "steps": ["Capture your ID using the on-screen guide", "Review and correct the extracted details", "Submit your video KYC for processing"],
+      "note": "A completed capture does not guarantee approval.", "panel": "identity", "panelTitle": "ID Scan and Review",
+      "button": "Submit Verification", "transcript": "Capture your identity document using the on-screen guide. Keep every edge visible and avoid glare. Review the extracted name, date of birth, and ID number, correcting any reading errors. Submit the verification. A successful capture is not a guarantee of approval; wait for the next email."
+    },
+    {
+      "id": "activation", "duration": 14, "chapter": "Activation · Sandbox deposit", "title": "Complete the\nactivation step.",
+      "description": "After KYC processing, open the activation-deposit link sent by email.",
+      "steps": ["Check the account and minimum amount shown", "Use only an admin-approved sandbox test card", "Wait for confirmation and the setup email"],
+      "note": "Simulation only. Do not enter a real payment card.", "panel": "deposit", "panelTitle": "Activation Deposit",
+      "button": "Complete sandbox activation", "transcript": "After KYC processing, open the activation-deposit link in your email. Check the account and minimum amount shown. This project's deposit is a sandbox simulation, not a real payment. Use only an admin-approved sandbox test card, never a real payment card. After confirmation, wait for the separate account-setup email."
+    },
+    {
+      "id": "setup", "duration": 14, "chapter": "Account setup · Your credentials", "title": "Make your\naccount yours.",
+      "description": "Open the account-setup link from your email and create your login credentials.",
+      "steps": ["Choose a username of at least five characters", "Create and confirm a password of at least eight", "Set a four-digit security PIN, then activate"],
+      "note": "Keep your password and transfer PIN private.", "panel": "form", "panelTitle": "Set Up Your Account",
+      "fields": [["Choose username", "alex.taylor · example"], ["Create password", "••••••••••••"], ["Confirm password", "••••••••••••"], ["4-digit security PIN", "••••"]],
+      "button": "Activate My Account", "transcript": "Open the account-setup link from your email. Choose a username with at least five characters. Create a unique password with at least eight characters and confirm it. Set a four-digit security PIN used to authorize transfers. Select Activate My Account, then Login Now. Keep your password and PIN private."
+    },
+    {
+      "id": "login", "duration": 12, "chapter": "First login · Password sign-in", "title": "Your first login.\nYou are almost in.",
+      "description": "On the login screen, use the Password tab to enter your new credentials.",
+      "steps": ["Enter your username or registered email", "Enter your password and the shown CAPTCHA", "Select Sign In to open your dashboard"],
+      "note": "Forgot your password? Use the reset link on this page.", "panel": "login", "panelTitle": "Welcome back",
+      "button": "Sign In", "transcript": "On the login page, choose the Password tab. Enter your username or registered email and your new password. Type the characters shown in your own CAPTCHA; refresh it if it is hard to read. Select Sign In. If your credentials are accepted, you will reach the dashboard. Use Forgot password if you need to reset your password."
+    },
+    {
+      "id": "finish", "duration": 8, "chapter": "Ready to explore", "title": "Signed in.\nReady for\nyour next step.",
+      "description": "Your dashboard brings your account overview and banking tools together.",
+      "steps": ["Review your account details", "Explore transactions and account tools", "Sign out when using a shared device"],
+      "note": "Never share your OTP, password or security PIN.", "panel": "finish", "panelTitle": "Welcome to your dashboard",
+      "transcript": "After a successful login, review your account details and explore the dashboard's account tools. Keep your OTP, password, and security PIN private, and sign out on shared devices. You can replay any chapter in this guide whenever you need a reminder."
+    }
+  ]
+}

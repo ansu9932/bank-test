@@ -33,6 +33,7 @@ const PressPage = lazy(() => import('./pages/public/PressPage'));
 const PrivacyPolicyPage = lazy(() => import('./pages/public/PrivacyPolicyPage'));
 const TermsOfServicePage = lazy(() => import('./pages/public/TermsOfServicePage'));
 const DownloadAppPage = lazy(() => import('./pages/public/DownloadAppPage'));
+const AccountGuidePage = lazy(() => import('./pages/public/AccountGuidePage'));
 // SWIFT email self-approval — public review page opened from the emailed link
 const SwiftApprovalPage = lazy(() => import('./pages/public/SwiftApprovalPage'));
 
@@ -160,6 +161,7 @@ export default function App() {
         <Route path="/reset-password" element={<ResetPasswordPage />} />
 
         {/* Account Opening */}
+        <Route path="/account-guide" element={withSuspense(<AccountGuidePage />)} />
         <Route path="/open-account" element={withSuspense(<AccountOpeningPage />)} />
         {/* Live production Video KYC — email secure links land here (?token=...) */}
         <Route path="/video-kyc" element={withSuspense(<VideoKYC />)} />
