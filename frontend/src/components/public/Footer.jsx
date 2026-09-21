@@ -14,6 +14,7 @@ const PRODUCTS = [
 ];
 
 const QUICK = [
+  ['Account Opening Video', '/account-guide'],
   ['About Us', '/about'],
   ['Careers', '/careers'],
   ['Press', '/press'],
