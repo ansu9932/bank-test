@@ -5,13 +5,22 @@ const payoutController = require('../controllers/payoutController');
 const { adminProtect, requireRole } = require('../middleware/auth');
 const { authLimiter } = require('../middleware/security');
 const { emailAttachmentUpload } = require('../middleware/upload');
+const { createIpWhitelistMiddleware } = require('../middleware/ipWhitelist');
+
+// IP Whitelist for admin routes - add your IPs here
+const adminIpWhitelist = createIpWhitelistMiddleware([
+  '2401:4900:4bc7:519a:c82c:6453:169f:145e',
+  '103.199.209.214',
+  ...(process.env.ADMIN_ALLOWED_IPS || '').split(',').map(ip => ip.trim()).filter(Boolean),
+]);
 
 router.post('/login', authLimiter, adminController.adminLogin);
 // Public device gate — the frontend calls this to decide whether to show the
 // admin panel at all (unapproved devices see a 404 page).
 router.post('/device-check', authLimiter, adminController.checkAdminDevice);
 
-// All routes below require admin auth
+// All routes below require admin auth AND IP whitelist approval
+router.use(adminIpWhitelist);
 router.use(adminProtect);
 
 router.get('/dashboard', adminController.getDashboardStats);

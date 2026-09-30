@@ -56,7 +56,9 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // ─── Trust proxy (for Nginx) ──────────────────────────────────────────────────
-app.set('trust proxy', 1);
+// Only the local Nginx proxy may supply forwarding headers. Nginx restores
+// visitor IPs using CF-Connecting-IP only from trusted Cloudflare networks.
+app.set('trust proxy', 'loopback');
 
 // ─── Security Middleware ──────────────────────────────────────────────────────
 app.use(securityHeaders);

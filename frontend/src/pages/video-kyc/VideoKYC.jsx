@@ -445,10 +445,7 @@ export default function VideoKYC() {
               key="review"
               selfie={selfie}
               idPhoto={idPhoto}
-              details={details}
               idTypeLabel={idTypeLabel}
-              onDetailsChange={setDetails}
-              ocrEmpty={ocrEmpty}
               onRetakeSelfie={retakeSelfie}
               onRescanId={rescanId}
               onSubmit={submitKYC}
